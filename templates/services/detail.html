@@ -1,0 +1,107 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{{ service.name }} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{{ service.name }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div class="space-y-3">
+      <div class="flex items-center gap-3">
+        <h1 class="text-xl font-semibold text-zinc-900">{{ service.name }}</h1>
+        <span class="rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset {{ service.status|pill_class }}">{{ service.get_status_display }}</span>
+      </div>
+      <p class="text-sm text-zinc-500">
+        <a href="{% url 'organizations:detail' service.organization.pk %}" class="text-indigo-600 hover:text-indigo-800">{{ service.organization.name }}</a>
+      </p>
+      <p class="max-w-2xl text-sm text-zinc-600">{% if service.description %}{{ service.description }}{% else %}{% translate 'No description provided.' %}{% endif %}</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="{% url 'dashboard:service_dashboard' service.pk %}"
+         class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700">
+        {% icon "kpis" class_name="size-4" %} {% translate 'Dashboard' %}
+      </a>
+      <a href="{% url 'services:index' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50">&larr; {% translate 'All services' %}</a>
+      {% include "catalog/actions.html" with item=service url_activate='services:activate' url_deactivate='services:deactivate' url_delete='services:delete' perm_manage='service.manage' perm_delete='service.delete' %}
+    </div>
+  </div>
+
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {% translate 'Open requests' as stat_open_requests %}
+    {% translate 'Active incidents' as stat_active_incidents %}
+    {% translate 'Active workflows' as stat_active_workflows %}
+    {% translate 'KPIs' as stat_kpis %}
+    {% include "partials/stat_card.html" with label=stat_open_requests value=open_request_count icon="requests" %}
+    {% include "partials/stat_card.html" with label=stat_active_incidents value=active_incident_count icon="incidents" %}
+    {% include "partials/stat_card.html" with label=stat_active_workflows value=active_workflow_count icon="workflows" %}
+    {% include "partials/stat_card.html" with label=stat_kpis value=kpis|length icon="kpis" %}
+  </div>
+
+  <div class="grid gap-4 lg:grid-cols-2">
+    <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Capabilities' %}</h2>
+      <ul class="divide-y divide-zinc-100">
+        {% for link in capabilities %}
+        <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+          <span class="font-medium text-zinc-800">{{ link.capability.name }}</span>
+          {% if link.required %}<span class="rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 ring-1 ring-inset ring-violet-600/20">{% translate 'Required' %}</span>{% endif %}
+        </li>
+        {% empty %}
+        <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No capabilities assigned.' %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Actors' %}</h2>
+      <ul class="divide-y divide-zinc-100">
+        {% for actor in actors %}
+        <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+          <span class="font-medium text-zinc-800">{{ actor.person|default:actor.role.name }}</span>
+          <span class="text-xs text-zinc-500">{{ actor.role.name }}{% if actor.responsibility %} &middot; {{ actor.responsibility }}{% endif %}</span>
+        </li>
+        {% empty %}
+        <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No actors assigned.' %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="grid gap-4 lg:grid-cols-2">
+    <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+        <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Recent requests' %}</h2>
+        <a href="{% url 'requests:index' %}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
+      </div>
+      <ul class="divide-y divide-zinc-100">
+        {% for r in requests|slice:":8" %}
+        <li class="flex items-center gap-3 px-4 py-3">
+          <span class="min-w-0 flex-1 truncate text-sm text-zinc-700">{{ r.title|truncatechars:46 }}</span>
+          <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ r.status|pill_class }}">{{ r.get_status_display }}</span>
+        </li>
+        {% empty %}
+        <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No requests yet.' %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+        <h2 class="text-sm font-semibold text-zinc-800">{% translate 'KPIs' %}</h2>
+        <a href="{% url 'metrics:kpis' %}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
+      </div>
+      <ul class="divide-y divide-zinc-100">
+        {% for kpi in kpis %}
+        <li class="flex items-center gap-3 px-4 py-3 text-sm">
+          <span class="font-medium text-zinc-800">{{ kpi.name }}</span>
+          {% if kpi.target_value %}<span class="text-xs text-zinc-500">{% blocktranslate with target=kpi.target_value %}target {{ target }}{% endblocktranslate %}</span>{% endif %}
+        </li>
+        {% empty %}
+        <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No KPIs tied to this service.' %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock content %}

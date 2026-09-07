@@ -1,0 +1,107 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{{ organization.name }} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{{ organization.name }}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-semibold text-zinc-900">{{ organization.name }}</h1>
+      <p class="mt-1 text-sm text-zinc-500">{{ organization.get_organization_type_display }}</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="{% url 'organizations:detail' organization.pk %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50">{% translate 'Open record' %}</a>
+      {% if organization.parent %}
+      <a href="{% url 'dashboard:organization_dashboard' organization.parent.pk %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50">&larr; {{ organization.parent.name|truncatechars:28 }}</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {% for s in stats %}
+    <div>{% include "partials/stat_card.html" with label=s.label value=s.value icon=s.icon url=s.url %}</div>
+    {% endfor %}
+  </div>
+
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {% for s in work_stats %}
+    <div>{% include "partials/stat_card.html" with label=s.label value=s.value icon=s.icon url=s.url %}</div>
+    {% endfor %}
+  </div>
+
+  <div class="grid gap-4 lg:grid-cols-2">
+    <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <h2 class="mb-2 text-sm font-semibold text-zinc-800">{% translate 'Requests by status — subtree' %}</h2>
+      <div id="chart-requests-status" class="w-full"></div>
+    </div>
+    <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <h2 class="mb-2 text-sm font-semibold text-zinc-800">{% translate 'Requests — last 30 days' %}</h2>
+      <div id="chart-requests-trend" class="w-full"></div>
+    </div>
+  </div>
+
+  {% if children %}
+  <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+    <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Child organizations' %}</h2>
+    <ul class="grid gap-2 p-4 sm:grid-cols-2 lg:grid-cols-3">
+      {% for child in children %}
+      <li>
+        <a href="{% url 'dashboard:organization_dashboard' child.pk %}"
+           class="flex items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2.5 text-sm text-zinc-700 transition hover:border-indigo-300 hover:bg-indigo-50/40">
+          {% icon "chevron-right" class_name="size-4 text-zinc-400" %}
+          {{ child.name }}
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="grid gap-4 lg:grid-cols-2">
+    <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Services' %}</h2>
+      <ul class="divide-y divide-zinc-100">
+        {% for s in services %}
+        <li class="flex items-center gap-3 px-4 py-3">
+          <a href="{% url 'dashboard:service_dashboard' s.pk %}" class="min-w-0 flex-1 truncate text-sm font-medium text-indigo-600 hover:text-indigo-800">{{ s.name }}</a>
+          <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ s.status|pill_class }}">{{ s.get_status_display }}</span>
+        </li>
+        {% empty %}
+        <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No services in this subtree.' %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+        <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Open requests' %}</h2>
+        <a href="{% url 'requests:index' %}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
+      </div>
+      <ul class="divide-y divide-zinc-100">
+        {% for r in open_requests %}
+        <li class="flex items-center gap-3 px-4 py-3">
+          <a href="{% url 'requests:detail' r.pk %}" class="min-w-[3.5rem] truncate text-sm font-medium text-indigo-600 hover:text-indigo-800">{{ r.service.name|truncatechars:20 }}</a>
+          <a href="{% url 'requests:detail' r.pk %}" class="min-w-0 flex-1 truncate text-sm text-zinc-700 hover:text-indigo-700">{{ r.title|truncatechars:40 }}</a>
+          <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ r.status|pill_class }}">{{ r.get_status_display }}</span>
+        </li>
+        {% empty %}
+        <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No open requests.' %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock content %}
+
+{% block extra_js %}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var el1 = document.getElementById('chart-requests-status');
+    if (el1) new ApexCharts(el1, {{ requests_chart|safe }}).render();
+    var el2 = document.getElementById('chart-requests-trend');
+    if (el2) new ApexCharts(el2, {{ trend_chart|safe }}).render();
+  });
+</script>
+{% endblock extra_js %}

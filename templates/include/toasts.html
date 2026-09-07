@@ -1,0 +1,14 @@
+{% if messages %}
+<div class="pointer-events-none fixed inset-x-0 top-4 z-50 flex flex-col items-center gap-2 px-4">
+  {% for message in messages %}
+  <div x-data="{ show: true }" x-show="show" x-transition
+       x-init="setTimeout(() => show = false, 4000)"
+       class="pointer-events-auto w-full max-w-md rounded-lg border px-4 py-3 text-sm shadow-lg
+              {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-800
+              {% elif message.tags == 'success' %}border-emerald-200 bg-emerald-50 text-emerald-800
+              {% else %}border-zinc-200 bg-white text-zinc-800{% endif %}">
+    {{ message }}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

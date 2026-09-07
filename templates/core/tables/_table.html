@@ -1,0 +1,80 @@
+{% load i18n ui %}
+<div id="{{ config.key }}-wrap" class="space-y-4">
+  {% include "include/toasts.html" %}
+
+  <div class="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm" x-data="{ filtersOpen: false }">
+    {% if config.caption or has_search or has_filters %}
+    <div class="flex flex-wrap items-center gap-2 border-b border-zinc-100 p-4">
+      <div class="min-w-0 flex-1">
+        {% if config.caption %}<h2 class="text-sm font-semibold text-zinc-800">{{ config.caption }}</h2>{% endif %}
+        <p class="text-xs text-zinc-500">{% if paginator %}{% blocktranslate count counter=paginator.count %}{{ counter }} record{% plural %}{{ counter }} records{% endblocktranslate %}{% else %}{% blocktranslate count counter=object_list|length %}{{ counter }} record{% plural %}{{ counter }} records{% endblocktranslate %}{% endif %}</p>
+      </div>
+      <div class="flex items-center gap-2">
+        {% if has_search %}
+        <form hx-get="." hx-target="#{{ config.key }}-wrap" hx-trigger="keyup changed delay:400ms, submit"
+              class="relative">
+          <input type="hidden" name="sort" value="{{ sort_key }}">
+          <span class="pointer-events-none absolute inset-y-0 left-2.5 grid place-items-center text-zinc-400">
+            {% icon "search" class_name="size-4" %}
+          </span>
+          <input type="search" name="q" value="{{ active_q }}" placeholder="{% translate 'Search…' %}"
+                 class="h-9 w-48 rounded-lg border border-zinc-300 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 sm:w-56">
+        </form>
+        {% endif %}
+        {% if has_filters %}
+        <button type="button" @click="filtersOpen = !filtersOpen"
+                class="grid h-9 w-9 place-items-center rounded-lg border border-zinc-300 text-zinc-500 transition hover:bg-zinc-50"
+                aria-label="{% translate 'Show filters' %}">
+          {% icon "filter" class_name="size-4" %}
+        </button>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if has_filters %}{% include "core/tables/_filters.html" %}{% endif %}
+    {% include "core/tables/_bulk.html" %}
+
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-full border-collapse text-left">
+        <thead class="bg-zinc-50/70 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+          <tr>
+            {% if config.bulk_actions %}<th class="w-10 px-4 py-3"><input type="checkbox" class="row-select-all rounded border-zinc-300"></th>{% endif %}
+            {% for column in visible_columns %}
+            <th class="px-4 py-3 whitespace-nowrap">
+              <div class="flex items-center gap-1.5">
+                {{ column.label }}
+                {% if column.sortable %}
+                <a href=".?{% if query_without_sort %}{{ query_without_sort }}&{% endif %}sort={% if sort_key == column.key %}-{% endif %}{{ column.key }}"
+                   hx-get=".?{% if query_without_sort %}{{ query_without_sort }}&{% endif %}sort={% if sort_key == column.key %}-{% endif %}{{ column.key }}"
+                   hx-target="#{{ config.key }}-wrap"
+                   class="text-zinc-400 transition hover:text-zinc-600" aria-label="{% blocktranslate %}Sort by {{ column.label }}{% endblocktranslate %}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="size-3.5"><path d="M8 9l4-4 4 4m0 6l-4 4-4-4"/></svg>
+                </a>
+                {% endif %}
+              </div>
+            </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in object_list %}{% include "core/tables/_row.html" %}{% endfor %}
+        </tbody>
+      </table>
+      {% include "core/tables/_empty.html" %}
+    </div>
+
+    {% if is_paginated %}{% include "core/tables/_pagination.html" %}{% endif %}
+  </div>
+
+  <script>
+    (function () {
+      var root = document.getElementById('{{ config.key }}-wrap');
+      if (!root) return;
+      var toggle = root.querySelector('.row-select-all');
+      if (toggle) toggle.addEventListener('click', function () {
+        root.querySelectorAll('.row-select').forEach(function (box) { box.checked = toggle.checked; });
+      });
+    })();
+  </script>
+</div>

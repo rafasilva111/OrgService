@@ -1,0 +1,119 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{% translate 'Overview' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% translate 'Executive Overview' %}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Executive Overview' %}</h1>
+    <p class="mt-1 text-sm text-zinc-500">{% translate 'Live position across your visible organizations and services.' %}</p>
+  </div>
+
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {% translate 'visible to you' as hint_visible_to_you %}
+    {% for s in stats %}
+    <div>{% include "partials/stat_card.html" with label=s.label value=s.value icon=s.icon url=s.url hint=hint_visible_to_you %}</div>
+    {% endfor %}
+  </div>
+
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {% for s in work_stats %}
+    <div>{% include "partials/stat_card.html" with label=s.label value=s.value icon=s.icon url=s.url %}</div>
+    {% endfor %}
+  </div>
+
+  <div class="grid gap-4 lg:grid-cols-2">
+    <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <h2 class="mb-2 text-sm font-semibold text-zinc-800">{% translate 'Requests by status' %}</h2>
+      <div id="chart-requests-status" class="w-full"></div>
+    </div>
+    <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <h2 class="mb-2 text-sm font-semibold text-zinc-800">{% translate 'Requests — last 30 days' %}</h2>
+      <div id="chart-requests-trend" class="w-full"></div>
+    </div>
+  </div>
+
+  {% if service_health %}
+  <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+    <h2 class="mb-3 text-sm font-semibold text-zinc-800">{% translate 'Service health' %}</h2>
+    <div class="flex flex-wrap gap-2">
+      {% for row in service_health %}
+      <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium {{ row.status|pill_class }}">
+        {{ row.status|title }}
+        <span class="rounded-full bg-white/70 px-1.5">{{ row.total }}</span>
+      </span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="grid gap-4 lg:grid-cols-3">
+    <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+        <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Open requests' %}</h2>
+        <a href="{% url 'requests:index' %}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
+      </div>
+      <ul class="divide-y divide-zinc-100">
+        {% for r in open_requests %}
+        <li class="flex items-center gap-3 px-4 py-3">
+          <a href="{% url 'requests:detail' r.pk %}" class="min-w-[3.5rem] truncate text-sm font-medium text-indigo-600 hover:text-indigo-800">{{ r.service.name|truncatechars:24 }}</a>
+          <a href="{% url 'requests:detail' r.pk %}" class="min-w-0 flex-1 truncate text-sm text-zinc-700 hover:text-indigo-700">{{ r.title|truncatechars:42 }}</a>
+          <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ r.status|pill_class }}">{{ r.get_status_display }}</span>
+        </li>
+        {% empty %}
+        <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No open requests.' %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+        <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Active incidents' %}</h2>
+        <a href="{% url 'incidents:index' %}?status=OPEN" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
+      </div>
+      <ul class="divide-y divide-zinc-100">
+        {% for i in active_incidents %}
+        <li class="flex items-center gap-3 px-4 py-3">
+          <a href="{% url 'incidents:detail' i.pk %}" class="min-w-[3.5rem] truncate text-sm font-medium text-indigo-600 hover:text-indigo-800">{{ i.service.name|truncatechars:24 }}</a>
+          <a href="{% url 'incidents:detail' i.pk %}" class="min-w-0 flex-1 truncate text-sm text-zinc-700 hover:text-indigo-700">{{ i.title|truncatechars:42 }}</a>
+          <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ i.status|pill_class }}">{{ i.get_status_display }}</span>
+        </li>
+        {% empty %}
+        <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No active incidents.' %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+        <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Recent executions' %}</h2>
+        <a href="{% url 'workflows:executions' %}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
+      </div>
+      <ul class="divide-y divide-zinc-100">
+        {% for e in recent_executions %}
+        <li class="flex items-center gap-3 px-4 py-3">
+          <a href="{% url 'workflows:detail' e.workflow.pk %}" class="min-w-[3.5rem] truncate text-sm font-medium text-indigo-600 hover:text-indigo-800">{{ e.workflow.service.name|truncatechars:20 }}</a>
+          <a href="{% url 'workflows:detail' e.workflow.pk %}" class="min-w-0 flex-1 truncate text-sm text-zinc-700 hover:text-indigo-700">{{ e.workflow.name|truncatechars:32 }}</a>
+          <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ e.status|pill_class }}">{{ e.get_status_display }}</span>
+        </li>
+        {% empty %}
+        <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No executions yet.' %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock content %}
+
+{% block extra_js %}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var el1 = document.getElementById('chart-requests-status');
+    if (el1) new ApexCharts(el1, {{ requests_chart|safe }}).render();
+    var el2 = document.getElementById('chart-requests-trend');
+    if (el2) new ApexCharts(el2, {{ trend_chart|safe }}).render();
+  });
+</script>
+{% endblock extra_js %}

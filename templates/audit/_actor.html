@@ -1,0 +1,1 @@
+{% if record.actor_user.username %}{{ record.actor_user.username }}{% elif record.actor_person %}{{ record.actor_person.full_name }}{% else %}—{% endif %}

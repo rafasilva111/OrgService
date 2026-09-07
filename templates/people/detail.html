@@ -1,0 +1,54 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{{ person.full_name }} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{{ person.full_name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl space-y-6">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div class="flex items-center gap-4">
+      <span class="grid size-14 shrink-0 place-items-center rounded-full bg-indigo-100 text-lg font-semibold text-indigo-700">{{ person.full_name|slice:":2"|upper }}</span>
+      <div class="space-y-1.5">
+        <div class="flex flex-wrap items-center gap-2">
+          <h1 class="text-xl font-semibold text-zinc-900">{{ person.full_name }}</h1>
+          <span class="rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset {{ person.person_type|pill_class }}">{{ person.get_person_type_display }}</span>
+        </div>
+        <p class="text-sm text-zinc-500">{% if person.email %}{{ person.email }}{% else %}{% translate 'No email on record' %}{% endif %}{% if person.phone %} &middot; {{ person.phone }}{% endif %}</p>
+      </div>
+    </div>
+    <a href="{% url 'people:directory' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50">&larr; {% translate 'Directory' %}</a>
+    {% include "catalog/actions.html" with item=person url_activate='people:activate' url_deactivate='people:deactivate' url_delete='people:delete' perm_manage='people.manage' perm_delete='people.delete' %}
+  </div>
+
+  <div class="grid gap-4 lg:grid-cols-2">
+    <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Memberships' %}</h2>
+      <ul class="divide-y divide-zinc-100">
+        {% for m in memberships %}
+        <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+          <a href="{% url 'organizations:detail' m.organization.pk %}" class="min-w-0 flex-1 truncate font-medium text-indigo-600 hover:text-indigo-800">{{ m.organization.name }}</a>
+          <span class="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">{{ m.role.name }}</span>
+        </li>
+        {% empty %}
+        <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No active memberships.' %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Skills' %}</h2>
+      <ul class="divide-y divide-zinc-100">
+        {% for ps in skills %}
+        <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+          <span class="font-medium text-zinc-800">{{ ps.skill.name }}</span>
+          <span class="shrink-0 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 ring-1 ring-inset ring-violet-600/20">{{ ps.get_level_display }}</span>
+        </li>
+        {% empty %}
+        <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No verified skills yet.' %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock content %}

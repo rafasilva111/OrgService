@@ -1,0 +1,53 @@
+{% load i18n ui %}
+<aside
+  class="fixed inset-y-0 left-0 z-40 flex w-72 flex-col overflow-y-auto bg-zinc-950 text-zinc-200 transition-transform lg:translate-x-0 lg:static"
+  :class="open ? 'translate-x-0' : '-translate-x-full'"
+>
+  <div class="flex items-center gap-3 px-5 py-5">
+    <div class="grid size-11 shrink-0 place-items-center rounded-xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/30">
+      {% icon "dashboard" class_name="size-5" %}
+    </div>
+    <div class="min-w-0">
+      <p class="truncate text-sm font-semibold text-white">{% translate 'OrgService Platform' %}</p>
+      <p class="truncate text-xs text-zinc-400">{% translate 'Municipal operations' %}</p>
+    </div>
+  </div>
+
+  <nav class="flex-1 space-y-6 px-3 pb-8 pt-2">
+    {% for group in nav_groups %}
+    <div>
+      <p class="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">{{ group.label }}</p>
+      <ul class="space-y-1">
+        {% for item in group.items %}
+        <li>
+          <a href="{{ item.url }}"
+             class="group flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition
+                    {% if item.current %}bg-indigo-600 text-white shadow-md shadow-indigo-600/25
+                    {% else %}text-zinc-300 hover:bg-zinc-800 hover:text-white{% endif %}">
+            <span class="{% if item.current %}text-white{% else %}text-zinc-500 group-hover:text-zinc-300{% endif %}">
+              {% icon item.icon class_name="size-5" %}
+            </span>
+            <span class="truncate">{{ item.label }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </nav>
+
+  <div class="border-t border-zinc-800 px-5 py-4 text-xs">
+    {% if memberships %}
+    <div class="grid gap-2">
+      {% for m in memberships %}
+      <div class="grid gap-0.5">
+        <span class="font-medium text-zinc-300">{{ m.organization }}</span>
+        <span class="text-zinc-500">{% if m.service %}{{ m.service }} · {% endif %}{{ m.role }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-zinc-500">{% translate 'OrgService Platform — apex-guided UI' %}</p>
+    {% endif %}
+  </div>
+</aside>

@@ -1,0 +1,22 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{% translate 'Requests' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% translate 'Requests' %}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Requests' %}</h1>
+      <p class="mt-1 text-sm text-zinc-500">{% translate 'Demands entering your services. Select rows to use bulk actions.' %}</p>
+    </div>
+    <a href="{% url 'requests:create' %}"
+       class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700">
+      {% icon "plus" class_name="size-4" %} {% translate 'New request' %}
+    </a>
+  </div>
+
+  {% include "core/tables/_table.html" %}
+</div>
+{% endblock content %}

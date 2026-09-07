@@ -1,0 +1,28 @@
+{% load i18n ui %}
+{% comment %}Catalog lifecycle action buttons (activate/deactivate/delete).
+Expects: item, url_activate, url_deactivate, url_delete, perm_manage, perm_delete.{% endcomment %}
+<div class="flex items-center gap-2">
+  {% if request.user|has_perm:perm_manage %}
+    {% if item.active %}
+      <form method="post" action="{% url url_deactivate item.pk %}"
+            onsubmit="return confirm('{% blocktranslate with item=item %}Deactivate {{ item }}?{% endblocktranslate %}');">
+        {% csrf_token %}
+        <button type="submit" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100">{% translate 'Deactivate' %}</button>
+      </form>
+    {% else %}
+      <form method="post" action="{% url url_activate item.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700">
+          {% icon "check" class_name="size-4" %} {% translate 'Activate' %}
+        </button>
+      </form>
+    {% endif %}
+  {% endif %}
+  {% if request.user|has_perm:perm_delete %}
+    <form method="post" action="{% url url_delete item.pk %}"
+          onsubmit="return confirm('{% blocktranslate with item=item %}Delete {{ item }}? This soft-deletes the record.{% endblocktranslate %}');">
+      {% csrf_token %}
+      <button type="submit" class="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50">{% translate 'Delete' %}</button>
+    </form>
+  {% endif %}
+</div>

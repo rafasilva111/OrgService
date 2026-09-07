@@ -1,0 +1,16 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{% translate 'Memberships' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% translate 'Memberships' %}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Memberships' %}</h1>
+    <p class="mt-1 text-sm text-zinc-500">{% blocktranslate count counter=open_membership_count %}{{ counter }} active membership bound to organizations you can see.{% plural %}{{ counter }} active memberships bound to organizations you can see.{% endblocktranslate %}</p>
+  </div>
+
+  {% include "core/tables/_table.html" %}
+</div>
+{% endblock content %}

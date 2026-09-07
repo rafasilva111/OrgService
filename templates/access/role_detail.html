@@ -1,0 +1,36 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{{ role.name }} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{{ role.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl space-y-6">
+  <div class="flex items-start justify-between gap-3">
+    <div class="space-y-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <h1 class="text-xl font-semibold text-zinc-900">{{ role.name }}</h1>
+        <span class="rounded-full bg-zinc-100 px-2.5 py-0.5 font-mono text-xs font-medium text-zinc-600">{{ role.code }}</span>
+        {% if role.is_system %}<span class="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20">{% translate 'System' %}</span>{% endif %}
+      </div>
+      <p class="max-w-2xl text-sm text-zinc-600">{% if role.description %}{{ role.description }}{% else %}{% translate 'No description provided.' %}{% endif %}</p>
+    </div>
+    <a href="{% url 'access:roles' %}" class="shrink-0 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50">&larr; {% translate 'Roles' %}</a>
+    {% include "catalog/actions.html" with item=role url_activate='access:role_activate' url_deactivate='access:role_deactivate' url_delete='access:role_delete' perm_manage='role.manage' perm_delete='role.delete' %}
+  </div>
+
+  <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+    <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% blocktranslate count counter=permission_links|length %}Granted permission ({{ counter }}){% plural %}Granted permissions ({{ counter }}){% endblocktranslate %}</h2>
+    <ul class="divide-y divide-zinc-100">
+      {% for link in permission_links %}
+      <li class="flex items-center gap-3 px-4 py-3 text-sm">
+        <span class="w-32 shrink-0 rounded bg-zinc-100 px-2 py-0.5 text-center font-mono text-xs text-zinc-600">{{ link.permission.code }}</span>
+        <span class="font-medium text-zinc-800">{{ link.permission.label }}</span>
+      </li>
+      {% empty %}
+      <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No active permissions granted.' %}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock content %}

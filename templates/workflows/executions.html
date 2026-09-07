@@ -1,0 +1,16 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{% translate 'Executions' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% translate 'Executions' %}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Executions' %}</h1>
+    <p class="mt-1 text-sm text-zinc-500">{% translate 'Runs of the workflows you can see.' %}</p>
+  </div>
+
+  {% include "core/tables/_table.html" %}
+</div>
+{% endblock content %}

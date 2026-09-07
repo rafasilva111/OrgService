@@ -1,0 +1,22 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{% translate 'Organization tree' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% translate 'Organization tree' %}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl space-y-6">
+  <div>
+    <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Organization tree' %}</h1>
+    <p class="mt-1 text-sm text-zinc-500">{% translate 'Hierarchy of organizations you can see. Access flows downward only.' %}</p>
+  </div>
+
+  <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+    {% for node in object_list %}
+      {% include "organizations/_org_node.html" with node=node %}
+    {% empty %}
+      <p class="py-8 text-center text-sm text-zinc-500">{% translate 'No organizations in scope.' %}</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock content %}

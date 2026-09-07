@@ -1,0 +1,48 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{{ resource.name }} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{{ resource.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl space-y-6">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div class="space-y-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <h1 class="text-lg font-semibold text-zinc-900">{{ resource.name }}</h1>
+        <span class="rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset {{ resource.resource_type|pill_class }}">{{ resource.get_resource_type_display }}</span>
+        {% if resource.active %}<span class="rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">{% translate 'Active' %}</span>{% endif %}
+      </div>
+      <dl class="grid gap-x-8 gap-y-1.5 text-sm sm:grid-cols-2">
+        {% if resource.code %}<div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Code' %}</dt><dd class="font-mono text-zinc-800">{{ resource.code }}</dd></div>{% endif %}
+        {% if resource.organization %}<div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Organization' %}</dt><dd class="font-medium text-zinc-800">{{ resource.organization.name }}</dd></div>{% endif %}
+        {% if resource.service %}<div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Service' %}</dt><dd class="font-medium text-zinc-800">{{ resource.service.name }}</dd></div>{% endif %}
+        <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Updated' %}</dt><dd class="text-zinc-700">{{ resource.updated_at|date:"M j, Y H:i" }}</dd></div>
+      </dl>
+    </div>
+    <a href="{% url 'resources:index' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50">&larr; {% translate 'Resources' %}</a>
+    {% include "catalog/actions.html" with item=resource url_activate='resources:activate' url_deactivate='resources:deactivate' url_delete='resources:delete' perm_manage='resource.manage' perm_delete='resource.delete' %}
+  </div>
+
+  {% if resource.description %}
+  <div class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+    <p class="whitespace-pre-wrap text-sm leading-relaxed text-zinc-600">{{ resource.description }}</p>
+  </div>
+  {% endif %}
+
+  <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+    <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Current assignments' %}</h2>
+    <ul class="divide-y divide-zinc-100">
+      {% for a in current_assignments %}
+      <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+        <span class="min-w-0 flex-1 truncate text-zinc-700">{{ a.target|default:"—" }}</span>
+        {% if a.label %}<span class="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">{{ a.label }}</span>{% endif %}
+        <span class="shrink-0 text-xs text-zinc-500">{{ a.started_at|date:"M j, Y H:i"|default:"—" }}</span>
+      </li>
+      {% empty %}
+      <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'Not currently assigned.' %}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock content %}

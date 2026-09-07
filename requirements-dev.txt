@@ -1,0 +1,4 @@
+# Extra tooling used in local development and CI only.
+# Runtime + test deps live in requirements.txt.
+ruff==0.16.6
+pip-audit==2.10.1

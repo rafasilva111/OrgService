@@ -1,0 +1,6 @@
+{% load i18n %}
+{% if value %}
+<span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/20">{% translate 'Yes' %}</span>
+{% else %}
+<span class="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 ring-1 ring-inset ring-zinc-500/20">{% translate 'No' %}</span>
+{% endif %}

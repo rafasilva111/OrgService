@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% load ui %}
+{% block body %}
+<div x-data="{ open: false }" class="min-h-screen lg:flex">
+  {% include "partials/sidebar.html" %}
+  <div class="min-w-0 flex-1">
+    {% include "partials/header.html" %}
+    {% block breadcrumb %}{% include "partials/breadcrumbs.html" %}{% endblock %}
+    <main class="px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+{% include "include/toasts.html" %}
+{% block extra_js %}{% endblock %}
+{% endblock body %}

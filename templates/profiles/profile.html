@@ -1,0 +1,122 @@
+{% extends "layouts/dashboard.html" %}
+{% load ui %}
+{% load i18n %}
+{% block title %}{% translate "My profile" %} — {% translate "OrgService Platform" %}{% endblock %}
+{% block header_title %}{% translate "My profile" %}{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-4xl space-y-6">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div class="flex items-center gap-4">
+      <span class="grid size-14 shrink-0 place-items-center rounded-full bg-indigo-600 text-lg font-semibold text-white">{{ profile_user|initials }}</span>
+      <div class="space-y-1.5">
+        <h1 class="text-xl font-semibold text-zinc-900">{{ profile_user.get_full_name|default:profile_user.username }}</h1>
+        <p class="text-sm text-zinc-500">
+          {{ profile_user.email|default:profile_user.username }}
+          {% if person %}&middot; <a href="{% url 'people:detail' person.pk %}" class="font-medium text-indigo-600 hover:text-indigo-800">{{ person.full_name }}</a>{% endif %}
+        </p>
+      </div>
+    </div>
+    <a href="{% url 'profiles:settings' %}" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700">
+      {% icon "settings" class_name="size-4" %} {% translate "Edit profile" %}
+    </a>
+  </div>
+
+  <div class="grid gap-4 lg:grid-cols-2">
+    <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate "Account" %}</h2>
+      <dl class="divide-y divide-zinc-100 text-sm">
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <dt class="text-zinc-500">{% translate "Username" %}</dt>
+          <dd class="font-medium text-zinc-800">{{ profile_user.username }}</dd>
+        </div>
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <dt class="text-zinc-500">{% translate "Full name" %}</dt>
+          <dd class="font-medium text-zinc-800">{{ profile_user.get_full_name|default:"—" }}</dd>
+        </div>
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <dt class="text-zinc-500">{% translate "E-mail" %}</dt>
+          <dd class="font-medium text-zinc-800">{{ profile_user.email|default:"—" }}</dd>
+        </div>
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <dt class="text-zinc-500">{% translate "Interface language" %}</dt>
+          <dd class="font-medium text-zinc-800">
+            <span class="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">{% if profile.language %}{{ languages|get_item:profile.language }}{% else %}{% translate "Platform default" %}{% endif %}</span>
+          </dd>
+        </div>
+      </dl>
+    </div>
+
+    {% if person %}
+    <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+      <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate "Directory record" %}</h2>
+      <dl class="divide-y divide-zinc-100 text-sm">
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <dt class="text-zinc-500">{% translate "Name" %}</dt>
+          <dd class="font-medium text-zinc-800">{{ person.full_name }}</dd>
+        </div>
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+          <dt class="text-zinc-500">{% translate "Type" %}</dt>
+          <dd>
+            <span class="rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset {{ person.person_type|pill_class }}">{{ person.get_person_type_display }}</span>
+          </dd>
+        </div>
+        <div class="px-4 py-3">
+          <a href="{% url 'people:detail' person.pk %}" class="text-sm font-medium text-indigo-600 transition hover:text-indigo-800">{% translate "View full directory record" %} &rarr;</a>
+        </div>
+      </dl>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+    <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate "Active memberships" %}</h2>
+    <ul class="divide-y divide-zinc-100">
+      {% for m in memberships %}
+      <li class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
+        <div class="min-w-0 flex-1">
+          <a href="{% url 'organizations:detail' m.organization.pk %}" class="truncate font-medium text-indigo-600 hover:text-indigo-800">{{ m.organization.name }}</a>
+          <p class="text-xs text-zinc-500">{{ m.organization.get_organization_type_display }}</p>
+        </div>
+        <span class="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">{{ m.role.name }} — {{ m.role.code }}</span>
+      </li>
+      {% empty %}
+      <li class="px-4 py-8 text-center text-sm text-zinc-500">{% blocktranslate %}No active memberships.{% endblocktranslate %}</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+    <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate "Service roles" %}</h2>
+    <div class="divide-y divide-zinc-100">
+      {% for sr in service_roles %}
+      <div class="px-4 py-3">
+        <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <a href="{% url 'organizations:detail' sr.organization.pk %}" class="text-sm font-semibold text-zinc-800 hover:text-indigo-600">{{ sr.organization.name }}</a>
+          <span class="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">{{ sr.role.name }} — {{ sr.role.code }}</span>
+        </div>
+        {% if sr.services %}
+        <ul class="mt-1.5 grid gap-1">
+          {% for svc in sr.services %}
+          <li class="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-zinc-50 px-2.5 py-1.5 text-sm">
+            <a href="{% url 'dashboard:service_dashboard' svc.pk %}" class="font-medium text-indigo-600 transition hover:text-indigo-800">{{ svc.name }}</a>
+            <span class="flex items-center gap-2 text-xs text-zinc-500">
+              <span class="rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ svc.status|pill_class }}">{{ svc.get_status_display }}</span>
+              <span class="hidden sm:inline">{{ svc.organization.name }}</span>
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% elif sr.unrestricted %}
+        <p class="mt-1 text-sm text-zinc-500">{% blocktranslate %}All services under this organization's scope.{% endblocktranslate %}</p>
+        {% else %}
+        <p class="mt-1 text-sm text-zinc-500">{% translate "No services available." %}</p>
+        {% endif %}
+      </div>
+      {% empty %}
+      <p class="px-4 py-8 text-center text-sm text-zinc-500">{% blocktranslate %}No service roles yet.{% endblocktranslate %}</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock content %}

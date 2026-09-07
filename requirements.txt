@@ -1,0 +1,13 @@
+# Runtime dependencies — pinned for reproducible builds.
+Django==5.2.17
+psycopg[binary]==3.3.5
+gunicorn==26.2.0
+
+# Development / tooling dependencies (not needed at runtime).
+# django-extensions is kept out of the runtime image footprint when possible.
+django-extensions==4.1
+django-debug-toolbar==8.0.0
+
+# Test dependencies.
+pytest==9.1.1
+pytest-django==4.14.0

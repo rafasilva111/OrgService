@@ -1,0 +1,17 @@
+{% load ui %}
+<tr class="border-b border-zinc-100 transition last:border-0 hover:bg-zinc-50/60">
+  {% if config.bulk_actions %}
+  <td class="px-4 py-3"><input type="checkbox" name="ids" value="{{ row.pk }}" class="row-select rounded border-zinc-300"></td>
+  {% endif %}
+  {% for column in visible_columns %}
+  <td class="px-4 py-3 align-middle text-sm text-zinc-700">
+    {% if column.template %}
+      {% include column.template with record=row object=row value=row|fieldvalue:column.key %}
+    {% elif config.row_url_name and forloop.counter == 1 %}
+      <a href="{% url config.row_url_name row.pk %}" class="font-medium text-indigo-600 transition hover:text-indigo-800">{{ row|fieldvalue:column.key }}</a>
+    {% else %}
+      {{ row|fieldvalue:column.key }}
+    {% endif %}
+  </td>
+  {% endfor %}
+</tr>

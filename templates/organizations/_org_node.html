@@ -1,0 +1,30 @@
+{% load ui %}
+<div class="ml-3 border-l border-zinc-200 pl-4">
+  <div class="flex items-center gap-3 py-1.5">
+    <span class="grid size-8 shrink-0 place-items-center rounded-lg bg-indigo-50 text-indigo-600">{% icon "orgs" class_name="size-4" %}</span>
+    <a href="{% url 'organizations:detail' node.pk %}" class="text-sm font-medium text-indigo-600 hover:text-indigo-800">{{ node.name }}</a>
+    <span class="text-xs text-zinc-500">{{ node.get_organization_type_display }}</span>
+    {% if node.code %}<span class="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[11px] text-zinc-500">{{ node.code }}</span>{% endif %}
+  </div>
+
+  {% if node.services.all %}
+  <div class="my-1 space-y-1 border-l border-zinc-100 pl-4">
+    {% for service in node.services.all %}
+    <div class="flex flex-wrap items-center gap-2 py-0.5">
+      <span class="grid size-6 shrink-0 place-items-center rounded-md bg-teal-50 text-teal-600">{% icon "services" class_name="size-3.5" %}</span>
+      <a href="{% url 'services:detail' service.pk %}" class="text-sm text-zinc-800 hover:text-teal-700">{{ service.name }}</a>
+      <span class="rounded bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium text-zinc-600">{{ service.get_status_display }}</span>
+      {% for actor in service.actors.all %}
+        <span class="inline-flex items-center gap-1 rounded-full border border-zinc-200 px-2 py-0.5 text-[11px] text-zinc-600">
+          {% icon "roles" class_name="size-3" %}{{ actor.role.name }}{% if actor.person %}<span class="text-zinc-400">·</span><span class="text-zinc-500">{{ actor.person.full_name }}</span>{% endif %}
+        </span>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% for child in node.tree_children %}
+    {% include "organizations/_org_node.html" with node=child %}
+  {% endfor %}
+</div>

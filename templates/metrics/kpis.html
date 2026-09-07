@@ -1,0 +1,16 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{% translate 'KPIs' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% translate 'KPIs' %}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-xl font-semibold text-zinc-900">{% translate 'KPIs' %}</h1>
+    <p class="mt-1 text-sm text-zinc-500">{% translate 'Performance indicators aggregating your metrics.' %}</p>
+  </div>
+
+  {% include "core/tables/_table.html" %}
+</div>
+{% endblock content %}

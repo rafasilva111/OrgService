@@ -1,0 +1,34 @@
+{% load i18n ui %}
+<div x-show="filtersOpen" x-transition x-cloak class="border-b border-zinc-100 bg-zinc-50/60 p-4">
+  <form hx-get="." hx-target="#{{ config.key }}-wrap" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <input type="hidden" name="sort" value="{{ sort_key }}">
+    {% for f in table_filters %}
+    <div>
+      <label class="mb-1 block text-xs font-medium text-zinc-600">{{ f.label }}</label>
+      {% if f.kind == "text" %}
+        <input type="text" name="{{ f.param }}" value="{{ f.value }}" placeholder="{{ f.placeholder }}"
+               class="h-9 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm outline-none focus:border-indigo-500">
+      {% elif f.kind == "choice" %}
+        <select name="{{ f.param }}" class="h-9 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm outline-none focus:border-indigo-500">
+          <option value="">{% translate 'All' %}</option>
+          {% for ck, cl in f.choices %}
+          <option value="{{ ck }}" {% if f.value == ck %}selected{% endif %}>{{ cl }}</option>
+          {% endfor %}
+        </select>
+      {% elif f.kind == "daterange" %}
+        <div class="flex gap-2">
+          <input type="date" name="{{ f.param_from }}" value="{{ f.value_from }}"
+                 class="h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-sm outline-none focus:border-indigo-500">
+          <input type="date" name="{{ f.param_to }}" value="{{ f.value_to }}"
+                 class="h-9 w-full rounded-lg border border-zinc-300 bg-white px-2 text-sm outline-none focus:border-indigo-500">
+        </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    <div class="flex items-end gap-2">
+      <button type="submit" class="h-9 rounded-lg bg-indigo-600 px-4 text-sm font-medium text-white transition hover:bg-indigo-700">{% translate 'Apply' %}</button>
+      <a href="." hx-get="." hx-target="#{{ config.key }}-wrap"
+         class="h-9 rounded-lg border border-zinc-300 bg-white px-4 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-50">{% translate 'Reset' %}</a>
+    </div>
+  </form>
+</div>

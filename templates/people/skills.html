@@ -1,0 +1,28 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{% translate 'Skills' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% translate 'Skills' %}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Skills' %}</h1>
+    <p class="mt-1 text-sm text-zinc-500">{% translate 'Reusable capabilities and how many people in scope hold them.' %}</p>
+  </div>
+
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {% for skill in object_list %}
+    <div class="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <div class="min-w-0">
+        <p class="truncate text-sm font-semibold text-zinc-800">{{ skill.name }}</p>
+        <p class="mt-0.5 truncate text-xs text-zinc-500">{% blocktranslate count counter=skill.holder_count %}{{ counter }} holder{% plural %}{{ counter }} holders{% endblocktranslate %}</p>
+      </div>
+      <span class="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 font-mono text-xs text-zinc-500">{{ skill.code }}</span>
+    </div>
+    {% empty %}
+    <p class="col-span-full py-10 text-center text-sm text-zinc-500">{% translate 'No skills defined yet.' %}</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock content %}

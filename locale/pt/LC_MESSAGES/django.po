@@ -1,0 +1,1706 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: OrgService Platform 1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-01-01 00:00+0000\n"
+"PO-Revision-Date: 2026-01-01 00:00+0000\n"
+"Last-Translator: OrgService Team\n"
+"Language-Team: Portuguese <i18n@orgservice.local>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "%(counter)s active membership bound to organizations you can see."
+msgid_plural ""
+"%(counter)s active memberships bound to organizations you can see."
+msgstr[0] "%(counter)s associação ativa a organizações que pode ver."
+msgstr[1] "%(counter)s associações ativas a organizações que pode ver."
+
+msgid "%(counter)s holder"
+msgid_plural "%(counter)s holders"
+msgstr[0] "%(counter)s detentor"
+msgstr[1] "%(counter)s detentores"
+
+msgid "%(counter)s record"
+msgid_plural "%(counter)s records"
+msgstr[0] "%(counter)s registo"
+msgstr[1] "%(counter)s registos"
+
+msgid "%(impact)s impact"
+msgstr "impacto %(impact)s"
+
+msgid "%(risk)s risk"
+msgstr "risco %(risk)s"
+
+msgid "Account"
+msgstr "Conta"
+
+msgid "action"
+msgstr "ação"
+
+msgid "Action"
+msgstr "Ação"
+
+msgid "Activate"
+msgstr "Ativar"
+
+msgid "active"
+msgstr "ativo"
+
+msgid "Active"
+msgstr "Ativo"
+
+msgid "Active Changes"
+msgstr "Alterações ativas"
+
+msgid "Active Incidents"
+msgstr "Incidentes ativos"
+
+msgid "Active incidents"
+msgstr "Incidentes ativos"
+
+msgid "Active memberships"
+msgstr "Associações ativas"
+
+msgid "Actor"
+msgstr "Interveniente"
+
+msgid "actor type"
+msgstr "tipo de interveniente"
+
+msgid "Actors"
+msgstr "Intervenientes"
+
+msgid "Actors with memberships in the organizations you can see."
+msgstr "Intervenientes com associações em organizações que pode ver."
+
+msgid ""
+"Add a person to the people directory. A login account is created separately."
+msgstr ""
+"Adicione uma pessoa ao diretório. A conta de acesso é criada em separado."
+
+msgid "Administration"
+msgstr "Administração"
+
+msgid "Administrative access is available via"
+msgstr "O acesso administrativo está disponível através de"
+
+msgid "Advanced"
+msgstr "Avançado"
+
+msgid "aggregation"
+msgstr "agregação"
+
+msgid "Aggregation"
+msgstr "Agregação"
+
+msgid "All"
+msgstr "Todos"
+
+msgid "All organizations"
+msgstr "Todas as organizações"
+
+msgid "All services"
+msgstr "Todos os serviços"
+
+msgid "All services under this organization's scope."
+msgstr "Todos os serviços no âmbito desta organização."
+
+msgid "Analytics"
+msgstr "Análises"
+
+msgid "Apply"
+msgstr "Aplicar"
+
+msgid "Approval"
+msgstr "Aprovação"
+
+msgid "Approvals"
+msgstr "Aprovações"
+
+msgid "Approved"
+msgstr "Aprovado"
+
+msgid "Assessing"
+msgstr "Em avaliação"
+
+msgid "asset"
+msgstr "ativo"
+
+msgid "assets"
+msgstr "ativos"
+
+msgid "Assigned"
+msgstr "Atribuído"
+
+msgid "Assigned to"
+msgstr "Atribuído a"
+
+msgid "Assignments"
+msgstr "Atribuições"
+
+msgid "audit log"
+msgstr "registo de auditoria"
+
+msgid "Audit log"
+msgstr "Registo de auditoria"
+
+msgid "Audit Log"
+msgstr "Registo de Auditoria"
+
+msgid "audit logs"
+msgstr "registos de auditoria"
+
+msgid "Available"
+msgstr "Disponível"
+
+msgid "Average"
+msgstr "Média"
+
+msgid "Basic"
+msgstr "Básico"
+
+msgid "Blocked"
+msgstr "Bloqueado"
+
+msgid "body"
+msgstr "corpo"
+
+msgid "Breadcrumb"
+msgstr "Navegação estrutural"
+
+msgid "Bulk actions"
+msgstr "Ações em massa"
+
+msgid "Cancel"
+msgstr "Cancelar"
+
+msgid "Cancelled"
+msgstr "Cancelado"
+
+msgid "Capabilities"
+msgstr "Capacidades"
+
+msgid "capacity"
+msgstr "capacidade"
+
+msgid "change"
+msgstr "alteração"
+
+msgid "Change"
+msgstr "Alteração"
+
+msgid "change approval"
+msgstr "aprovação da alteração"
+
+msgid "change approvals"
+msgstr "aprovações das alterações"
+
+msgid "Changes"
+msgstr "Alterações"
+
+msgid "changes"
+msgstr "alterações"
+
+msgid "Child organizations"
+msgstr "Organizações subordinadas"
+
+msgid "Choose an action first."
+msgstr "Escolha primeiro uma ação."
+
+msgid "Choose…"
+msgstr "Escolher…"
+
+msgid "Citizen"
+msgstr "Cidadão"
+
+msgid "Closed"
+msgstr "Encerrado"
+
+msgid "code"
+msgstr "código"
+
+msgid "Code"
+msgstr "Código"
+
+msgid "comment"
+msgstr "comentário"
+
+msgid "Completed"
+msgstr "Concluído"
+
+msgid "completed at"
+msgstr "concluído em"
+
+msgid "condition"
+msgstr "condição"
+
+msgid "Contractor"
+msgstr "Contratante"
+
+msgid "Count"
+msgstr "Contagem"
+
+msgid "Country"
+msgstr "País"
+
+msgid ""
+"Create an organizational unit (district, municipality, parish…). Its code is"
+" part of the tree path."
+msgstr ""
+"Crie uma unidade organizacional (distrito, município, freguesia…). O seu "
+"código faz parte do caminho na árvore."
+
+msgid "Create incident"
+msgstr "Criar incidente"
+
+msgid "Create organization"
+msgstr "Criar organização"
+
+msgid "Create person"
+msgstr "Criar pessoa"
+
+msgid "Create request"
+msgstr "Criar pedido"
+
+msgid "Create resource"
+msgstr "Criar recurso"
+
+msgid "Create role"
+msgstr "Criar função"
+
+msgid "Create service"
+msgstr "Criar serviço"
+
+msgid "Created"
+msgstr "Criado"
+
+msgid "Critical"
+msgstr "Crítico"
+
+msgid "Current"
+msgstr "Atual"
+
+msgid "Current assignments"
+msgstr "Atribuições atuais"
+
+msgid "Dashboard"
+msgstr "Painel"
+
+msgid "Deactivate"
+msgstr "Desativar"
+
+msgid "Deactivate %(item)s?"
+msgstr "Desativar %(item)s?"
+
+msgid "deadline"
+msgstr "prazo"
+
+msgid "Deadline for this step."
+msgstr "Prazo para este passo."
+
+msgid "decided at"
+msgstr "decidido em"
+
+msgid "decision"
+msgstr "decisão"
+
+msgid "Define a reusable role; permissions are assigned in the role catalog."
+msgstr ""
+"Defina uma função reutilizável; as permissões são atribuídas no catálogo de "
+"funções."
+
+msgid ""
+"Define a service your organization provides. Pick a Service Manager — every "
+"service requires one."
+msgstr ""
+"Defina um serviço prestado pela sua organização. Escolha um Gestor de "
+"Serviço — todos os serviços exigem um."
+
+msgid "Degraded"
+msgstr "Degradado"
+
+msgid "Delete"
+msgstr "Eliminar"
+
+msgid "Delete %(item)s? This soft-deletes the record."
+msgstr "Eliminar %(item)s? Esta ação elimina de forma lógica o registo."
+
+msgid "Demands entering your services. Select rows to use bulk actions."
+msgstr ""
+"Pedidos que entram nos seus serviços. Selecione linhas para usar ações em "
+"massa."
+
+msgid "Department"
+msgstr "Departamento"
+
+msgid "Deprecated"
+msgstr "Obsoleto"
+
+msgid "description"
+msgstr "descrição"
+
+msgid "Description"
+msgstr "Descrição"
+
+msgid "Diagnosed"
+msgstr "Diagnosticado"
+
+msgid "dimension"
+msgstr "dimensão"
+
+msgid "Directory"
+msgstr "Diretório"
+
+msgid "Directory record"
+msgstr "Registo do diretório"
+
+msgid "Disrupted"
+msgstr "Interrompido"
+
+msgid "District"
+msgstr "Distrito"
+
+msgid "Domain the permission belongs to (e.g. ``requests``)."
+msgstr "O domínio a que a permissão pertence (ex.: ``requests``)."
+
+msgid "Done"
+msgstr "Concluído"
+
+msgid "Draft"
+msgstr "Rascunho"
+
+msgid "Duration"
+msgstr "Duração"
+
+msgid "E-mail"
+msgstr "E-mail"
+
+msgid "Edit profile"
+msgstr "Editar perfil"
+
+msgid "email"
+msgstr "e-mail"
+
+msgid "Email"
+msgstr "E-mail"
+
+msgid "Employee"
+msgstr "Funcionário"
+
+msgid "End"
+msgstr "Fim"
+
+msgid "end date"
+msgstr "data de fim"
+
+msgid "Ended"
+msgstr "Terminado"
+
+msgid "ended at"
+msgstr "terminado em"
+
+msgid "Equipment"
+msgstr "Equipamento"
+
+msgid "equipment"
+msgstr "equipamento"
+
+msgid "equipment type"
+msgstr "tipo de equipamento"
+
+msgid "event"
+msgstr "evento"
+
+msgid "Event"
+msgstr "Evento"
+
+msgid "event type"
+msgstr "tipo de evento"
+
+msgid "events"
+msgstr "eventos"
+
+msgid "Events"
+msgstr "Eventos"
+
+msgid "Executions"
+msgstr "Execuções"
+
+msgid "Executive Overview"
+msgstr "Visão Executiva"
+
+msgid "Expert"
+msgstr "Especialista"
+
+msgid "External"
+msgstr "Externo"
+
+msgid "External Supplier"
+msgstr "Fornecedor externo"
+
+msgid "Facility"
+msgstr "Instalação"
+
+msgid "Failed"
+msgstr "Falhou"
+
+msgid "First name"
+msgstr "Nome próprio"
+
+msgid "full name"
+msgstr "nome completo"
+
+msgid "Full name"
+msgstr "Nome completo"
+
+msgid "Gateway"
+msgstr "Gateway"
+
+msgid "Granted permission (%(counter)s)"
+msgid_plural "Granted permissions (%(counter)s)"
+msgstr[0] "Permissão concedida (%(counter)s)"
+msgstr[1] "Permissões concedidas (%(counter)s)"
+
+msgid "Hierarchy of organizations you can see. Access flows downward only."
+msgstr ""
+"Hierarquia das organizações que pode ver. O acesso flui apenas de cima para "
+"baixo."
+
+msgid "High"
+msgstr "Alto"
+
+msgid "Immediate"
+msgstr "Imediato"
+
+msgid "Immutable record of who did what, when."
+msgstr "Registo imutável de quem fez o quê e quando."
+
+msgid "Immutable records of things that happened across the platform."
+msgstr "Registos imutáveis do que aconteceu em toda a plataforma."
+
+msgid "impact"
+msgstr "impacto"
+
+msgid "Impact"
+msgstr "Impacto"
+
+msgid "Implemented"
+msgstr "Implementado"
+
+msgid "In Maintenance"
+msgstr "Em manutenção"
+
+msgid "In Progress"
+msgstr "Em curso"
+
+msgid "incident"
+msgstr "incidente"
+
+msgid "Incident"
+msgstr "Incidente"
+
+msgid "Incident Executions"
+msgstr "Execuções de incidentes"
+
+msgid "incident update"
+msgstr "atualização do incidente"
+
+msgid "incident updates"
+msgstr "atualizações do incidente"
+
+msgid "incidents"
+msgstr "incidentes"
+
+msgid "Incidents"
+msgstr "Incidentes"
+
+msgid "Incorrect username or password."
+msgstr "Nome de utilizador ou palavra-passe incorretos."
+
+msgid "Interface language"
+msgstr "Idioma da interface"
+
+msgid ""
+"Interface language. Leave empty to fall back to the browser language and the"
+" platform default."
+msgstr ""
+"Idioma da interface. Deixe vazio para usar o idioma do navegador e a "
+"predefinição da plataforma."
+
+msgid "Intermediate"
+msgstr "Intermédio"
+
+msgid "Internal"
+msgstr "Interno"
+
+msgid "Investigating"
+msgstr "A investigar"
+
+msgid "KPI"
+msgstr "KPI"
+
+msgid "KPI metric"
+msgstr "Métrica KPI"
+
+msgid "KPI metrics"
+msgstr "Métricas KPI"
+
+msgid "KPIs"
+msgstr "KPIs"
+
+msgid "label"
+msgstr "designação"
+
+msgid "Label"
+msgstr "Designação"
+
+msgid "language"
+msgstr "idioma"
+
+msgid "Last name"
+msgstr "Apelido"
+
+msgid "Last value"
+msgstr "Último valor"
+
+msgid "Leave empty for a root organization."
+msgstr "Deixe vazio para uma organização de raiz."
+
+msgid "level"
+msgstr "nível"
+
+msgid "Linked incidents"
+msgstr "Incidentes ligados"
+
+msgid "Live position across your visible organizations and services."
+msgstr "Posição atual nas organizações e serviços que pode ver."
+
+msgid "Low"
+msgstr "Baixo"
+
+msgid "Major"
+msgstr "Maior"
+
+msgid "Manual"
+msgstr "Manual"
+
+msgid "Mark closed"
+msgstr "Marcar como encerrado"
+
+msgid "Mark selected requests as closed?"
+msgstr "Marcar os pedidos selecionados como encerrados?"
+
+msgid "Material"
+msgstr "Material"
+
+msgid "material"
+msgstr "material"
+
+msgid "materials"
+msgstr "materiais"
+
+msgid "Maximum"
+msgstr "Máximo"
+
+msgid "Measurable values feeding your KPIs."
+msgstr "Valores mensuráveis que alimentam os seus KPIs."
+
+msgid "Measurements' as st_measurements %}"
+msgstr "Measurements' as st_measurements %}"
+
+msgid "{% translate 'Latest value' as st_latest_value %}"
+msgstr "{% translate 'Latest value' as st_latest_value %}"
+
+msgid "{% translate 'Aggregation' as st_aggregation %}"
+msgstr "{% translate 'Aggregation' as st_aggregation %}"
+
+msgid ""
+"{% include \"partials/stat_card.html\" with label=st_measurements "
+"value=value_count icon=\"kpis"
+msgstr ""
+"{% include \"partials/stat_card.html\" with label=st_measurements "
+"value=value_count icon=\"kpis"
+
+msgid "Medium"
+msgstr "Médio"
+
+msgid "Members"
+msgstr "Membros"
+
+msgid "Memberships"
+msgstr "Associações"
+
+msgid "message"
+msgstr "mensagem"
+
+msgid "metadata"
+msgstr "metadados"
+
+msgid "metric"
+msgstr "métrica"
+
+msgid "metric value"
+msgstr "valor da métrica"
+
+msgid "metric values"
+msgstr "valores das métricas"
+
+msgid "metrics"
+msgstr "métricas"
+
+msgid "Metrics"
+msgstr "Métricas"
+
+msgid "Minimum"
+msgstr "Mínimo"
+
+msgid "module"
+msgstr "módulo"
+
+msgid "Municipal operations"
+msgstr "Operações municipais"
+
+msgid "Municipality"
+msgstr "Município"
+
+msgid "My profile"
+msgstr "O meu perfil"
+
+msgid "name"
+msgstr "nome"
+
+msgid "Name"
+msgstr "Nome"
+
+msgid "New"
+msgstr "Novo"
+
+msgid "New incident"
+msgstr "Novo incidente"
+
+msgid "New organization"
+msgstr "Nova organização"
+
+msgid "New person"
+msgstr "Nova pessoa"
+
+msgid "New request"
+msgstr "Novo pedido"
+
+msgid "New resource"
+msgstr "Novo recurso"
+
+msgid "New role"
+msgstr "Nova função"
+
+msgid "New service"
+msgstr "Novo serviço"
+
+msgid "new value"
+msgstr "novo valor"
+
+msgid "Next"
+msgstr "Seguinte"
+
+msgid "No"
+msgstr "Não"
+
+msgid "No active incidents."
+msgstr "Sem incidentes ativos."
+
+msgid "No active memberships."
+msgstr "Sem associações ativas."
+
+msgid "No active permissions granted."
+msgstr "Nenhuma permissão ativa atribuída."
+
+msgid "No actors assigned."
+msgstr "Sem intervenientes atribuídos."
+
+msgid "No approvals tracked yet."
+msgstr "Ainda sem aprovações registadas."
+
+msgid "No capabilities assigned."
+msgstr "Sem capacidades atribuídas."
+
+msgid "No description provided."
+msgstr "Sem descrição fornecida."
+
+msgid "No email on record"
+msgstr "Sem e-mail registado"
+
+msgid "No executions yet."
+msgstr "Ainda sem execuções."
+
+msgid "No incidents linked yet."
+msgstr "Ainda sem incidentes ligados."
+
+msgid "No KPIs tied to this service."
+msgstr "Sem KPIs associados a este serviço."
+
+msgid "No measurements recorded yet."
+msgstr "Ainda sem medições registadas."
+
+msgid "No memberships yet."
+msgstr "Ainda sem associações."
+
+msgid "No notes yet."
+msgstr "Ainda sem notas."
+
+msgid "No open requests."
+msgstr "Sem pedidos em aberto."
+
+msgid "No organizations in scope."
+msgstr "Sem organizações no âmbito."
+
+msgid "No permissions defined yet."
+msgstr "Ainda sem permissões definidas."
+
+msgid "No requests yet."
+msgstr "Ainda sem pedidos."
+
+msgid "No service roles yet."
+msgstr "Ainda sem papéis de serviço."
+
+msgid "No services available."
+msgstr "Sem serviços disponíveis."
+
+msgid "No services in this subtree."
+msgstr "Sem serviços nesta subárvore."
+
+msgid "No services under this organization."
+msgstr "Sem serviços nesta organização."
+
+msgid "No skills defined yet."
+msgstr "Ainda sem competências definidas."
+
+msgid "No steps defined."
+msgstr "Sem passos definidos."
+
+msgid "No updates yet."
+msgstr "Ainda sem atualizações."
+
+msgid "No verified skills yet."
+msgstr "Ainda sem competências verificadas."
+
+msgid "Not currently assigned."
+msgstr "Atualmente sem atribuição."
+
+msgid "Object"
+msgstr "Objeto"
+
+msgid "Occurred"
+msgstr "Ocorreu"
+
+msgid "old value"
+msgstr "valor antigo"
+
+msgid "Open"
+msgstr "Em aberto"
+
+msgid "Open Problems"
+msgstr "Problemas em aberto"
+
+msgid "Open record"
+msgstr "Abrir registo"
+
+msgid "Open Requests"
+msgstr "Pedidos em aberto"
+
+msgid "Open requests"
+msgstr "Pedidos em aberto"
+
+msgid "Open requests' as stat_open_requests %}"
+msgstr "Open requests' as stat_open_requests %}"
+
+msgid "{% translate 'Active incidents' as stat_active_incidents %}"
+msgstr "{% translate 'Active incidents' as stat_active_incidents %}"
+
+msgid "{% translate 'Active workflows' as stat_active_workflows %}"
+msgstr "{% translate 'Active workflows' as stat_active_workflows %}"
+
+msgid "{% translate 'KPIs' as stat_kpis %}"
+msgstr "{% translate 'KPIs' as stat_kpis %}"
+
+msgid ""
+"{% include \"partials/stat_card.html\" with label=stat_open_requests "
+"value=open_request_count icon=\"requests"
+msgstr ""
+"{% include \"partials/stat_card.html\" with label=stat_open_requests "
+"value=open_request_count icon=\"requests"
+
+msgid "Operational"
+msgstr "Operacional"
+
+msgid "Optional login identity for this person."
+msgstr "Identidade de acesso opcional para esta pessoa."
+
+msgid "Optional scope; null means platform-wide metric."
+msgstr "Âmbito opcional; nulo significa métrica à escala da plataforma."
+
+msgid "Optional specific person; blank means 'anyone with the role'."
+msgstr ""
+"Pessoa específica opcional; vazio significa 'qualquer pessoa com a função'."
+
+msgid "order"
+msgstr "ordem"
+
+msgid "Organization"
+msgstr "Organização"
+
+msgid "organization"
+msgstr "organização"
+
+msgid "Organization / Role"
+msgstr "Organização / Função"
+
+msgid "Organization activated."
+msgstr "Organização ativada."
+
+msgid "Organization created."
+msgstr "Organização criada."
+
+msgid "Organization deactivated."
+msgstr "Organização desativada."
+
+msgid "Organization deleted."
+msgstr "Organização eliminada."
+
+msgid "organization membership"
+msgstr "associação à organização"
+
+msgid "organization memberships"
+msgstr "associações à organização"
+
+msgid "Organization tree"
+msgstr "Árvore de organizações"
+
+msgid "organization type"
+msgstr "tipo de organização"
+
+msgid "organization unit"
+msgstr "unidade organizacional"
+
+msgid "organization units"
+msgstr "unidades organizacionais"
+
+msgid "Organizational Service Platform"
+msgstr "Plataforma de Serviços Organizacional"
+
+msgid "Organizational units you can see, with their subtree counts."
+msgstr "Unidades organizacionais que pode ver, com contagens das subárvores."
+
+msgid "Organizations"
+msgstr "Organizações"
+
+msgid "organizations"
+msgstr "organizações"
+
+msgid "Organizations in scope' as st_orgs_scope %}"
+msgstr "Organizations in scope' as st_orgs_scope %}"
+
+msgid "{% translate 'subtree' as st_subtree %}"
+msgstr "{% translate 'subtree' as st_subtree %}"
+
+msgid "{% translate 'Members' as st_members %}"
+msgstr "{% translate 'Members' as st_members %}"
+
+msgid "{% translate 'Services' as st_services %}"
+msgstr "{% translate 'Services' as st_services %}"
+
+msgid "{% translate 'Open requests' as st_open_requests %}"
+msgstr "{% translate 'Open requests' as st_open_requests %}"
+
+msgid ""
+"{% include \"partials/stat_card.html\" with label=st_orgs_scope "
+"value=visible_org_count icon=\"orgs\" hint=st_subtree %}"
+msgstr ""
+"{% include \"partials/stat_card.html\" with label=st_orgs_scope "
+"value=visible_org_count icon=\"orgs\" hint=st_subtree %}"
+
+msgid ""
+"{% include \"partials/stat_card.html\" with label=st_members "
+"value=members_count icon=\"memberships"
+msgstr ""
+"{% include \"partials/stat_card.html\" with label=st_members "
+"value=members_count icon=\"memberships"
+
+msgid "OrgService Platform"
+msgstr "Plataforma OrgService"
+
+msgid "OrgService Platform — apex-guided UI"
+msgstr "OrgService Platform — apex-guided UI"
+
+msgid "Other"
+msgstr "Outro"
+
+msgid "outputs"
+msgstr "saídas"
+
+msgid "Overview"
+msgstr "Visão geral"
+
+msgid "Page %(page_obj.number)s of %(page_obj.paginator.num_pages)s"
+msgstr "Página %(page_obj.number)s de %(page_obj.paginator.num_pages)s"
+
+msgid "Parent organization"
+msgstr "Organização ascendente"
+
+msgid "Parent organizational unit. Null for the root."
+msgstr "Unidade organizacional ascendente. Nula para a raiz."
+
+msgid "Parish"
+msgstr "Freguesia"
+
+msgid "Partner"
+msgstr "Parceiro"
+
+msgid "path"
+msgstr "caminho"
+
+msgid "Path"
+msgstr "Caminho"
+
+msgid "Paused"
+msgstr "Em pausa"
+
+msgid "Pending"
+msgstr "Pendente"
+
+msgid "People"
+msgstr "Pessoas"
+
+msgid "people"
+msgstr "pessoas"
+
+msgid "Performance indicators aggregating your metrics."
+msgstr "Indicadores de desempenho que agregam as suas métricas."
+
+msgid "period end"
+msgstr "fim do período"
+
+msgid "period start"
+msgstr "início do período"
+
+msgid "permission"
+msgstr "permissão"
+
+msgid "permissions"
+msgstr "permissões"
+
+msgid "Permissions"
+msgstr "Permissões"
+
+msgid "Person"
+msgstr "Pessoa"
+
+msgid "person"
+msgstr "pessoa"
+
+msgid "Person activated."
+msgstr "Pessoa ativada."
+
+msgid "Person created."
+msgstr "Pessoa criada."
+
+msgid "Person deactivated."
+msgstr "Pessoa desativada."
+
+msgid "Person deleted."
+msgstr "Pessoa eliminada."
+
+msgid "person skill"
+msgstr "competência da pessoa"
+
+msgid "person skills"
+msgstr "competências da pessoa"
+
+msgid "Person that certified this skill."
+msgstr "Pessoa que certificou esta competência."
+
+msgid "person type"
+msgstr "tipo de pessoa"
+
+msgid "phone"
+msgstr "telefone"
+
+msgid "Planned"
+msgstr "Planeado"
+
+msgid "Planned and coordinated modifications to services."
+msgstr "Modificações planeadas e coordenadas aos serviços."
+
+msgid "planned end"
+msgstr "fim planeado"
+
+msgid "planned start"
+msgstr "início planeado"
+
+msgid "Planned start"
+msgstr "Início planeado"
+
+msgid "Platform default"
+msgstr "Predefinição da plataforma"
+
+msgid "Platform-wide"
+msgstr "À escala da plataforma"
+
+msgid "Previous"
+msgstr "Anterior"
+
+msgid "priority"
+msgstr "prioridade"
+
+msgid "Priority"
+msgstr "Prioridade"
+
+msgid "problem"
+msgstr "problema"
+
+msgid "Problem"
+msgstr "Problema"
+
+msgid "problem incident"
+msgstr "incidente do problema"
+
+msgid "problem incidents"
+msgstr "incidentes do problema"
+
+msgid "Problems"
+msgstr "Problemas"
+
+msgid "problems"
+msgstr "problemas"
+
+msgid "Profile & language"
+msgstr "Perfil e idioma"
+
+msgid "Proposed"
+msgstr "Proposto"
+
+msgid "purchase date"
+msgstr "data de compra"
+
+msgid "quantity on hand"
+msgstr "quantidade disponível"
+
+msgid "reason"
+msgstr "motivo"
+
+msgid "Recent executions"
+msgstr "Execuções recentes"
+
+msgid "Recent memberships"
+msgstr "Associações recentes"
+
+msgid "Recent requests"
+msgstr "Pedidos recentes"
+
+msgid "Recent values"
+msgstr "Valores recentes"
+
+msgid "Register a demand entering one of your services."
+msgstr "Registe um pedido que entra num dos seus serviços."
+
+msgid "Register a resource (vehicle, equipment, material or facility)."
+msgstr "Registe um recurso (veículo, equipamento, material ou instalação)."
+
+msgid "Rejected"
+msgstr "Rejeitado"
+
+msgid "reorder level"
+msgstr "nível de reposição"
+
+msgid "Report a disruption affecting one of your services."
+msgstr "Comunique uma interrupção que afeta um dos seus serviços."
+
+msgid "Reported"
+msgstr "Comunicado"
+
+msgid "request"
+msgstr "pedido"
+
+msgid "Request"
+msgstr "Pedido"
+
+msgid "request comment"
+msgstr "comentário do pedido"
+
+msgid "request comments"
+msgstr "comentários dos pedidos"
+
+msgid "request type"
+msgstr "tipo de pedido"
+
+msgid "request types"
+msgstr "tipos de pedido"
+
+msgid "Requester"
+msgstr "Requerente"
+
+msgid "Requests"
+msgstr "Pedidos"
+
+msgid "requests"
+msgstr "pedidos"
+
+msgid "Requests by status"
+msgstr "Pedidos por estado"
+
+msgid "Requests by status — subtree"
+msgstr "Pedidos por estado — subárvore"
+
+msgid "Requests filtering value (optional)."
+msgstr "Valor de filtragem de pedidos (opcional)."
+
+msgid "Requests — last 30 days"
+msgstr "Pedidos — últimos 30 dias"
+
+msgid "required"
+msgstr "obrigatório"
+
+msgid "Required"
+msgstr "Obrigatório"
+
+msgid "required inputs"
+msgstr "entradas obrigatórias"
+
+msgid "Reset"
+msgstr "Repor"
+
+msgid "Resolution"
+msgstr "Resolução"
+
+msgid "Resolved"
+msgstr "Resolvido"
+
+msgid "resolved at"
+msgstr "resolvido em"
+
+msgid "resource"
+msgstr "recurso"
+
+msgid "Resource"
+msgstr "Recurso"
+
+msgid "Resource activated."
+msgstr "Recurso ativado."
+
+msgid "resource assignment"
+msgstr "atribuição de recurso"
+
+msgid "resource assignments"
+msgstr "atribuições de recursos"
+
+msgid "Resource created."
+msgstr "Recurso criado."
+
+msgid "Resource deactivated."
+msgstr "Recurso desativado."
+
+msgid "Resource deleted."
+msgstr "Recurso eliminado."
+
+msgid "resource type"
+msgstr "tipo de recurso"
+
+msgid "Resources"
+msgstr "Recursos"
+
+msgid "resources"
+msgstr "recursos"
+
+msgid "Response"
+msgstr "Resposta"
+
+msgid "responsibility"
+msgstr "responsabilidade"
+
+msgid "result"
+msgstr "resultado"
+
+msgid "Retired"
+msgstr "Retirado"
+
+msgid "Reusable capabilities and how many people in scope hold them."
+msgstr "Capacidades reutilizáveis e quantas pessoas no âmbito as possuem."
+
+msgid "Reusable role definitions and their permission grants."
+msgstr ""
+"Definições reutilizáveis de funções e as suas concessões de permissões."
+
+msgid "risk"
+msgstr "risco"
+
+msgid "Risk"
+msgstr "Risco"
+
+msgid "role"
+msgstr "função"
+
+msgid "Role"
+msgstr "Função"
+
+msgid "Role activated."
+msgstr "Função ativada."
+
+msgid "Role created."
+msgstr "Função criada."
+
+msgid "Role deactivated."
+msgstr "Função desativada."
+
+msgid "Role deleted."
+msgstr "Função eliminada."
+
+msgid "role permission"
+msgstr "permissão da função"
+
+msgid "role permissions"
+msgstr "permissões das funções"
+
+msgid "Role that performs this step."
+msgstr "Função que executa este passo."
+
+msgid "roles"
+msgstr "funções"
+
+msgid "Roles"
+msgstr "Funções"
+
+msgid "Roles & Permissions"
+msgstr "Funções e Permissões"
+
+msgid "Rolled Back"
+msgstr "Revertido"
+
+msgid "root cause"
+msgstr "causa raiz"
+
+msgid "Root causes behind recurring incidents."
+msgstr "Causas raiz por detrás de incidentes recorrentes."
+
+msgid "Running"
+msgstr "Em execução"
+
+msgid "Runs of the workflows you can see."
+msgstr "Execuções dos fluxos de trabalho que pode ver."
+
+msgid "Save"
+msgstr "Guardar"
+
+msgid "Save changes"
+msgstr "Guardar alterações"
+
+msgid "scope"
+msgstr "âmbito"
+
+msgid "Search…"
+msgstr "Pesquisar…"
+
+msgid "Seeded by the platform; protects against deletion."
+msgstr "Criado pela plataforma; protege contra eliminação."
+
+msgid "Select at least one row."
+msgstr "Selecione pelo menos uma linha."
+
+msgid "serial number"
+msgstr "número de série"
+
+msgid "service"
+msgstr "serviço"
+
+msgid "Service"
+msgstr "Serviço"
+
+msgid "Service / Role"
+msgstr "Serviço / Função"
+
+msgid "service access"
+msgstr "acesso ao serviço"
+
+msgid "service accesses"
+msgstr "acessos ao serviço"
+
+msgid "Service activated."
+msgstr "Serviço ativado."
+
+msgid "service actor"
+msgstr "interveniente do serviço"
+
+msgid "service actors"
+msgstr "intervenientes do serviço"
+
+msgid "service capabilities"
+msgstr "capacidades do serviço"
+
+msgid "service capability"
+msgstr "capacidade do serviço"
+
+msgid "service capability assignment"
+msgstr "atribuição de capacidade do serviço"
+
+msgid "service capability assignments"
+msgstr "atribuições de capacidades do serviço"
+
+msgid "Service created."
+msgstr "Serviço criado."
+
+msgid "Service deactivated."
+msgstr "Serviço desativado."
+
+msgid "Service deleted."
+msgstr "Serviço eliminado."
+
+msgid "Service health"
+msgstr "Saúde do serviço"
+
+msgid "Service manager"
+msgstr "Gestor de serviço"
+
+msgid "Service roles"
+msgstr "Papéis de serviço"
+
+msgid "services"
+msgstr "serviços"
+
+msgid "Services"
+msgstr "Serviços"
+
+msgid "Settings"
+msgstr "Definições"
+
+msgid "Settings saved."
+msgstr "Definições guardadas."
+
+msgid "Show filters"
+msgstr "Mostrar filtros"
+
+msgid "Sign in"
+msgstr "Iniciar sessão"
+
+msgid "Sign in to continue"
+msgstr "Inicie sessão para continuar"
+
+msgid "Sign out"
+msgstr "Terminar sessão"
+
+msgid "skill"
+msgstr "competência"
+
+msgid "Skills"
+msgstr "Competências"
+
+msgid "skills"
+msgstr "competências"
+
+msgid "SLA"
+msgstr "SLA"
+
+msgid "SLA %(minutes)sm"
+msgstr "SLA %(minutes)s min"
+
+msgid "SLA (minutes)"
+msgstr "SLA (minutos)"
+
+msgid "SLAs"
+msgstr "SLAs"
+
+msgid "Sort by %(column.label)s"
+msgstr "Ordenar por %(column.label)s"
+
+msgid "Start"
+msgstr "Início"
+
+msgid "start date"
+msgstr "data de início"
+
+msgid "Started"
+msgstr "Iniciado"
+
+msgid "started at"
+msgstr "iniciado em"
+
+msgid "Started by"
+msgstr "Iniciado por"
+
+msgid "status"
+msgstr "estado"
+
+msgid "Status"
+msgstr "Estado"
+
+msgid "Step"
+msgstr "Passo"
+
+msgid "step type"
+msgstr "tipo de passo"
+
+msgid "Steps"
+msgstr "Passos"
+
+msgid "Subject"
+msgstr "Assunto"
+
+msgid "Sum"
+msgstr "Soma"
+
+msgid "Supplier"
+msgstr "Fornecedor"
+
+msgid "System"
+msgstr "Sistema"
+
+msgid "system role"
+msgstr "função de sistema"
+
+msgid "Target"
+msgstr "Alvo"
+
+msgid "target %(target)s"
+msgstr "alvo %(target)s"
+
+msgid "target (minutes)"
+msgstr "objetivo (minutos)"
+
+msgid "target value"
+msgstr "valor-alvo"
+
+msgid "Task"
+msgstr "Tarefa"
+
+msgid "the admin site"
+msgstr "o site de administração"
+
+msgid "The atomic actions roles can grant, grouped by module."
+msgstr ""
+"As ações atómicas que as funções podem conceder, agrupadas por módulo."
+
+msgid ""
+"The language preference is saved to your account and used on every device "
+"where you sign in."
+msgstr ""
+"A preferência de idioma é guardada na sua conta e utilizada em todos os "
+"dispositivos onde inicia sessão."
+
+msgid "The operational services each organization provides."
+msgstr "Os serviços operacionais que cada organização presta."
+
+msgid ""
+"The person accountable for this service. A Service Manager actor is created "
+"automatically."
+msgstr ""
+"A pessoa responsável por este serviço. Um interveniente Gestor de Serviço é "
+"criado automaticamente."
+
+msgid "Timeline"
+msgstr "Cronologia"
+
+msgid "title"
+msgstr "título"
+
+msgid "Toggle navigation"
+msgstr "Alternar navegação"
+
+msgid "tolerance"
+msgstr "tolerância"
+
+msgid "Tolerance"
+msgstr "Tolerância"
+
+msgid "Tree view"
+msgstr "Vista de árvore"
+
+msgid "trigger"
+msgstr "gatilho"
+
+msgid "Type"
+msgstr "Tipo"
+
+msgid "Unassigned"
+msgstr "Não atribuído"
+
+msgid "Unexpected disruptions to services."
+msgstr "Interrupções inesperadas dos serviços."
+
+msgid "unit"
+msgstr "unidade"
+
+msgid "Unit"
+msgstr "Unidade"
+
+msgid "until %(end_date)s"
+msgstr "até %(end_date)s"
+
+msgid "Update your identity details and choose the interface language."
+msgstr ""
+"Atualize os seus dados de identificação e escolha o idioma da interface."
+
+msgid "Updated"
+msgstr "Atualizado"
+
+msgid "Updates"
+msgstr "Atualizações"
+
+msgid "urgency"
+msgstr "urgência"
+
+msgid "Urgent"
+msgstr "Urgente"
+
+msgid "Used when the change targets the organization itself."
+msgstr "Utilizado quando a alteração visa a própria organização."
+
+msgid "user"
+msgstr "utilizador"
+
+msgid "user profile"
+msgstr "perfil do utilizador"
+
+msgid "user profiles"
+msgstr "perfis de utilizador"
+
+msgid "Username"
+msgstr "Nome de utilizador"
+
+msgid "value"
+msgstr "valor"
+
+msgid "Vehicle"
+msgstr "Veículo"
+
+msgid "Vehicles, equipment, materials and facilities."
+msgstr "Veículos, equipamentos, materiais e instalações."
+
+msgid "Verified"
+msgstr "Verificado"
+
+msgid "verified at"
+msgstr "verificado em"
+
+msgid "version"
+msgstr "versão"
+
+msgid "Version"
+msgstr "Versão"
+
+msgid "Versioned definitions describing how work is performed."
+msgstr "Definições com versões que descrevem como o trabalho é realizado."
+
+msgid "Versions"
+msgstr "Versões"
+
+msgid "View all"
+msgstr "Ver tudo"
+
+msgid "View full directory record"
+msgstr "Ver registo completo do diretório"
+
+msgid "visible to you' as hint_visible_to_you %}"
+msgstr "visible to you' as hint_visible_to_you %}"
+
+msgid "{% for s in stats %}"
+msgstr "{% for s in stats %}"
+
+msgid ""
+"<div>{% include \"partials/stat_card.html\" with label=s.label value=s.value"
+" icon=s.icon url=s.url hint=hint_visible_to_you %}</div>"
+msgstr ""
+"<div>{% include \"partials/stat_card.html\" with label=s.label value=s.value"
+" icon=s.icon url=s.url hint=hint_visible_to_you %}</div>"
+
+msgid "{% endfor %}"
+msgstr "{% endfor %}"
+
+msgid "</div>"
+msgstr "</div>"
+
+msgid "<div class=\"grid gap-4 sm:grid-cols-2 xl:grid-cols-4\">"
+msgstr "<div class=\"grid gap-4 sm:grid-cols-2 xl:grid-cols-4\">"
+
+msgid "{% for s in work_stats %}"
+msgstr "{% for s in work_stats %}"
+
+msgid ""
+"<div>{% include \"partials/stat_card.html\" with label=s.label value=s.value"
+" icon=s.icon url=s.url %}</div>"
+msgstr ""
+"<div>{% include \"partials/stat_card.html\" with label=s.label value=s.value"
+" icon=s.icon url=s.url %}</div>"
+
+msgid "{% endfor %}"
+msgstr "{% endfor %}"
+
+msgid "</div>"
+msgstr "</div>"
+
+msgid "<div class=\"grid gap-4 lg:grid-cols-2\">"
+msgstr "<div class=\"grid gap-4 lg:grid-cols-2\">"
+
+msgid "<div class=\"rounded-xl border border-zinc-200 bg-white p-4 shadow-sm\">"
+msgstr "<div class=\"rounded-xl border border-zinc-200 bg-white p-4 shadow-sm\">"
+
+msgid ""
+"<h2 class=\"mb-2 text-sm font-semibold text-zinc-800\">{% translate "
+"'Requests by status"
+msgstr ""
+"<h2 class=\"mb-2 text-sm font-semibold text-zinc-800\">{% translate "
+"'Requests by status"
+
+msgid "Waiting"
+msgstr "A aguardar"
+
+msgid "weight"
+msgstr "peso"
+
+msgid "When"
+msgstr "Quando"
+
+msgid "Where resources are currently allocated."
+msgstr "Onde os recursos estão atualmente atribuídos."
+
+msgid "Work"
+msgstr "Trabalho"
+
+msgid "workflow"
+msgstr "fluxo de trabalho"
+
+msgid "Workflow"
+msgstr "Fluxo de trabalho"
+
+msgid "workflow execution"
+msgstr "execução do fluxo de trabalho"
+
+msgid "workflow executions"
+msgstr "execuções de fluxos de trabalho"
+
+msgid "workflow step"
+msgstr "passo do fluxo de trabalho"
+
+msgid "workflow steps"
+msgstr "passos do fluxo de trabalho"
+
+msgid "workflow task"
+msgstr "tarefa do fluxo de trabalho"
+
+msgid "workflow tasks"
+msgstr "tarefas do fluxo de trabalho"
+
+msgid "workflow transition"
+msgstr "transição do fluxo de trabalho"
+
+msgid "workflow transitions"
+msgstr "transições do fluxo de trabalho"
+
+msgid "Workflows"
+msgstr "Fluxos de trabalho"
+
+msgid "workflows"
+msgstr "fluxos de trabalho"
+
+msgid "Yes"
+msgstr "Sim"

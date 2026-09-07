@@ -1,0 +1,5 @@
+{% load ui %}
+<span class="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ value|pill_class }}">
+  {{ value|default:"—" }}
+  {% if record.started_at %}<time class="tabular-nums opacity-70" datetime="{{ record.started_at|date:"c" }}">{{ record.started_at|date:"H:i:s" }}</time>{% endif %}
+</span>

@@ -1,0 +1,35 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{% translate 'New incident' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% translate 'New incident' %}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl space-y-6">
+  <div>
+    <h1 class="text-xl font-semibold text-zinc-900">{% translate 'New incident' %}</h1>
+    <p class="mt-1 text-sm text-zinc-500">{% translate 'Report a disruption affecting one of your services.' %}</p>
+  </div>
+
+  <form method="post" class="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm" novalidate>
+    {% csrf_token %}
+    <div class="grid gap-4">
+      {% apex_field form.service %}
+      {% apex_field form.title %}
+      {% apex_field form.description %}
+    </div>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% apex_field form.priority %}
+      {% apex_field form.impact %}
+    </div>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      {% apex_field form.urgency %}
+      {% apex_field form.assigned_to %}
+    </div>
+    <div class="mt-6 flex items-center gap-3">
+      <button type="submit" class="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700">{% translate 'Create incident' %}</button>
+      <a href="{% url 'incidents:index' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50">{% translate 'Cancel' %}</a>
+    </div>
+  </form>
+</div>
+{% endblock content %}

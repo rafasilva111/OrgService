@@ -1,0 +1,43 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{{ metric.code }} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{{ metric.code }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl space-y-6">
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div class="space-y-3">
+      <div>
+        <h1 class="text-xl font-semibold text-zinc-900">{{ metric.name }}</h1>
+        <p class="mt-1 text-sm text-zinc-500">{% if metric.service.name %}{{ metric.service.name }}{% else %}{% translate 'Platform-wide' %}{% endif %} &middot; {{ metric.get_aggregation_display }}{% if metric.unit %} &middot; {{ metric.unit }}{% endif %}</p>
+      </div>
+      <p class="max-w-2xl text-sm text-zinc-600">{% if metric.description %}{{ metric.description }}{% else %}{% translate 'No description provided.' %}{% endif %}</p>
+    </div>
+    <a href="{% url 'metrics:index' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50">&larr; {% translate 'Metrics' %}</a>
+  </div>
+
+  <div class="grid gap-4 sm:grid-cols-3">
+    {% translate 'Measurements' as st_measurements %}
+    {% translate 'Latest value' as st_latest_value %}
+    {% translate 'Aggregation' as st_aggregation %}
+    {% include "partials/stat_card.html" with label=st_measurements value=value_count icon="kpis" %}
+    {% include "partials/stat_card.html" with label=st_latest_value value=values.0.value icon="kpis" %}
+    {% include "partials/stat_card.html" with label=st_aggregation value=metric.get_aggregation_display icon="kpis" %}
+  </div>
+
+  <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+    <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Recent values' %}</h2>
+    <ul class="divide-y divide-zinc-100">
+      {% for v in values %}
+      <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+        <span class="font-mono text-zinc-800">{{ v.value }}</span>
+        <span class="text-xs text-zinc-500">{{ v.period_start|date:"M j, Y H:i" }} &rarr; {{ v.period_end|date:"M j, Y H:i" }}</span>
+      </li>
+      {% empty %}
+      <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No measurements recorded yet.' %}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock content %}

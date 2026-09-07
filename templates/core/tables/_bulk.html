@@ -1,0 +1,20 @@
+{% load i18n ui %}
+{% if config.bulk_actions %}
+<form hx-post="." hx-target="#{{ config.key }}-wrap" hx-swap="innerHTML"
+      onsubmit="var ids=[].slice.call(this.querySelectorAll('.row-select:checked'));
+                var act=this.querySelector('select[name=action]').value;
+                if(!act){alert('{% translate "Choose an action first." %}');return false;}
+                if(!ids.length){alert('{% translate "Select at least one row." %}');return false;}
+                {% for ba in config.bulk_actions %}{% if ba.confirm_text %}if(act==='{{ ba.slug }}' && !confirm('{{ ba.confirm_text|escapejs }}')){return false;}{% endif %}{% endfor %}"
+      class="flex flex-wrap items-center gap-2 border-b border-zinc-100 bg-zinc-50/50 px-4 py-2">
+  {% csrf_token %}
+  <span class="text-xs font-semibold uppercase tracking-wide text-zinc-500">{% translate 'Bulk actions' %}</span>
+  <select name="action" class="h-9 rounded-lg border border-zinc-300 bg-white px-2 text-sm text-zinc-700 outline-none focus:border-indigo-500">
+    <option value="">{% translate 'Choose…' %}</option>
+    {% for ba in config.bulk_actions %}
+    <option value="{{ ba.slug }}">{{ ba.label }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="h-9 rounded-lg bg-zinc-900 px-4 text-xs font-medium text-white transition hover:bg-zinc-800">{% translate 'Apply' %}</button>
+</form>
+{% endif %}

@@ -1,0 +1,151 @@
+```mermaid
+erDiagram
+    %% ---------------------------------------------------------------
+    %% Organizational platform — ER diagram (Mermaid)
+    %% Hierarchy: Organization ├─< Service ─< {Request, Incident,
+    %%             Problem, Workflow, Change, Metric, Actor}
+    %% Cross-app links (execution subject, event subject, audit object,
+    %% resource target) use GenericForeignKey and are drawn as notes.
+    %% ---------------------------------------------------------------
+
+    Organization ||--o{ Organization : parent
+    Organization ||--o{ Service : provides
+    Organization ||--o{ OrganizationMembership : "has members"
+    Organization ||--o{ OrganizationUnit : "internal units"
+
+    Person ||--o{ OrganizationMembership : "member of"
+    Role ||--o{ OrganizationMembership : "holds role"
+    OrganizationMembership ||--o{ ServiceAccess : "restricted to"
+    Service ||--o{ ServiceAccess : "restricts"
+
+    Permission }o--o{ Role : "granted via"
+    RolePermission }o--|| Permission : "contains"
+    RolePermission }o--|| Role : "grants"
+
+    Service ||--o{ Request : "receives"
+    RequestType ||--o{ Request : "classifies"
+    Service ||--o{ Incident : "suffers"
+    Service ||--o{ Problem : "root causes"
+    Problem }o--o{ Incident : "linked via"
+    Service ||--o{ Change : "modifies"
+    Person ||--o{ Change : "requests"
+
+    Service ||--o{ Workflow : "defines"
+    Workflow ||--o{ WorkflowStep : "composed of"
+    Workflow ||--o{ WorkflowTransition : "connects steps"
+    Workflow ||--o{ WorkflowExecution : "runs"
+    WorkflowExecution ||--o{ WorkflowTask : "produces"
+    WorkflowStep ||--o{ WorkflowTransition : "from"
+    WorkflowStep ||--o{ WorkflowTransition : "to"
+
+    Service ||--o{ ServiceActor : "staffed by"
+    Role ||--o{ ServiceActor : "role-based"
+    Person ||--o{ ServiceActor : "named actor"
+    Service ||--o{ ServiceCapabilityAssignment : "requires"
+    ServiceCapability ||--o{ ServiceCapabilityAssignment : "offers"
+
+    Resource ||--o{ ResourceAssignment : "allocated to"
+    Resource ||--|{ Asset : "specializes into"
+    Asset ||--|{ Equipment : "specializes into"
+    Resource ||--|{ Material : "consumable"
+
+    Service ||--o{ Metric : "defines"
+    Metric ||--o{ MetricValue : "records"
+    Service ||--o{ KPI : "blends"
+    KPI }o--o{ Metric : "via KpiMetric (weighted)"
+    Service ||--o{ SLA : "promises"
+
+    Person ||--o{ PersonSkill : "holds"
+    Skill ||--o{ PersonSkill : "is held by"
+
+    Event {
+        int id PK
+        string event_type
+        int organization_id FK,nullable
+        int service_id FK,nullable
+        int subject_type_id FK,generic
+        bigint subject_id generic
+        json metadata
+    }
+    AuditLog {
+        int id PK
+        string action
+        int actor_person_id FK,nullable
+        int actor_user_id FK,nullable
+        int organization_id FK,nullable
+        int service_id FK,nullable
+        json old_value,new_value
+    }
+    Organization {
+        int id PK
+        string name
+        string code
+        string organization_type
+        int parent_id FK,nullable
+        ltree path
+    }
+    OrganizationMembership {
+        int id PK
+        int person_id FK
+        int organization_id FK
+        int role_id FK
+        date start_date,end_date
+    }
+    Service {
+        int id PK
+        int organization_id FK
+        string name
+        string status
+        bool active
+    }
+    Request {
+        int id PK
+        int service_id FK
+        int request_type_id FK
+        string title
+        string status
+        string priority
+        int requester_id FK,nullable
+    }
+    Workflow {
+        int id PK
+        int service_id FK
+        string name
+        int version
+        string status
+    }
+    WorkflowExecution {
+        int id PK
+        int workflow_id FK
+        string status
+        int current_step_id FK,nullable
+        int subject_type_id FK,generic
+        bigint subject_id generic
+    }
+    Resource {
+        int id PK
+        string resource_type
+        string name
+        int organization_id FK,nullable
+        bool active
+    }
+    ResourceAssignment {
+        int id PK
+        int resource_id FK
+        int target_type_id FK,generic
+        bigint target_id generic
+        string label
+    }
+    Metric {
+        int id PK
+        string code
+        int service_id FK,nullable
+    }
+    MetricValue {
+        int id PK
+        int metric_id FK
+        decimal value
+        datetime period_start,period_end
+        json dimension
+    }
+```

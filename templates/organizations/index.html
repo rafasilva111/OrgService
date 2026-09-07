@@ -1,0 +1,27 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{% translate 'Organizations' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% translate 'Organizations' %}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Organizations' %}</h1>
+      <p class="mt-1 text-sm text-zinc-500">{% translate 'Organizational units you can see, with their subtree counts.' %}</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="{% url 'organizations:tree' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50">{% translate 'Tree view' %}</a>
+      <a href="{% url 'organizations:memberships' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50">{% translate 'Memberships' %}</a>
+      {% if request.user|has_perm:"organization.create" %}
+      <a href="{% url 'organizations:create' %}" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700">
+        {% icon "plus" class_name="size-4" %} {% translate 'New organization' %}
+      </a>
+      {% endif %}
+    </div>
+  </div>
+
+  {% include "core/tables/_table.html" %}
+</div>
+{% endblock content %}

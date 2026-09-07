@@ -1,0 +1,1 @@
+{% if record.subject %}{{ record.subject_type.model }} #{{ record.subject_id }}: {{ record.subject|truncatechars:48 }}{% else %}—{% endif %}

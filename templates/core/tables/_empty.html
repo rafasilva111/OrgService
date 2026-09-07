@@ -1,0 +1,8 @@
+{% load ui %}
+{% if not object_list %}
+<div class="grid place-items-center gap-2 px-6 py-16 text-center">
+  <span class="grid size-12 place-items-center rounded-full bg-zinc-100 text-zinc-400">{% icon "dashboard" class_name="size-6" %}</span>
+  <p class="text-sm font-medium text-zinc-700">{{ config.empty_headline }}</p>
+  {% if config.empty_body %}<p class="max-w-sm text-xs text-zinc-500">{{ config.empty_body }}</p>{% endif %}
+</div>
+{% endif %}

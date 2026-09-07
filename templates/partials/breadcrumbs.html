@@ -1,0 +1,17 @@
+{% load i18n %}
+{% if breadcrumbs %}
+<nav aria-label="{% translate 'Breadcrumb' %}" class="px-4 pt-6 sm:px-6 lg:px-8">
+  <ol class="flex flex-wrap items-center gap-1.5 text-sm">
+    {% for crumb in breadcrumbs %}
+    <li class="flex items-center gap-1.5">
+      {% if crumb.1 %}
+        <a href="{{ crumb.1 }}" class="text-zinc-500 transition hover:text-zinc-800">{{ crumb.0 }}</a>
+      {% else %}
+        <span class="font-medium text-zinc-800">{{ crumb.0 }}</span>
+      {% endif %}
+      {% if not forloop.last %}<span class="text-zinc-400">/</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</nav>
+{% endif %}
