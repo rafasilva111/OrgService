@@ -2,10 +2,23 @@
 
 A service is the anchor for actors, capabilities, resources, workflows,
 requests, incidents, problems, events and metrics (see section 2 of the spec).
+
+Each service is classified by a ``ServiceType`` (Finance, HR, Supplies, IT,
+Processes, Management) that maps to one of the four ITIL dimensions:
+
+    Organizations and People  — Finance, HR, Management
+    Information and Technology — IT
+    Partners and Suppliers     — Supplies
+    Value Streams and Processes — Processes
+
+A service may also sit under a ``parent`` service (department hierarchy) and
+list other services it consumes via ``consumed_services`` (M2M through
+``ServiceConsumption``).
 """
 
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from apps.common.models import ActiveModel, SoftDeleteModel, TimeStampedModel
@@ -19,6 +32,32 @@ class ServiceStatus(models.TextChoices):
     DISRUPTED = "DISRUPTED", _("Disrupted")
     PAUSED = "PAUSED", _("Paused")
     RETIRED = "RETIRED", _("Retired")
+
+
+class ServiceTypeDimension(models.TextChoices):
+    ORGANIZATIONS_AND_PEOPLE = "ORGANIZATIONS_AND_PEOPLE", _("Organizations and People")
+    INFORMATION_AND_TECHNOLOGY = "INFORMATION_AND_TECHNOLOGY", _("Information and Technology")
+    PARTNERS_AND_SUPPLIERS = "PARTNERS_AND_SUPPLIERS", _("Partners and Suppliers")
+    VALUE_STREAMS_AND_PROCESSES = "VALUE_STREAMS_AND_PROCESSES", _("Value Streams and Processes")
+
+
+class ServiceType(models.TextChoices):
+    FINANCE = "FINANCE", _("Finance")
+    HR = "HR", _("Human Resources")
+    SUPPLIES = "SUPPLIES", _("Supplies")
+    IT = "IT", _("IT")
+    PROCESSES = "PROCESSES", _("Processes")
+    MANAGEMENT = "MANAGEMENT", _("Management")
+
+
+_SERVICE_TYPE_DIMENSION = {
+    ServiceType.FINANCE: ServiceTypeDimension.ORGANIZATIONS_AND_PEOPLE,
+    ServiceType.HR: ServiceTypeDimension.ORGANIZATIONS_AND_PEOPLE,
+    ServiceType.SUPPLIES: ServiceTypeDimension.PARTNERS_AND_SUPPLIERS,
+    ServiceType.IT: ServiceTypeDimension.INFORMATION_AND_TECHNOLOGY,
+    ServiceType.PROCESSES: ServiceTypeDimension.VALUE_STREAMS_AND_PROCESSES,
+    ServiceType.MANAGEMENT: ServiceTypeDimension.ORGANIZATIONS_AND_PEOPLE,
+}
 
 
 class Service(SoftDeleteModel, ActiveModel):
@@ -42,6 +81,22 @@ class Service(SoftDeleteModel, ActiveModel):
         default=ServiceStatus.OPERATIONAL,
         db_index=True,
     )
+    service_type = models.ForeignKey(
+        "ServiceType",
+        on_delete=models.PROTECT,
+        related_name="services",
+        verbose_name=_("service type"),
+        help_text=_("Classification of this service (maps to an ITIL dimension)."),
+    )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="children",
+        db_index=True,
+        help_text=_("Parent service if this is a department/child service."),
+    )
 
     class Meta:
         verbose_name = _("service")
@@ -52,6 +107,7 @@ class Service(SoftDeleteModel, ActiveModel):
         indexes = [
             models.Index(fields=["organization", "active"]),
             models.Index(fields=["status", "active"]),
+            models.Index(fields=["service_type"]),
         ]
 
     def __str__(self):
@@ -75,6 +131,30 @@ class Service(SoftDeleteModel, ActiveModel):
         super().clean()
         if self.pk is not None and not self.has_manager:
             raise ValidationError("A service must have an active Service Manager actor.")
+
+    @property
+    def dimension(self):
+        """The ITIL dimension this service type belongs to."""
+        return _SERVICE_TYPE_DIMENSION.get(self.service_type_id)
+
+
+class ServiceType(models.Model):
+    """Classifies a service into one of the four ITIL dimensions."""
+
+    code = models.SlugField(_("code"), unique=True, max_length=64)
+    name = models.CharField(_("name"), max_length=128)
+    dimension = models.CharField(
+        _("dimension"),
+        max_length=64,
+        choices=ServiceTypeDimension.choices,
+    )
+
+    class Meta:
+        verbose_name = _("service type")
+        verbose_name_plural = _("service types")
+
+    def __str__(self):
+        return self.name
 
 
 class ServiceCapability(TimeStampedModel):
@@ -115,6 +195,36 @@ class ServiceCapabilityAssignment(TimeStampedModel):
         return f"{self.service} – {self.capability}"
 
 
+class ServiceConsumption(TimeStampedModel):
+    """A service that another service consumes (Value Streams and Processes).
+
+    Tracks *which* services a given service depends on, with optional
+    ``reason`` and ``since`` metadata.
+    """
+
+    service = models.ForeignKey(
+        Service, on_delete=models.CASCADE, related_name="consumed_through"
+    )
+    consumed = models.ForeignKey(
+        Service,
+        on_delete=models.CASCADE,
+        related_name="consumed_by",
+        help_text=_("The service being consumed."),
+    )
+    reason = models.TextField(_("reason"), blank=True, default="")
+    since = models.DateField(_("since"), null=True, blank=True)
+
+    class Meta:
+        verbose_name = _("service consumption")
+        verbose_name_plural = _("service consumptions")
+        constraints = [
+            models.UniqueConstraint(fields=["service", "consumed"], name="u_service_consumption"),
+        ]
+
+    def __str__(self):
+        return f"{self.service} ← {self.consumed}"
+
+
 class ActorType(models.TextChoices):
     INTERNAL = "INTERNAL", _("Internal")
     EXTERNAL = "EXTERNAL", _("External")
@@ -147,13 +257,11 @@ class ServiceActor(TimeStampedModel, ActiveModel):
         verbose_name = _("service actor")
         verbose_name_plural = _("service actors")
         constraints = [
-            # A named person can only be linked once per service+role.
             models.UniqueConstraint(
                 fields=["service", "role", "person"],
                 condition=models.Q(person__isnull=False),
                 name="u_service_actor_person",
             ),
-            # A role placeholder can only exist once per service.
             models.UniqueConstraint(
                 fields=["service", "role"],
                 condition=models.Q(person__isnull=True),

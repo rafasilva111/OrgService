@@ -43,7 +43,7 @@ from apps.people.models import Person, PersonType, Skill
 from apps.problems.models import Problem
 from apps.requests.models import Priority, Request, RequestComment, RequestStatus, RequestType
 from apps.resources.models import Equipment, Resource, ResourceAssignment, ResourceType
-from apps.services.models import ActorType, Service, ServiceActor, ServiceStatus
+from apps.services.models import ActorType, Service, ServiceActor, ServiceStatus, ServiceType
 from apps.workflows.models import (
     ExecutionStatus,
     StepType,
@@ -238,31 +238,64 @@ class Command(BaseCommand):
     # ----------------------------------------------------------------- services
     def _seed_services(self, orgs):
         catalog = [
-            ("Municipal Administration", "torres-vedras", ServiceStatus.OPERATIONAL),
-            ("Water Supply", "torres-vedras", ServiceStatus.DEGRADED),
-            ("Sanitation Network", "torres-vedras", ServiceStatus.OPERATIONAL),
-            ("Waste Management", "torres-vedras", ServiceStatus.OPERATIONAL),
-            ("Road Maintenance", "torres-vedras", ServiceStatus.OPERATIONAL),
-            ("Public Lighting", "torres-vedras", ServiceStatus.OPERATIONAL),
-            ("Public Health", "sao-pedro-santiago", ServiceStatus.OPERATIONAL),
-            ("Urban Cleaning", "sao-pedro-santiago", ServiceStatus.OPERATIONAL),
-            ("Green Spaces & Parks", "matacaes", ServiceStatus.OPERATIONAL),
+            ("Municipal Administration", "torres-vedras", ServiceStatus.OPERATIONAL, "management"),
+            ("Water Supply", "torres-vedras", ServiceStatus.DEGRADED, "processes"),
+            ("Sanitation Network", "torres-vedras", ServiceStatus.OPERATIONAL, "processes"),
+            ("Waste Management", "torres-vedras", ServiceStatus.OPERATIONAL, "processes"),
+            ("Road Maintenance", "torres-vedras", ServiceStatus.OPERATIONAL, "processes"),
+            ("Public Lighting", "torres-vedras", ServiceStatus.OPERATIONAL, "processes"),
+            ("Public Health", "sao-pedro-santiago", ServiceStatus.OPERATIONAL, "hr"),
+            ("Urban Cleaning", "sao-pedro-santiago", ServiceStatus.OPERATIONAL, "processes"),
+            ("Green Spaces & Parks", "matacaes", ServiceStatus.OPERATIONAL, "processes"),
+            ("Culture Service", "sao-pedro-santiago", ServiceStatus.OPERATIONAL, "hr"),
         ]
         services = {}
-        for name, org_key, status in catalog:
+        for name, org_key, status, type_code in catalog:
             org = orgs[org_key]
+            service_type = ServiceType.objects.get(code=type_code)
             service, _ = Service.objects.get_or_create(
                 organization=org,
                 name=name,
                 defaults={
                     "description": f"Service of {org.name}: {name}.",
                     "status": status,
+                    "service_type": service_type,
                 },
             )
             if service.status != status:
                 service.status = status
                 service.save()
+            if service.service_type != service_type:
+                service.service_type = service_type
+                service.save()
             services[name] = service
+
+        # Create department children under Municipal Administration (Management type).
+        parent_svc = services["Municipal Administration"]
+        dept_info = [
+            ("IT", "it", "j.fernandes"),
+            ("Supplies", "supplies", "n.barreto"),
+            ("Finance", "finance", "t.pereira"),
+            ("HR", "hr", "m.silva"),
+        ]
+        for dept_name, type_code, username in dept_info:
+            dept_type = ServiceType.objects.get(code=type_code)
+            dept, _ = Service.objects.get_or_create(
+                organization=parent_svc.organization,
+                name=dept_name,
+                defaults={
+                    "description": _(
+                        "Department of %(parent)s." % {"parent": parent_svc.name}
+                    ),
+                    "status": parent_svc.status,
+                    "service_type": dept_type,
+                    "parent": parent_svc,
+                },
+            )
+            if dept.service_type != dept_type:
+                dept.service_type = dept_type
+                dept.save()
+            services[dept_name] = dept
         return services
 
     # ------------------------------------------------------------------- people
@@ -368,6 +401,10 @@ class Command(BaseCommand):
         # Every service needs a Service Manager actor <-> person.
         managers = {
             "Municipal Administration": "r.martins",
+            "IT": "j.fernandes",
+            "Supplies": "n.barreto",
+            "Finance": "t.pereira",
+            "HR": "m.silva",
             "Water Supply": "j.fernandes",
             "Sanitation Network": "n.barreto",
             "Waste Management": "a.duarte",
@@ -376,6 +413,7 @@ class Command(BaseCommand):
             "Public Health": "m.silva",
             "Urban Cleaning": "p.lopes",
             "Green Spaces & Parks": "r.costa",
+            "Culture Service": "r.costa",
         }
         for svc_name, username in managers.items():
             ServiceActor.objects.get_or_create(
@@ -384,11 +422,16 @@ class Command(BaseCommand):
                 person=people[username],
                 defaults={"actor_type": ActorType.INTERNAL, "active": True},
             )
-
+        # Extra actors for department services (inherited roles from parent).
         extra_actors = [
             ("Water Supply", "l.rodrigues", role_om),
             ("Waste Management", "p.nunes", role_op),
             ("Road Maintenance", "p.nunes", role_op),
+            ("IT", "l.rodrigues", role_om),
+            ("Finance", "a.duarte", role_sm),
+            ("Supplies", "n.barreto", role_sm),
+            ("HR", "m.silva", role_sm),
+            ("Culture Service", "m.mendes", role_rm),
         ]
         for svc_name, username, role in extra_actors:
             ServiceActor.objects.get_or_create(

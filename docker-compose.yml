@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: orgplatform_db
+    container_name: db
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-orgplatform}
@@ -19,7 +19,7 @@ services:
 
   web:
     build: .
-    container_name: orgplatform_web
+    container_name: web
     restart: unless-stopped
     environment:
       POSTGRES_HOST: db
