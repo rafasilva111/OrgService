@@ -7,37 +7,12 @@ assignees: ''
 
 ---
 
----
-
-name: Feature Request
-about: Propose a new feature or improvement
-title: "[FEATURE] "
-labels: enhancement tecnical
-assignees: ""
--------------
-
-## Feature description
-
-<!--
-Describe clearly what should be added or changed.
-Focus on the expected capability rather than the implementation details.
--->
-
-## Problem / motivation
+## Problem / motivation description
 
 <!--
 Describe the problem this feature solves.
 Explain why the current behavior is insufficient and who is affected.
 -->
-
-## Proposed solution
-
-<!--
-Describe the expected solution and how it should behave.
-Include relevant functional and technical details where necessary.
--->
-
-## User story
 
 <!--
 Example:
@@ -88,17 +63,6 @@ Example:
   * Component/layer:
   * Dependencies:
 
-* [ ] **Task 2 — [Name]**
-
-  * Description:
-  * Component/layer:
-  * Dependencies:
-
-* [ ] **Task 3 — [Name]**
-
-  * Description:
-  * Component/layer:
-  * Dependencies:
 
 ### Technical considerations
 
@@ -123,18 +87,9 @@ Consider:
 - Unit tests:
   Test individual functions, classes, services, validation rules, etc.
 
-- Integration tests:
-  Test interactions between components, services, databases, APIs, queues, etc.
-
 - API tests:
   Test endpoints, request/response schemas, authentication,
   authorization, validation and error handling.
-
-- UI / E2E tests:
-  Test the complete user flow from the user's perspective.
-
-- Regression tests:
-  Verify that existing functionality has not been broken.
 
 - Edge cases:
   Test invalid input, missing data, empty states, duplicates,
@@ -150,18 +105,6 @@ For each test, explain what behavior is being validated.
 ### Test scenarios
 
 * [ ] **Scenario 1 — [Name]**
-
-  * Given:
-  * When:
-  * Then:
-
-* [ ] **Scenario 2 — [Name]**
-
-  * Given:
-  * When:
-  * Then:
-
-* [ ] **Scenario 3 — [Name]**
 
   * Given:
   * When:
@@ -200,7 +143,7 @@ Consider:
 - Configuration documentation
 - Deployment / operational documentation
 - README
-- OpenAPI / Swagger
+- Django DRF / Swagger
 - Code examples
 
 If documentation is required, explain:
