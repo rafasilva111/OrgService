@@ -1,0 +1,48 @@
+name: Story
+description: A user story with acceptance criteria
+title: "[Story] "
+labels: ["story"]
+body:
+  - type: markdown
+    attributes:
+      value: "## User Story"
+  - type: textarea
+    id: user_story
+    attributes:
+      label: User Story
+      description: As a [role], I want [goal], so that [benefit]
+      placeholder: "As a SERVICE_MANAGER, I want to ..., so that ..."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Conditions of satisfaction (Given/When/Then or bullets)
+      placeholder: "- Given ... When ... Then ..."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope (In / Out)
+      description: What's included and excluded
+      placeholder: "**In:**\n- ...\n\n**Out:**\n- ..."
+  - type: textarea
+    id: technical_notes
+    attributes:
+      label: Technical Notes
+      description: Architecture, models, RBAC/permissions, migrations, URLs, tests
+      placeholder: "Related apps, platform_codes/can(), lifecycle, ltree, etc."
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies / Blockers
+      description: Linked issues or external dependencies
+      placeholder: "Depends on #123, blocked by #456"
+  - type: input
+    id: epic
+    attributes:
+      label: Epic
+      description: Parent epic issue number if applicable
+      placeholder: "#100"

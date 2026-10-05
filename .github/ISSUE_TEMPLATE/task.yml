@@ -1,0 +1,48 @@
+name: Task
+description: A small, actionable piece of work with clear acceptance criteria
+title: "[Task] "
+labels: ["task"]
+body:
+  - type: markdown
+    attributes:
+      value: "## Task"
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / Problem statement
+      description: Why is this needed? Link to related issue/PR, doc, or plan section
+      placeholder: "Describe the context and motivation for this task"
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal / Definition of Done
+      description: What needs to be completed? Prefer a checklist
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Concrete conditions that must be met to accept this work
+      placeholder: "- Given ... When ... Then ..."
+  - type: textarea
+    id: implementation_notes
+    attributes:
+      label: Implementation Notes
+      description: Files to touch, approach, constraints, or dependencies
+      placeholder: "Relevant files, models, views, URLs, tests, permissions, migrations..."
+  - type: input
+    id: epic
+    attributes:
+      label: Epic / Parent issue
+      description: Link or issue number if part of a larger story
+      placeholder: "#123"
+  - type: input
+    id: estimate
+    attributes:
+      label: Estimate (optional)
+      description: Rough effort (e.g. S/M/L, 1h, 0.5d)
+      placeholder: "S"
