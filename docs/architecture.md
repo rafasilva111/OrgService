@@ -16,14 +16,14 @@ Modular monolith (Django 5.2) for an **organizational services platform** — mu
 ## Layout
 
 ```
-/home/kali/Porject
-├── config/            # startproject: settings, urls (+ $DJANGO_SETTINGS_MODULE)
+/home/kali/OrgService
+├── config/            # startproject: settings, urls, wsgi, asgi (+ $DJANGO_SETTINGS_MODULE)
 ├── apps/
-│   ├── common/        # NOT a real app — shared base classes & helpers
+│   ├── common/        # NOT a real domain app — shared base classes & helpers
 │   ├── people/        # Person, Skill, PersonSkill
 │   ├── organizations/ # Organization (ltree tree), Membership, Unit
 │   ├── access/        # Permission, Role, RolePermission, ServiceAccess + seed_rbac
-│   ├── services/      # Service, ServiceCapability(+Assignment), ServiceActor
+│   ├── services/      # Service, ServiceType, ServiceCapability(+Assignment), ServiceActor
 │   ├── workflows/     # Workflow (definitions), WorkflowExecution (instances), Tasks
 │   ├── requests/      # Request, RequestType, RequestComment
 │   ├── incidents/     # Incident, IncidentUpdate
@@ -31,10 +31,14 @@ Modular monolith (Django 5.2) for an **organizational services platform** — mu
 │   ├── changes/       # Change, ChangeApproval
 │   ├── resources/     # Resource, Asset, Equipment, Material, ResourceAssignment
 │   ├── events/        # Event (immutable; generic subject)
-│   ├── audits/        # AuditLog (generic object)
-│   └── metrics/       # Metric, MetricValue, KPI(+via), SLA
+│   ├── audit/         # AuditLog (generic object)
+│   ├── metrics/       # Metric, MetricValue, KPI(+via), SLA
+│   ├── dashboard/     # views/urls only — no models.py
+│   └── profiles/      # UserProfile (OneToOne auth.User, holds `language`)
 ├── tests/             # pytest suite (fixtures + per-domain modules)
-├── docker-compose.yml # PostgreSQL 16 service
+├── templates/         # 23 template subdirectories (server-rendered)
+├── locale/pt/LC_MESSAGES/  # compiled django.po/.mo (EN default + PT)
+├── docker-compose.yml # PostgreSQL 16 + web
 ├── requirements.txt
 └── pytest.ini
 ```

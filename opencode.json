@@ -10,7 +10,7 @@
           "@modelcontextprotocol/server-memory"
         ],
         "environment": {
-          "MEMORY_FILE_PATH": "/home/kali/projects/OrgService/.opencode/memory/memory.jsonl"
+          "MEMORY_FILE_PATH": "/home/kali/OrgService/.opencode/memory/memory.jsonl"
         }
       }
     }

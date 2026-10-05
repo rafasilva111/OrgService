@@ -8,7 +8,7 @@
       {% if f.kind == "text" %}
         <input type="text" name="{{ f.param }}" value="{{ f.value }}" placeholder="{{ f.placeholder }}"
                class="h-9 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm outline-none focus:border-indigo-500">
-      {% elif f.kind == "choice" %}
+      {% elif f.kind == "choice" or f.kind == "subtree" %}
         <select name="{{ f.param }}" class="h-9 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm outline-none focus:border-indigo-500">
           <option value="">{% translate 'All' %}</option>
           {% for ck, cl in f.choices %}

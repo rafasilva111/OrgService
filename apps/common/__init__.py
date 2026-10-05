@@ -1,6 +1,7 @@
 """Shared, app-agnostic building blocks.
 
-This package is intentionally NOT a Django app registered in INSTALLED_APPS:
-it contains only abstract models and pure helpers (no concrete tables),
-so it cannot create circular dependencies between domain apps.
+This package *is* a Django app registered in ``INSTALLED_APPS``
+(``config/settings/base.py``). It defines only abstract models
+(``TimeStampedModel``, ``ActiveModel``, ``SoftDeleteModel``) and pure helpers,
+so it creates no tables of its own.
 """

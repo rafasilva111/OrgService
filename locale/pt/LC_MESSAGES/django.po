@@ -947,6 +947,9 @@ msgstr "Visão geral"
 msgid "Page %(page_obj.number)s of %(page_obj.paginator.num_pages)s"
 msgstr "Página %(page_obj.number)s de %(page_obj.paginator.num_pages)s"
 
+msgid "Parent"
+msgstr "Entidade Superior"
+
 msgid "Parent organization"
 msgstr "Organização ascendente"
 

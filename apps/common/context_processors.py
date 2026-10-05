@@ -153,9 +153,7 @@ def user_organization_pks(user):
     person = getattr(user, "person", None)
     if person is None:
         return set()
-    return set(
-        person.memberships.filter(active=True).values_list("organization_id", flat=True)
-    )
+    return set(person.memberships.filter(active=True).values_list("organization_id", flat=True))
 
 
 def _active_service_pk(path: str) -> int | None:
@@ -182,7 +180,11 @@ def _active_service_for_request(request, services):
     context = request.session.get("service_context") or {}
     if context.get("pk") is not None:
         selected = next(
-            (s for s in services if s["pk"] == context["pk"] and s["role_code"] == context.get("role")),
+            (
+                s
+                for s in services
+                if s["pk"] == context["pk"] and s["role_code"] == context.get("role")
+            ),
             None,
         )
         if selected is not None:

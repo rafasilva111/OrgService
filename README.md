@@ -9,12 +9,12 @@ The default dataset makes the app immediately explorable — 9 municipal service
 ## 1. The project
 
 - **Stack**: Python 3.12 / Django 5.2 / PostgreSQL 16 / pytest. Runs locally or via Docker Compose.
-- **Shape**: a single `config/` project + 13 domain apps under `apps/` (listed below).
+- **Shape**: a single `config/` project + 16 app packages under `apps/` — 13 domain apps plus `common` (shared helpers), `dashboard` (views only) and `profiles` (profile/settings). Listed below.
 - **Postgres is mandatory** — the org hierarchy uses the `ltree` extension (`apps/common/fields.py`), indexed with a GiST index.
 - **Authorization is centralized** — `apps/common/authorization.py` provides `can()` and `.visible_to()` queryset managers; every list/detail/create view is gated by RBAC permissions scoped to the user's organization.
-- **Docs in Portuguese**: `docs/architecture.md`, `docs/domain-model.md`, `docs/authorization.md`, `docs/er-diagram.mmd`; operational log in `STATUS.md`.
+- **Docs in Portuguese**: `docs/architecture.md`, `docs/domain-model.md`, `docs/authorization.md`, `docs/er-diagram.mmd`; outstanding issues in `ISSUES.md`.
 
-### Apps (13)
+### Apps (14 domain apps + `common` + `dashboard`)
 
 | App | Holds | Notes |
 |---|---|---|
@@ -175,10 +175,11 @@ Main surfaces: `/` (Executive dashboard), `/organizations/tree/` (org tree with 
 
 ## 6. Test status & known issues
 
-- Test suite: **129 passed, 12 failed** (pre-existing, unrelated to the seed work).
-- Known failures:
-  - Dashboard `/` — `TypeError: Object of type __proxy__ is not JSON serializable` (lazy `_("Requests")` chart-series name passed to `json.dumps` in `apps/dashboard/views.py:_bar`).
-  - Login template — `{% blocktranslate %}` containing `{% url 'admin:login' %}` fails to render.
-  - A handful of `test_views.py` render tests depending on the two above.
+- Test suite: **169 passed, 0 failed** (`.venv/bin/python -m pytest -q`).
+- Lint and formatting are clean (`.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`).
+- Model state is in sync with migrations (`.venv/bin/python manage.py makemigrations --check --dry-run`).
+- Run pytest **sequentially** — concurrent runs race on the shared `test_orgplatform` database.
 
-**Do not edit** `STATUS.md` without also checking whether `README.md` needs an update (and vice-versa) — these two documents are the source of truth for how the platform behaves.
+Outstanding issues and their resolutions are recorded in [`ISSUES.md`](ISSUES.md). Architecture and
+domain documentation lives in `docs/`; the Obsidian vault under `.opencode/obsidian/` holds the
+decision record (ADRs) and task notes.

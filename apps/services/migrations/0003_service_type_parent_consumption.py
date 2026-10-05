@@ -1,8 +1,7 @@
 """ServiceType model + Service.service_type + Service.parent + ServiceConsumption."""
 
-from django.db import migrations, models
 import django.db.models.deletion
-import apps.services.models
+from django.db import migrations, models
 
 
 def create_service_types(apps, schema_editor):
@@ -22,7 +21,17 @@ def create_service_types(apps, schema_editor):
     for code, (type_code, dimension) in types.items():
         obj, _ = ServiceType.objects.using(db_alias).get_or_create(
             code=code,
-            defaults={"name": {"FINANCE": "Finance", "HR": "Human Resources", "SUPPLIES": "Supplies", "IT": "IT", "PROCESSES": "Processes", "MANAGEMENT": "Management"}[type_code], "dimension": dimension},
+            defaults={
+                "name": {
+                    "FINANCE": "Finance",
+                    "HR": "Human Resources",
+                    "SUPPLIES": "Supplies",
+                    "IT": "IT",
+                    "PROCESSES": "Processes",
+                    "MANAGEMENT": "Management",
+                }[type_code],
+                "dimension": dimension,
+            },
         )
         created[code] = obj
 
@@ -135,7 +144,10 @@ class Migration(migrations.Migration):
                     ),
                 ),
             ],
-            options={"verbose_name": "service consumption", "verbose_name_plural": "service consumptions"},
+            options={
+                "verbose_name": "service consumption",
+                "verbose_name_plural": "service consumptions",
+            },
         ),
         migrations.RunPython(create_service_types, migrations.RunPython.noop),
         migrations.AlterField(
@@ -150,7 +162,9 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name="serviceconsumption",
-            constraint=models.UniqueConstraint(fields=("service", "consumed"), name="u_service_consumption"),
+            constraint=models.UniqueConstraint(
+                fields=("service", "consumed"), name="u_service_consumption"
+            ),
         ),
         migrations.AddIndex(
             model_name="service",

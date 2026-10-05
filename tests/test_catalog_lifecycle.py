@@ -15,7 +15,12 @@ from apps.access.models import Permission, Role
 from apps.organizations.models import Organization, OrganizationMembership
 from apps.people.models import Person
 from apps.resources.models import Resource
-from apps.services.models import Service
+from apps.services.models import (
+    Service,
+    ServiceType,
+    ServiceTypeCode,
+    ServiceTypeDimension,
+)
 
 User = get_user_model()
 
@@ -89,7 +94,7 @@ def test_create_organization(client, org_tree, staff_user):
     assert org.path == f"{muni.path}.npar"
 
 
-def test_create_service(client, org_tree, make_member):
+def test_create_service(client, org_tree, make_member, default_service_type):
     user = User.objects.create_user(username="sm_lc", password="x")
     manager = make_member(
         user,
@@ -105,6 +110,7 @@ def test_create_service(client, org_tree, make_member):
             "organization": org_tree["municipality"].pk,
             "name": "Street Lighting",
             "status": "OPERATIONAL",
+            "service_type": default_service_type.pk,
             "service_manager": manager.pk,
         },
     )
@@ -116,7 +122,42 @@ def test_create_service(client, org_tree, make_member):
     assert service.manager().person == manager
 
 
-def test_create_service_requires_manager(client, org_tree, make_member):
+def test_create_management_service_auto_creates_departments(client, org_tree, make_member):
+    """A Management-type service fans out into its four department children."""
+    user = User.objects.create_user(username="mgmt_lc", password="x")
+    manager = make_member(
+        user,
+        org_tree["municipality"],
+        "service.create",
+        "service.view",
+        "organization.view",
+    )
+    assert client.login(username="mgmt_lc", password="x")
+    resp = client.post(
+        reverse("services:create"),
+        {
+            "organization": org_tree["municipality"].pk,
+            "name": "City Services",
+            "status": "OPERATIONAL",
+            "service_type": ServiceType.objects.get(code=ServiceTypeCode.MANAGEMENT).pk,
+            "service_manager": manager.pk,
+        },
+    )
+    assert resp.status_code == 302
+    parent = Service.objects.get(organization_id=org_tree["municipality"].pk, name="City Services")
+    children = set(
+        Service.objects.filter(parent=parent).values_list("service_type__code", flat=True)
+    )
+    assert children == {"it", "supplies", "finance", "hr"}
+
+
+def test_service_dimension_comes_from_its_service_type(org_tree, make_service):
+    """Regression: Service.dimension used to resolve to None for every service."""
+    service = make_service(org_tree["municipality"], "Street Lighting")
+    assert service.dimension == ServiceTypeDimension.VALUE_STREAMS_AND_PROCESSES
+
+
+def test_create_service_requires_manager(client, org_tree, make_member, default_service_type):
     """The create form must reject a service without a Service Manager."""
     user = User.objects.create_user(username="no_mgr", password="x")
     make_member(
@@ -133,6 +174,7 @@ def test_create_service_requires_manager(client, org_tree, make_member):
             "organization": org_tree["municipality"].pk,
             "name": "Street Lighting",
             "status": "OPERATIONAL",
+            "service_type": default_service_type.pk,
         },
     )
     assert resp.status_code == 200

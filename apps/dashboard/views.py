@@ -100,7 +100,11 @@ class SetServiceContextView(LoginRequiredMixin, View):
             return self._redirect(request)
         role = pair[1] or ""
         match = next(
-            (s for s in _visible_services_list(request.user) if s["pk"] == pk and s["role_code"] == role),
+            (
+                s
+                for s in _visible_services_list(request.user)
+                if s["pk"] == pk and s["role_code"] == role
+            ),
             None,
         )
         if match is None:
@@ -143,7 +147,8 @@ class SetOrganizationContextView(LoginRequiredMixin, View):
             from apps.common.context_processors import _visible_services_list
 
             still_valid = any(
-                s["pk"] == service_context.get("pk") and s["role_code"] == service_context.get("role")
+                s["pk"] == service_context.get("pk")
+                and s["role_code"] == service_context.get("role")
                 for s in _visible_services_list(request.user, org_pk=pk)
             )
             if not still_valid:

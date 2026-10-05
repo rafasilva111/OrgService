@@ -2,7 +2,7 @@
 
 Responsibilities handled here (all keyword flavoured like apex):
   * global search (``?q=``) across ``searchable`` columns;
-  * per-column filters (text / choice / daterange) via ``?key=value``;
+  * per-column filters (text / choice / daterange / subtree) via ``?key=value``;
   * sorting via ``?sort=key`` or ``?sort=-key``;
   * pagination from the config;
   * HTMX partial rendering (``HX-Request`` or ``?partial=table``);
@@ -15,11 +15,11 @@ return ``Model.objects.visible_to(user, action)`` (see apps.common.authorization
 from urllib.parse import urlencode
 
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils.dateparse import parse_date
 from django.views.generic import ListView
 
-from .config import FilterKind, TableConfig
+from .config import Column, FilterKind, TableConfig
 
 
 def db_key(key: str) -> str:
@@ -108,7 +108,35 @@ class TableView(ListView):
                     if parsed:
                         qs = qs.filter(**{f"{lookup}__lte": parsed})
                         active[f"{param}__to"] = d_to
+            elif filt.kind == FilterKind.SUBTREE:
+                value = self.request.GET.get(param, "").strip()
+                try:
+                    pk = int(value)
+                except ValueError:
+                    pk = None
+                if pk is not None:
+                    path = filt.resolved_subtree_path(self, str(pk))
+                    if path:
+                        # __descendants (<@) includes the node itself, so selecting
+                        # a parent yields that node plus everything beneath it.
+                        qs = qs.filter(**{f"{lookup}__descendants": path})
+                        active[param] = value
         return qs, active
+
+    def sort_expression(self, sort_key: str, column: Column):
+        """Order-by expression for ``sort_key``, honouring ``nulls_first``.
+
+        PostgreSQL defaults to NULLS LAST when ascending, which buries blank
+        values at the bottom of the table. Columns that opt in want them on top;
+        reversing the sort reverses their placement, so the ordering stays the
+        exact inverse either way. Django rejects ``nulls_first=False``, so the
+        unopted-in case must pass ``None`` and keep the database default.
+        """
+        field = F(db_key(sort_key.lstrip("-")))
+        nulls_first = True if column.nulls_first else None
+        if sort_key.startswith("-"):
+            return field.desc(nulls_first=None if nulls_first else True)
+        return field.asc(nulls_first=nulls_first)
 
     def apply_sort(self, qs):
         config = self.get_table_config()
@@ -118,7 +146,7 @@ class TableView(ListView):
             stripped = sort_key.lstrip("-")
             column = next((c for c in config.columns if c.key == stripped), None)
             if column is not None and column.sortable:
-                qs = qs.order_by(db_key(sort_key))
+                qs = qs.order_by(self.sort_expression(sort_key, column))
         return qs, sort_key
 
     def get_queryset(self):

@@ -150,7 +150,7 @@ class Command(BaseCommand):
             user.set_password(password)
             user.save()
             self.stdout.write(self.style.WARNING(f"Created superuser '{username}'."))
-        person, _ = Person.objects.get_or_create(
+        person, _created = Person.objects.get_or_create(
             email=email,
             defaults={
                 "full_name": "System Administrator",
@@ -253,7 +253,7 @@ class Command(BaseCommand):
         for name, org_key, status, type_code in catalog:
             org = orgs[org_key]
             service_type = ServiceType.objects.get(code=type_code)
-            service, _ = Service.objects.get_or_create(
+            service, _created = Service.objects.get_or_create(
                 organization=org,
                 name=name,
                 defaults={
@@ -280,13 +280,11 @@ class Command(BaseCommand):
         ]
         for dept_name, type_code, username in dept_info:
             dept_type = ServiceType.objects.get(code=type_code)
-            dept, _ = Service.objects.get_or_create(
+            dept, created = Service.objects.get_or_create(
                 organization=parent_svc.organization,
                 name=dept_name,
                 defaults={
-                    "description": _(
-                        "Department of %(parent)s." % {"parent": parent_svc.name}
-                    ),
+                    "description": f"Department of {parent_svc.name}.",
                     "status": parent_svc.status,
                     "service_type": dept_type,
                     "parent": parent_svc,
@@ -337,7 +335,7 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.WARNING(f"Created demo user '{username}' / '{username}123'.")
                 )
-            person, _ = Person.objects.get_or_create(
+            person, _created = Person.objects.get_or_create(
                 email=email,
                 defaults={
                     "full_name": full_name,
@@ -388,7 +386,9 @@ class Command(BaseCommand):
         # Give the platform admin (superuser) every existing role at Torres
         # Vedras, so the header service/role selector can swap between all
         # contexts (a person may hold several roles in the same org).
-        admin_person = Person.objects.filter(email=os.environ.get("DJANGO_SUPERUSER_EMAIL", "admin@example.local")).first()
+        admin_person = Person.objects.filter(
+            email=os.environ.get("DJANGO_SUPERUSER_EMAIL", "admin@example.local")
+        ).first()
         if admin_person is not None:
             for role in Role.objects.all():
                 OrganizationMembership.objects.get_or_create(
@@ -479,7 +479,7 @@ class Command(BaseCommand):
         role_sm = Role.objects.get(code="SERVICE_MANAGER")
 
         def build(name, service, description, steps):
-            wf, _ = Workflow.objects.get_or_create(
+            wf, _created = Workflow.objects.get_or_create(
                 service=service,
                 name=name,
                 defaults={
@@ -492,7 +492,7 @@ class Command(BaseCommand):
             )
             created = {}
             for code, sname, step_type, order, role, inputs, sla in steps:
-                step, _ = WorkflowStep.objects.get_or_create(
+                step, _created = WorkflowStep.objects.get_or_create(
                     workflow=wf,
                     code=code,
                     defaults={
@@ -804,7 +804,7 @@ class Command(BaseCommand):
             ),
         ]
         for service, rtype_code, title, desc, status, priority, assigned_key, workflow in samples:
-            req, _ = Request.objects.get_or_create(
+            req, _created = Request.objects.get_or_create(
                 service=service,
                 title=title,
                 defaults={
@@ -911,7 +911,7 @@ class Command(BaseCommand):
             ),
         ]
         for service, title, desc, status, prio, impact, urgency, assigned in samples:
-            incident, _ = Incident.objects.get_or_create(
+            incident, _created = Incident.objects.get_or_create(
                 service=service,
                 title=title,
                 defaults={
@@ -969,7 +969,7 @@ class Command(BaseCommand):
             ),
         ]
         for service, title, desc, status, priority, assigned, cause in problems:
-            problem, _ = Problem.objects.get_or_create(
+            problem, _created = Problem.objects.get_or_create(
                 service=service,
                 title=title,
                 defaults={
@@ -1037,7 +1037,7 @@ class Command(BaseCommand):
             ),
         ]
         for service, title, desc, reason, risk, status, requested_by, d_start, d_end in changes:
-            change, _ = Change.objects.get_or_create(
+            change, _created = Change.objects.get_or_create(
                 service=service,
                 title=title,
                 defaults={
@@ -1087,7 +1087,7 @@ class Command(BaseCommand):
         ]
         for rtype, name, code, org, service in resources:
             widget = Resource if rtype == ResourceType.VEHICLE else Equipment
-            resource, _ = widget.objects.get_or_create(
+            resource, _created = widget.objects.get_or_create(
                 code=code,
                 defaults={
                     "resource_type": rtype,
@@ -1125,7 +1125,7 @@ class Command(BaseCommand):
         ]
         metrics = {}
         for code, name, unit, agg, service in catalog:
-            metric, _ = Metric.objects.get_or_create(
+            metric, _created = Metric.objects.get_or_create(
                 code=code,
                 defaults={
                     "name": name,
@@ -1168,7 +1168,7 @@ class Command(BaseCommand):
                 },
             )
 
-        kpi, _ = KPI.objects.get_or_create(
+        kpi, _created = KPI.objects.get_or_create(
             code="waste_service_health",
             defaults={
                 "name": "Waste Service Health",
@@ -1203,7 +1203,7 @@ class Command(BaseCommand):
             if not wf:
                 return
             steps = {s.code: s for s in wf.steps.all()}
-            execn, _ = WorkflowExecution.objects.get_or_create(
+            execn, _created = WorkflowExecution.objects.get_or_create(
                 workflow=wf,
                 started_at=started,
                 defaults={
@@ -1233,7 +1233,7 @@ class Command(BaseCommand):
                 deadline=NOW + timedelta(hours=4),
                 started_at=NOW - timedelta(hours=3),
             )
-        exec2, _ = add_execution(
+        exec2, _created = add_execution(
             wf_waste,
             "end",
             ExecutionStatus.COMPLETED,
@@ -1271,7 +1271,7 @@ class Command(BaseCommand):
                 deadline=NOW + timedelta(hours=6),
                 started_at=NOW - timedelta(days=1),
             )
-        exec4, _ = add_execution(
+        exec4, _created = add_execution(
             wf_water,
             "end",
             ExecutionStatus.COMPLETED,

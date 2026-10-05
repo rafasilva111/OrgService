@@ -18,7 +18,6 @@ list other services it consumes via ``consumed_services`` (M2M through
 
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from apps.common.models import ActiveModel, SoftDeleteModel, TimeStampedModel
@@ -41,23 +40,20 @@ class ServiceTypeDimension(models.TextChoices):
     VALUE_STREAMS_AND_PROCESSES = "VALUE_STREAMS_AND_PROCESSES", _("Value Streams and Processes")
 
 
-class ServiceType(models.TextChoices):
-    FINANCE = "FINANCE", _("Finance")
-    HR = "HR", _("Human Resources")
-    SUPPLIES = "SUPPLIES", _("Supplies")
-    IT = "IT", _("IT")
-    PROCESSES = "PROCESSES", _("Processes")
-    MANAGEMENT = "MANAGEMENT", _("Management")
+class ServiceTypeCode(models.TextChoices):
+    """Canonical ``ServiceType.code`` values.
 
+    The values are the lowercase slugs actually stored in the database (see the
+    ``RunPython`` in ``migrations/0003_service_type_parent_consumption.py``), so a
+    member compares directly against ``ServiceType.code``.
+    """
 
-_SERVICE_TYPE_DIMENSION = {
-    ServiceType.FINANCE: ServiceTypeDimension.ORGANIZATIONS_AND_PEOPLE,
-    ServiceType.HR: ServiceTypeDimension.ORGANIZATIONS_AND_PEOPLE,
-    ServiceType.SUPPLIES: ServiceTypeDimension.PARTNERS_AND_SUPPLIERS,
-    ServiceType.IT: ServiceTypeDimension.INFORMATION_AND_TECHNOLOGY,
-    ServiceType.PROCESSES: ServiceTypeDimension.VALUE_STREAMS_AND_PROCESSES,
-    ServiceType.MANAGEMENT: ServiceTypeDimension.ORGANIZATIONS_AND_PEOPLE,
-}
+    FINANCE = "finance", _("Finance")
+    HR = "hr", _("Human Resources")
+    SUPPLIES = "supplies", _("Supplies")
+    IT = "it", _("IT")
+    PROCESSES = "processes", _("Processes")
+    MANAGEMENT = "management", _("Management")
 
 
 class Service(SoftDeleteModel, ActiveModel):
@@ -134,14 +130,14 @@ class Service(SoftDeleteModel, ActiveModel):
 
     @property
     def dimension(self):
-        """The ITIL dimension this service type belongs to."""
-        return _SERVICE_TYPE_DIMENSION.get(self.service_type_id)
+        """The ITIL dimension this service belongs to, via its service type."""
+        return self.service_type.dimension
 
 
 class ServiceType(models.Model):
     """Classifies a service into one of the four ITIL dimensions."""
 
-    code = models.SlugField(_("code"), unique=True, max_length=64)
+    code = models.SlugField(_("code"), unique=True, max_length=64, choices=ServiceTypeCode.choices)
     name = models.CharField(_("name"), max_length=128)
     dimension = models.CharField(
         _("dimension"),
@@ -202,9 +198,7 @@ class ServiceConsumption(TimeStampedModel):
     ``reason`` and ``since`` metadata.
     """
 
-    service = models.ForeignKey(
-        Service, on_delete=models.CASCADE, related_name="consumed_through"
-    )
+    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="consumed_through")
     consumed = models.ForeignKey(
         Service,
         on_delete=models.CASCADE,

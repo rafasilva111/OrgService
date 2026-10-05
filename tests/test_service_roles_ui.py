@@ -15,8 +15,7 @@ pytestmark = pytest.mark.django_db
 def test_profile_shows_service_roles_for_unrestricted_membership(
     client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
-    svc = make_service(org_tree["municipality"], "Street Lighting")
-    from apps.organizations.models import OrganizationMembership
+    make_service(org_tree["municipality"], "Street Lighting")
 
     user = make_user()
     role = make_role(code="analyst", permissions=["service.view", "organization.view"])
@@ -29,11 +28,17 @@ def test_profile_shows_service_roles_for_unrestricted_membership(
 
 
 def test_profile_service_roles_respect_service_access(
-    client, make_user, make_person, make_role, make_membership, grant_service, org_tree, make_service
+    client,
+    make_user,
+    make_person,
+    make_role,
+    make_membership,
+    grant_service,
+    org_tree,
+    make_service,
 ):
     allowed = make_service(org_tree["municipality"], "Waste Collection")
-    hidden = make_service(org_tree["municipality"], "Street Lighting")
-    from apps.organizations.models import OrganizationMembership
+    make_service(org_tree["municipality"], "Street Lighting")
 
     user = make_user()
     role = make_role(code="operator", permissions=["service.view"])
@@ -50,7 +55,6 @@ def test_header_dropdown_lists_visible_services(
     client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
     svc = make_service(org_tree["municipality"], "Waste Management")
-    from apps.organizations.models import OrganizationMembership
 
     user = make_user()
     role = make_role(code="viewer", permissions=["service.view"])
@@ -116,7 +120,8 @@ def test_session_service_context_is_validated(
 def test_membership_drives_service_selector(
     client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
-    svc = make_service(org_tree["municipality"], "Street Lighting")
+    make_service(org_tree["municipality"], "Street Lighting")
+
     user = make_user()
     role = make_role(code="executive", permissions=["service.view"])
     make_membership(make_person(user), org_tree["municipality"], role)

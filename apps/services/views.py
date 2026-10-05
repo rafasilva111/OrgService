@@ -23,6 +23,7 @@ from apps.services.models import (
     ServiceConsumption,
     ServiceStatus,
     ServiceType,
+    ServiceTypeCode,
 )
 from apps.workflows.models import Workflow, WorkflowExecution
 
@@ -61,9 +62,7 @@ class ServiceCreateForm(forms.ModelForm):
     consumed_services = forms.ModelMultipleChoiceField(
         queryset=Service.objects.none(),
         label=_("Consumed services"),
-        help_text=_(
-            "Other services this service depends on (Value Streams and Processes)."
-        ),
+        help_text=_("Other services this service depends on (Value Streams and Processes)."),
         required=False,
         widget=forms.CheckboxSelectMultiple,
     )
@@ -95,12 +94,8 @@ class ServiceCreateForm(forms.ModelForm):
             visible = visible.filter(
                 id__in=Organization.objects.visible_to(self._user, "organization.view")
             )
-        self.fields["parent"].queryset = Service.objects.filter(
-            organization__in=visible
-        )
-        self.fields["consumed_services"].queryset = Service.objects.filter(
-            organization__in=visible
-        )
+        self.fields["parent"].queryset = Service.objects.filter(organization__in=visible)
+        self.fields["consumed_services"].queryset = Service.objects.filter(organization__in=visible)
 
     def _create_departments(self, service):
         """Auto-create the 4 department children for Management-type services."""
@@ -109,9 +104,7 @@ class ServiceCreateForm(forms.ModelForm):
             Service.objects.create(
                 organization=service.organization,
                 name=f"{service.name} — {code.capitalize()}",
-                description=_(
-                    "Department of %(parent)s." % {"parent": service.name}
-                ),
+                description=_("Department of {parent}.").format(parent=service.name),
                 service_type=type_map[code],
                 parent=service,
                 status=service.status,
@@ -136,11 +129,6 @@ class ServiceCreateView(CatalogCreateView):
         kwargs["user"] = self.request.user
         return kwargs
 
-    def get_form(self):
-        form = super().get_form()
-        form._scope_service_choices(form.cleaned_data.get("organization"))
-        return form
-
     def form_valid(self, form):
         from django.contrib import messages
         from django.http import HttpResponseRedirect
@@ -159,11 +147,9 @@ class ServiceCreateView(CatalogCreateView):
             self.object.save()
             # M2M consumed_services via ServiceConsumption
             for svc in consumed:
-                ServiceConsumption.objects.get_or_create(
-                    service=self.object, consumed=svc
-                )
-            # Auto-create department children for Management type
-            if service_type.code == ServiceType.MANAGEMENT:
+                ServiceConsumption.objects.get_or_create(service=self.object, consumed=svc)
+            # Auto-create department children for Management type.
+            if service_type.code == ServiceTypeCode.MANAGEMENT:
                 form._create_departments(self.object)
             # Create Service Manager actor
             manager_role, _ = Role.objects.get_or_create(
@@ -264,7 +250,9 @@ class ServiceDetailView(BreadcrumbsMixin, ScopedDetailView):
         )
         ctx["active_workflow_count"] = ctx["workflows"].filter(status="ACTIVE").count()
         ctx["children"] = service.children.alive().select_related("service_type")
-        ctx["consumed"] = service.consumed_through.select_related("consumed").order_by("-created_at")
+        ctx["consumed"] = service.consumed_through.select_related("consumed").order_by(
+            "-created_at"
+        )
         return ctx
 
 

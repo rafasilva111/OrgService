@@ -119,6 +119,27 @@ def service_filter_choices(view):
     ]
 
 
+def visible_orgs(user):
+    """Organizations the user may see — source of truth for custom-scoped queries."""
+    from apps.organizations.models import Organization
+
+    return Organization.objects.visible_to(user, action="organization.view")
+
+
+def org_filter_choices(view):
+    """Dynamic (pk, name) choices for a table's "Parent organization" dropdown.
+
+    Pass directly as a ``Filter.choices_callable`` — scopes options to what the
+    requesting user may see, matching the authorization scope applied to the rows
+    themselves. Ordered by ``path`` so the list reads top-down through the
+    hierarchy.
+    """
+    return [
+        (str(o.pk), o.name)
+        for o in visible_orgs(view.request.user).alive().order_by("path").only("id", "name")
+    ]
+
+
 def visible_org_ids(user):
     """Organization ids the user may see (empty means superuser sees all).
 

@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from apps.services.models import Service, ServiceActor, ServiceCapability, ServiceCapabilityAssignment, ServiceConsumption, ServiceType
+from apps.services.models import (
+    Service,
+    ServiceActor,
+    ServiceCapability,
+    ServiceCapabilityAssignment,
+    ServiceConsumption,
+    ServiceType,
+)
 
 
 @admin.register(ServiceType)

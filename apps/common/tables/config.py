@@ -4,8 +4,9 @@ Pure data, no rendering logic — ``TableView`` (views.py) interprets these
 dataclasses; the templates under ``templates/core/tables/`` render them.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 
 class FilterKind(str):
@@ -14,6 +15,7 @@ class FilterKind(str):
     TEXT = "text"
     CHOICE = "choice"
     DATERANGE = "daterange"
+    SUBTREE = "subtree"
 
 
 @dataclass
@@ -30,6 +32,14 @@ class Filter:
     services the current user may see) — takes the ``TableView`` instance and
     returns ``[(value, label), ...]``. Takes precedence over ``choices``.
     Daterange filters use ``<param>__from`` and ``<param>__to``.
+
+    Subtree filters match a whole hierarchy rooted at the selected node.
+    ``param`` holds that node's primary key while ``lookup`` names the ltree
+    field on the *listed* model, and ``subtree_resolver`` translates the pk into
+    the path to match. Matching uses ``<lookup>__descendants``, which includes
+    the node itself — so selecting a parent returns its entire subtree. Supply a
+    ``choices_callable`` alongside it; the drawer renders subtree filters as a
+    dropdown.
     """
 
     kind: str
@@ -39,6 +49,7 @@ class Filter:
     placeholder: str = ""
     param: str | None = None
     lookup: str | None = None
+    subtree_resolver: Callable[[Any, str], str | None] | None = None
 
     def resolved_param(self, column_key: str) -> str:
         return self.param or column_key
@@ -51,6 +62,12 @@ class Filter:
             return list(self.choices_callable(view))
         return self.choices or []
 
+    def resolved_subtree_path(self, view: Any, value: str) -> str | None:
+        """Path to match for the pk in ``value``, or ``None`` to skip filtering."""
+        if self.subtree_resolver is None:
+            return None
+        return self.subtree_resolver(view, value)
+
 
 @dataclass
 class Column:
@@ -61,6 +78,7 @@ class Column:
     filter: Filter | None = None
     template: str | None = None  # cell fragment under templates/
     width: str | None = None
+    nulls_first: bool = False  # when sorting, put blank values at the top
 
     def resolved_filter(self) -> Filter | None:
         if self.filter is None:

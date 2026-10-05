@@ -82,7 +82,7 @@ means “everything under the organization subtree”.
 
 ## Canned catalogue (`python manage.py seed_rbac`)
 
-Idempotent; upserts 29 permissions and 9 roles:
+Idempotent; upserts **41 permissions** and 9 roles:
 
 | Role | Highlights |
 |---|---|

@@ -62,7 +62,7 @@ def test_can_on_resource(request_graph):
 
 
 @pytest.mark.django_db
-def test_does_not_flow_upward_or_sibling(request_graph, org_tree):
+def test_does_not_flow_upward_or_sibling(request_graph, org_tree, default_service_type):
     g = request_graph
     op = g["operator"]
     outside = Organization.objects.create(
@@ -71,10 +71,11 @@ def test_does_not_flow_upward_or_sibling(request_graph, org_tree):
         organization_type="PARISH",
         parent=org_tree["district"],
     )
-    service_c = None
     from apps.services.models import Service
 
-    service_c = Service.objects.create(organization=outside, name="C")
+    service_c = Service.objects.create(
+        organization=outside, name="C", service_type=default_service_type
+    )
     rt = RequestType.objects.first()
     req_c = Request.objects.create(service=service_c, request_type=rt, title="rC")
 
