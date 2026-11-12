@@ -2118,3 +2118,6 @@ msgid ""
 msgstr ""
 "Objetivos de nível de serviço. Cada oferta de serviço mantém um SLA de "
 "resolução igual ao seu SLA total."
+
+msgid "Message to the requester (optional — makes this step a notification)"
+msgstr "Mensagem para o requerente (opcional — torna o passo uma notificação)"

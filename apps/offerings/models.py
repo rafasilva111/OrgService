@@ -307,12 +307,9 @@ class OfferingStep(TimeStampedModel):
 
     @property
     def is_external(self):
-        """Handed to an offering of *another* service: its type and SLA come
-        from that offering and it has no role of its own."""
-        return (
-            self.service_offering_id is not None
-            and self.service_offering.service_id != self.offering.service_id
-        )
+        """Handed to another offering (of this or another service): its type and
+        SLA come from that offering and it has no role of its own."""
+        return self.service_offering_id is not None and self.service_offering_id != self.offering_id
 
     @property
     def is_delegated(self):

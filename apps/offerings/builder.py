@@ -28,7 +28,6 @@ from apps.offerings.models import (
 
 END = "end"
 START = "start"
-EDITABLE_STEP_TYPES = (StepType.TASK, StepType.APPROVAL, StepType.GATEWAY, StepType.NOTIFY)
 
 
 @dataclass
@@ -70,6 +69,20 @@ def _unique_key(raw, index, taken):
     return key
 
 
+def infer_step_type(*, external, message, on_error):
+    """The step type is not typed in the editor; it follows from the step:
+    handed to another service → task (shown with that offering's type);
+    a message for the requester → notification; an error branch → approval
+    (a check that can fail); otherwise a task."""
+    if external:
+        return StepType.TASK
+    if message:
+        return StepType.NOTIFY
+    if on_error:
+        return StepType.APPROVAL
+    return StepType.TASK
+
+
 def parse_definition(raw, *, roles, offerings, own_service_id=None):
     """Validate the editor's JSON.
 
@@ -78,9 +91,10 @@ def parse_definition(raw, *, roles, offerings, own_service_id=None):
     a ``ParseResult``; invalid values are dropped from the specs so a preview
     can still render while errors are reported per step.
 
-    A step handed to an offering of another service than ``own_service_id`` is
-    *external*: it has no role, its type is a plain task (shown as the
-    responsible offering's type) and its SLA is that offering's total SLA.
+    A step handed to another offering (``service_offering`` set) is *external*:
+    it has no role, its type is a plain task (shown as the responsible
+    offering's type) and its SLA is that offering's total SLA.
+    ``own_service_id`` is kept for callers; the rule no longer depends on it.
     """
     errors, step_errors = [], {}
     try:
@@ -103,11 +117,6 @@ def parse_definition(raw, *, roles, offerings, own_service_id=None):
         name = str(item.get("name") or "").strip()[:255]
         if not name:
             problems.append(_("Give the step a name."))
-        step_type = item.get("step_type") or StepType.TASK
-        if step_type not in EDITABLE_STEP_TYPES:
-            problems.append(_("Unknown step type."))
-            step_type = StepType.TASK
-
         service_offering = None
         if item.get("service_offering") not in (None, ""):
             try:
@@ -116,16 +125,13 @@ def parse_definition(raw, *, roles, offerings, own_service_id=None):
                 service_offering = None
             if service_offering is None:
                 problems.append(_("The responsible service offering is not available."))
-        external = (
-            service_offering is not None
-            and own_service_id is not None
-            and service_offering.service_id != own_service_id
-        )
+        # Any responsible offering other than this one: the step's SLA (and the
+        # type shown) come from that offering and it has no role of its own.
+        external = service_offering is not None
 
         role, sla = None, None
         if external:
             # Computed from the responsible offering; typed values are ignored.
-            step_type = StepType.TASK
             sla = service_offering.sla_minutes
         else:
             if item.get("role") not in (None, ""):
@@ -146,9 +152,10 @@ def parse_definition(raw, *, roles, offerings, own_service_id=None):
             inputs = inputs.split(",")
         inputs = [str(i).strip() for i in inputs if str(i).strip()]
 
-        message = str(item.get("message") or "").strip()
-        if step_type == StepType.NOTIFY and not message:
-            problems.append(_("Write the message to send to the requester."))
+        message = "" if external else str(item.get("message") or "").strip()
+        step_type = infer_step_type(
+            external=external, message=message, on_error=str(item.get("on_error") or "")
+        )
 
         specs.append(
             StepSpec(
@@ -184,6 +191,8 @@ def parse_definition(raw, *, roles, offerings, own_service_id=None):
             setattr(spec, attr, target)
         if not spec.next:
             spec.next = specs[index + 1].key if index + 1 < len(specs) else END
+        if spec.step_type == StepType.APPROVAL and not spec.on_error:
+            spec.step_type = StepType.TASK  # its error branch was invalid and dropped
     return ParseResult(specs, errors, step_errors)
 
 
@@ -451,9 +460,7 @@ def preview_steps(specs, own_offering):
             sla_minutes=spec.sla_minutes,
             effective_offering=responsible,
             is_delegated=spec.service_offering is not None,
-            is_external=spec.service_offering is not None
-            and own_offering.service_id is not None
-            and spec.service_offering.service_id != own_offering.service_id,
+            is_external=spec.service_offering is not None,
             message=spec.message,
         )
         by_key[spec.key] = item

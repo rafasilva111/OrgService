@@ -100,7 +100,7 @@ A request triggers an offering; the linkage is the generic `subject` on `Offerin
 | `MetricValue` | Observation over a window | FK metric, `value`, `period_start`/`period_end`, `dimension` (JSON slices, e.g. `{service: 5}`). |
 | `KPI` | Higher-level indicator | `code` unique, M2M `metrics` via `KpiMetric` (weighted), optional FK service, `target_value`/`tolerance`. |
 | `KpiMetric` | Weighted contribution of a metric to a KPI | Unique `(kpi, metric)`. |
-| `SLA` | Service-level expectation | FK service (optional), `name`, `priority`, `scope` (RESPONSE/RESOLUTION), `target_minutes`. Unique `(service, name, scope)`. |
+| `SLA` | Service-level expectation | FK service (optional), `name`, `priority`, `scope` (RESPONSE/RESOLUTION), `target_minutes`. Unique `(service, name, scope)`. Optional FK `offering`: one RESOLUTION SLA per service offering, synced from its total SLA. |
 
 ## Relationship map (summary)
 

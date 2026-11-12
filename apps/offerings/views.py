@@ -200,12 +200,6 @@ class OfferingExecutionListView(BreadcrumbsMixin, PermissionRequiredMixin, Table
 
 
 # --------------------------------------------------------------------- builder
-EDITOR_STEP_TYPES = [
-    (StepType.TASK, StepType.TASK.label),
-    (StepType.APPROVAL, StepType.APPROVAL.label),
-    (StepType.GATEWAY, StepType.GATEWAY.label),
-    (StepType.NOTIFY, StepType.NOTIFY.label),
-]
 
 
 class OfferingBuilderView(BreadcrumbsMixin, CreatePermissionMixin, FormView):
@@ -291,6 +285,7 @@ class OfferingBuilderView(BreadcrumbsMixin, CreatePermissionMixin, FormView):
                     "onRequest": bool(form["on_request"].value()),
                     "onSchedule": bool(form["on_schedule"].value()),
                     "frequency": form["recurrence_frequency"].value() or "",
+                    "service": str(form["service"].value() or ""),
                     "interval": _int_or_none(form["recurrence_interval"].value()) or 1,
                 },
                 "editor_units": {
@@ -312,7 +307,6 @@ class OfferingBuilderView(BreadcrumbsMixin, CreatePermissionMixin, FormView):
                     ],
                 },
                 "editor_options": {
-                    "stepTypes": [[k, str(v)] for k, v in EDITOR_STEP_TYPES],
                     "roles": [[r.pk, r.name] for r in step_role_choices()],
                     "offerings": offering_rows,
                     "organizations": organizations,

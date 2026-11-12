@@ -54,7 +54,7 @@ def location_options(offerings, services=()):
         least one of ``offerings``: ``{id, name, type, ancestors}`` where
         ``ancestors`` are the ids of their location ancestors;
       * offerings — ``[id, label, [location ids], service id, total SLA (text),
-        type name]``;
+        type name, description]``;
       * service_chains — ``{service id: [location ids]}`` for ``services`` (the
         services the offering itself can belong to), used to pre-fill the cascade
         with the offering's own location.
@@ -90,6 +90,7 @@ def location_options(offerings, services=()):
                 offering.offering_type.name
                 if offering.offering_type_id
                 else str(_("To be defined")),
+                (offering.description or "")[:400],
             ]
         )
     service_chains = {}
@@ -169,6 +170,7 @@ class ServiceOfferingForm(forms.ModelForm):
             manageable_services(user).select_related("organization").order_by("name")
         )
         self.fields["service"].label_from_instance = lambda s: f"{s.name} — {s.organization.name}"
+        self.fields["service"].widget.attrs["x-model"] = "service"  # editor state
         self.fields["offering_type"].queryset = ServiceOfferingType.objects.order_by("name")
         # Optional: "To be defined" (no type yet) is the empty choice.
         self.fields["offering_type"].required = False

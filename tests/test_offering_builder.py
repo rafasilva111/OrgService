@@ -53,7 +53,8 @@ def test_parse_reports_problems_per_step():
         ]
     )
     assert not result.ok
-    assert set(result.step_errors) == {0, 1, 2, 3, 4, 5}
+    # "D" has no message, so it is simply a task now (type is inferred).
+    assert set(result.step_errors) == {0, 1, 2, 4, 5}
     assert result.steps[1].next == "c"  # invalid ref dropped → default following
     assert result.steps[2].on_error == ""
 
@@ -96,6 +97,7 @@ def ctx(client, make_user, make_person, make_role, make_membership, org_tree, ma
         name="Limpeza de espaço público",
         status=OfferingStatus.ACTIVE,
         sla_minutes=480,  # 8h total
+        description="Limpeza de ruas e espaços verdes.",
         offering_type=ServiceOfferingType.objects.create(code="CLEANING", name="Limpeza"),
     )
     outside = make_service(org_tree["parish_b"], "Outside")
@@ -165,9 +167,9 @@ def test_create_draft_builds_steps_and_branches(ctx):
     steps = list(offering.steps.order_by("order"))
     assert [s.step_type for s in steps] == [
         StepType.START,
-        StepType.TASK,
-        StepType.TASK,
-        StepType.NOTIFY,
+        StepType.APPROVAL,  # has an error branch
+        StepType.TASK,  # handed to another service
+        StepType.NOTIFY,  # has a message for the requester
         StepType.END,
     ]
     start, validate, burial, notify, end = steps
@@ -643,16 +645,19 @@ def test_external_step_takes_type_sla_and_no_role_from_the_offering(ctx):
     )
     step = own.steps[0]
     assert (step.step_type, step.role, step.sla_minutes) == (StepType.TASK, None, 480)
-    assert other.steps[0].sla_minutes == 60  # no own service known → typed values kept
-
+    # Any chosen offering (any service) supplies the SLA; typed values are ignored.
+    assert other.steps[0].sla_minutes == 480
     same_service = parse_definition(
         json.dumps(plan),
         roles=[ctx["role"]],
         offerings=[ctx["cleaning"]],
         own_service_id=ctx["cleaning"].service_id,
     )
-    assert same_service.steps[0].sla_minutes == 60  # same service → manual SLA/role
-    assert same_service.steps[0].role == ctx["role"]
+    assert same_service.steps[0].sla_minutes == 480
+    assert same_service.steps[0].role is None
+
+    manual = _parse([{"key": "own", "name": "Own", "sla": "1h"}])  # "this offering"
+    assert manual.steps[0].sla_minutes == 60
 
 
 def test_total_sla_follows_the_normal_path_only(ctx):
@@ -707,6 +712,7 @@ def test_preview_total_sla_and_editor_rows_carry_service_sla_and_type(ctx):
     )
     row = next(r for r in options["offerings"] if r[0] == ctx["cleaning"].pk)
     assert row[3] == ctx["cleaning"].service_id and row[4] == "8h" and row[5] == "Limpeza"
+    assert row[6] == ctx["cleaning"].description
 
 
 # ------------------------------------------------ one SLA record per offering
@@ -768,3 +774,37 @@ def test_sla_list_shows_offering_slas_in_scope(ctx, make_role, make_person, make
     assert reverse("offerings:detail", args=[funeral.pk]) in body
     assert "2h" in body
     assert "Hidden SLA" not in body
+
+
+def test_service_select_is_bound_to_editor_state(ctx):
+    """The external-step rules (type/role/SLA) and the cascade pre-fill react to the
+    Service select through Alpine state, not a one-off DOM read."""
+    url = reverse("offerings:create") + f"?service={ctx['cemetery'].pk}"
+    body = ctx["client"].get(url).content.decode()
+    select = (
+        body.split('name="service"')[0].rsplit("<select", 1)[1]
+        + body.split('name="service"')[1].split(">")[0]
+    )
+    assert 'x-model="service"' in select
+    schedule = json.loads(
+        body.split('id="editor-schedule" type="application/json">')[1].split("</script>")[0]
+    )
+    assert schedule["service"] == str(ctx["cemetery"].pk)
+    assert 'getElementById("id_service")' not in body
+
+
+def test_step_type_is_inferred_not_typed():
+    result = _parse(
+        [
+            {"key": "a", "name": "A", "step_type": "NOTIFY"},  # typed type is ignored
+            {"key": "b", "name": "B", "message": "Olá"},
+            {"key": "c", "name": "C", "on_error": "b"},
+            {"key": "d", "name": "D", "on_error": "missing"},  # invalid branch dropped
+        ]
+    )
+    assert [s.step_type for s in result.steps] == [
+        StepType.TASK,
+        StepType.NOTIFY,
+        StepType.APPROVAL,
+        StepType.TASK,
+    ]
