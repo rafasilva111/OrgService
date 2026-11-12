@@ -6,9 +6,17 @@
 
 {% block content %}
 <div class="space-y-6">
-  <div>
-    <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Service Offerings' %}</h1>
-    <p class="mt-1 text-sm text-zinc-500">{% translate 'Versioned definitions describing how work is performed.' %}</p>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Service Offerings' %}</h1>
+      <p class="mt-1 text-sm text-zinc-500">{% translate 'Versioned definitions describing how work is performed.' %}</p>
+    </div>
+    {% if request.user|has_perm:"offering.manage" %}
+    <a href="{% url 'offerings:create' %}"
+       class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700">
+      {% icon "plus" class_name="size-4" %} {% translate 'New service offering' %}
+    </a>
+    {% endif %}
   </div>
 
   {% include "core/tables/_table.html" %}

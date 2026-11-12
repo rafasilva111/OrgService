@@ -20,6 +20,7 @@ from apps.common.mixins import (
 from apps.common.tables.config import BulkAction, Column, Filter, FilterKind, TableConfig
 from apps.common.tables.filters import organization_column
 from apps.common.tables.views import TableView
+from apps.offerings.builder import annotate_flow, steps_queryset
 from apps.offerings.models import OfferingStatus, ServiceOffering
 from apps.people.models import Person
 from apps.requests.models import Priority, Request, RequestStatus
@@ -33,7 +34,10 @@ def offerings_for_service(user, service_pk):
         return ServiceOffering.objects.none()
     return (
         ServiceOffering.objects.filter(
-            service__in=visible_services(user), service_id=service_pk, status=OfferingStatus.ACTIVE
+            service__in=visible_services(user),
+            service_id=service_pk,
+            status=OfferingStatus.ACTIVE,
+            on_request=True,
         )
         .select_related("offering_type")
         .order_by("name", "-version")
@@ -41,9 +45,7 @@ def offerings_for_service(user, service_pk):
 
 
 def offering_steps(offering):
-    return offering.steps.select_related(
-        "responsible_role", "offering__service", "service_offering__service"
-    ).order_by("order")
+    return annotate_flow(steps_queryset(offering))
 
 
 def offering_label(offering):
@@ -299,7 +301,10 @@ class RequestOfferingStepsView(CreatePermissionMixin, View):
             pk = None
         selected = (
             ServiceOffering.objects.filter(
-                pk=pk, service__in=visible_services(request.user), status=OfferingStatus.ACTIVE
+                pk=pk,
+                service__in=visible_services(request.user),
+                status=OfferingStatus.ACTIVE,
+                on_request=True,
             ).first()
             if pk is not None
             else None

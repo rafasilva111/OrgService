@@ -20,6 +20,11 @@ RUN uv sync --locked --no-dev --no-install-project
 
 COPY . .
 
+# Collect static files into STATIC_ROOT for WhiteNoise (prod settings). The
+# secret/hosts below are throwaway build-time values; collectstatic needs no DB.
+RUN ENVIRONMENT=prod DJANGO_SECRET_KEY=build-only-collectstatic DJANGO_ALLOWED_HOSTS=localhost \
+    python manage.py collectstatic --noinput
+
 # Run as a non-privileged user (defense in depth).
 RUN useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app

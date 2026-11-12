@@ -23,7 +23,7 @@ catalogue by delegating to ``seed_rbac``.
 """
 
 import os
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -45,10 +45,11 @@ from apps.offerings.models import (
     OfferingStep,
     OfferingTask,
     OfferingTransition,
-    OfferingTrigger,
+    RecurrenceFrequency,
     ServiceOffering,
     ServiceOfferingType,
     StepType,
+    TransitionOutcome,
 )
 from apps.organizations.models import Organization, OrganizationMembership
 from apps.people.models import Person, PersonType, Skill
@@ -542,10 +543,15 @@ class Command(BaseCommand):
             service,
             description,
             steps,
-            trigger=OfferingTrigger.REQUEST,
+            on_request=True,
+            schedule=None,
             created_by="a.duarte",
             offering_type=None,
+            flow=None,
         ):
+            # ``flow``: {code: {"next": code, "on_error": code, "message": str}};
+            # steps without an explicit ``next`` follow the list order.
+            flow = flow or {}
             otype = ServiceOfferingType.objects.get(code=offering_type) if offering_type else None
             wf, _created = ServiceOffering.objects.get_or_create(
                 service=service,
@@ -554,11 +560,17 @@ class Command(BaseCommand):
                     "description": description,
                     "version": 1,
                     "status": OfferingStatus.ACTIVE,
-                    "trigger": trigger,
+                    "on_request": on_request,
                     "created_by": people.get(created_by),
                     "offering_type": otype,
                 },
             )
+            if schedule and not wf.on_schedule:
+                # Recurring as well: {frequency, interval, month_day, start, ...}.
+                wf.on_schedule = True
+                for key, value in schedule.items():
+                    setattr(wf, f"recurrence_{key}", value)
+                wf.save()
             if otype is not None and wf.offering_type_id is None:
                 wf.offering_type = otype
                 wf.save(update_fields=["offering_type", "updated_at"])
@@ -574,18 +586,30 @@ class Command(BaseCommand):
                         "responsible_role": role,
                         "required_inputs": inputs,
                         "sla_minutes": sla,
+                        "message": flow.get(code, {}).get("message", ""),
                     },
                 )
                 created[code] = step
-            # Linear flow: each step moves to the next one by ``order``.
             ordered = [created[code] for code, *_rest in sorted(steps, key=lambda s: s[3])]
-            for from_step, to_step in zip(ordered, ordered[1:], strict=False):
-                OfferingTransition.objects.get_or_create(
-                    offering=wf,
-                    from_step=from_step,
-                    order=10,
-                    defaults={"to_step": to_step},
-                )
+            for index, from_step in enumerate(ordered[:-1]):
+                rules = flow.get(from_step.code, {})
+                edges = {
+                    TransitionOutcome.SUCCESS: created[rules["next"]]
+                    if "next" in rules
+                    else ordered[index + 1],
+                }
+                if "on_error" in rules:
+                    edges[TransitionOutcome.FAILURE] = created[rules["on_error"]]
+                for outcome, to_step in edges.items():
+                    OfferingTransition.objects.update_or_create(
+                        offering=wf,
+                        from_step=from_step,
+                        outcome=outcome,
+                        defaults={
+                            "to_step": to_step,
+                            "order": 10 if outcome == TransitionOutcome.SUCCESS else 20,
+                        },
+                    )
             return wf
 
         build(
@@ -713,7 +737,13 @@ class Command(BaseCommand):
                 ("verify", "Verificar limpeza", StepType.APPROVAL, 40, role_sm, [], 1440),
                 ("end", "Fim", StepType.END, 50, None, [], None),
             ],
-            trigger=OfferingTrigger.MANUAL,
+            # Monthly cleaning on day 1, plus extra cleanings on request.
+            schedule={
+                "frequency": RecurrenceFrequency.MONTHLY,
+                "interval": 1,
+                "month_day": 1,
+                "start": date(2026, 12, 1),
+            },
             created_by="p.lopes",
             offering_type="CLEANING",
         )
@@ -745,10 +775,30 @@ class Command(BaseCommand):
                 ("prepare", "Preparar sepultura", StepType.TASK, 40, role_op, [], 1440),
                 ("burial", "Realizar inumação", StepType.TASK, 50, role_op, [], None),
                 ("register", "Registar inumação", StepType.TASK, 60, role_sm, [], 1440),
+                (
+                    "notify_missing_docs",
+                    "Notificar requerente",
+                    StepType.NOTIFY,
+                    65,
+                    role_sm,
+                    [],
+                    60,
+                ),
                 ("end", "Fim", StepType.END, 70, None, [], None),
             ],
             created_by="p.lopes",
             offering_type="FUNERAL",
+            flow={
+                # Missing/invalid documents: tell the requester and stop.
+                "validate": {"on_error": "notify_missing_docs"},
+                "register": {"next": "end"},
+                "notify_missing_docs": {
+                    "next": "end",
+                    "message": "A documentação entregue está incompleta ou inválida. "
+                    "Por favor entregue a certidão de óbito e o requerimento em falta "
+                    "para podermos realizar o funeral.",
+                },
+            },
         )
         build(
             "Realizar transladação",
@@ -786,7 +836,9 @@ class Command(BaseCommand):
                 step.service_offering = ServiceOffering.objects.get(
                     service=services[service_name], name=responsible_offering_name
                 )
-                step.save(update_fields=["service_offering", "updated_at"])
+                # External step: no role of its own (type/SLA come from the offering).
+                step.responsible_role = None
+                step.save(update_fields=["service_offering", "responsible_role", "updated_at"])
 
         delegate(
             "Limpar cemitério",
@@ -800,6 +852,22 @@ class Command(BaseCommand):
             "Espaço Público, Infraestruturas e Edifícios",
             "Manutenção de espaço público",
         )
+
+        # Total SLAs: responsible offerings first, then copy their totals into the
+        # external steps that point at them, then the offerings using them.
+        from apps.offerings.builder import refresh_offering_sla
+
+        offerings = list(ServiceOffering.objects.all())
+        for offering in offerings:
+            refresh_offering_sla(offering)
+        for step in OfferingStep.objects.filter(service_offering__isnull=False).select_related(
+            "offering", "service_offering"
+        ):
+            if step.is_external and step.sla_minutes != step.service_offering.sla_minutes:
+                step.sla_minutes = step.service_offering.sla_minutes
+                step.save(update_fields=["sla_minutes", "updated_at"])
+        for offering in offerings:
+            refresh_offering_sla(offering)
 
     # ---------------------------------------------------------------- requests
     def _seed_requests(self, services, people):

@@ -79,7 +79,7 @@ Portugal            (COUNTRY)
 - **Problems** (3): `Recurring water main failures`, `Failing lighting control gear`, `Sewer blockages in the old town` (linked to incidents).
 - **Changes** (4): `Replace aging trunk main section` (PROPOSED), `Smart bins pilot rollout` (SCHEDULED), with EXECUTIVE approval rows.
 - **Service Offerings** (5): `Waste Collection Request` and `Water Maintenance Request` — each a `start → assign → work → verify → end` definition with transitions, plus 4 executions/tasks (running + completed).
-  Cemitérios (Matacães) adds three Portuguese offerings owned by `p.lopes`: `Limpar cemitério` (manual), `Realizar um funeral` and `Realizar transladação`. Every offering's steps are chained linearly by `order`. A step can name a responsible offering of another service (`OfferingStep.service_offering`; its service is `service_offering.service`).
+  Cemitérios (Matacães) adds three Portuguese offerings owned by `p.lopes`: `Limpar cemitério` (on request + monthly on day 1), `Realizar um funeral` and `Realizar transladação`. Every offering's steps are chained linearly by `order`. A step can name a responsible offering of another service (`OfferingStep.service_offering`; its service is `service_offering.service`).
 - **Resources**: skip truck `TV-103`, bulk water tanker, road compactor — each assigned to field operator `p.nunes`.
 - **Metrics**: `requests_created`/`requests_resolved` with 6 months of monthly values (a "waste service health" story), plus KPI `waste_service_health` and two SLAs (240 min / 1440 min response and resolution targets on Waste Management).
 - **Events/audit**: a `request.created` Event and a `seed.default_dataset` AuditLog.
@@ -117,10 +117,13 @@ A Service is created with a **Service Manager** (`ServiceCreateForm`/`ServiceCre
 3. `Service.clean()` raises `ValidationError` if an updated service would be left without an active manager; the seed stderr-fails if any service has none.
 
 ### Service Offerings (definition vs instance)
-`ServiceOffering` = immutable definition (service, name, version, status ACTIVE, trigger REQUEST) with ordered `OfferingStep`s (START / TASK / APPROVAL / END, `responsible_role`, `required_inputs`, SLA minutes) and `OfferingTransition`s. `OfferingExecution` = a run of a definition: `status` (RUNNING/COMPLETED/…), `current_step`, `completed_at`, plus `OfferingTask`s (assigned to a person, PENDING/IN_PROGRESS/DONE, deadline).
+`ServiceOffering` = immutable definition (service, name, version, status ACTIVE, `on_request` and/or `on_schedule`) with ordered `OfferingStep`s (START / TASK / APPROVAL / END, `responsible_role`, `required_inputs`, SLA minutes) and `OfferingTransition`s. `OfferingExecution` = a run of a definition: `status` (RUNNING/COMPLETED/…), `current_step`, `completed_at`, plus `OfferingTask`s (assigned to a person, PENDING/IN_PROGRESS/DONE, deadline).
 
 ### New request = service + offering
 `/requests/new/` asks for a **Service** first — pre-selected from the header's service (or `?service=<pk>`) — and then one of **that service's active offerings** (required). Changing the service reloads the offering list over HTMX (`/requests/new/offerings/?service=<pk>`). There is no separate request type: the type is the offering's `ServiceOfferingType` (e.g. Manutenção, Limpeza, Serviço funerário).
+
+### Building service offerings
+Managers with `offering.manage` create offerings at `/service-offerings/new/` (button on the list): offering fields (the offering type can be left "to be defined") plus an editable list of steps (responsible offering picked by district → municipality → parish, then step type, role, SLA), each with a *next* step and an optional *on error* branch; **Notification** steps hold a message for the requester. An offering starts **on request** (listed in New request) and/or **on a recurring schedule** (daily/weekly/monthly/yearly, with start/end dates). Each offering stores a **total SLA** (sum of the step SLAs on the normal path; a step handed to another service counts that offering's total, and its type/role come from it). SLAs are typed as durations such as `1d 4h 30m`. Offerings start as **drafts**, **Publish** makes them available to new requests (the previous active version is deprecated), and a published offering is changed through **New version**. Branches/notifications are declarative for now — there is no execution engine.
 
 ### Catalog lifecycle (soft-delete)
 Organization / Service / Person / Resource / Role support **create / activate / deactivate / soft-delete** via generic lifecycle views (`apps/common/lifecycle.py`): POST-only, gated by `*.create` / `*.manage` / `*.delete`, scoped (404 outside scope). `soft_delete()` fills `deleted_at`; lists hide deleted rows via `.alive()` (seeds keep working because `get_or_create` still sees them).
@@ -161,7 +164,7 @@ All demo users have password **`<username>123`** (e.g. `a.duarte` / `a.duarte123
 # Docker (db + web):
 docker compose up -d --build        # web at http://localhost:8000
 # entrypoint runs migrate + seed_rbac + seed_default_data automatically
-# (set SEED_DATA=0 to skip seeding)
+# (set SEED_DATA=0 to skip the demo dataset; seed_rbac always runs)
 
 # Fresh reset with demo data:
 docker compose exec web python manage.py seed_default_data --reset
@@ -179,11 +182,19 @@ Main surfaces: `/` (context-aware overview), `/organizations/tree/` (org tree wi
 
 The header profile menu selects the working **organization** and then an optional **service/role**. The Overview link follows that selection: service → `/service/<pk>/`, organization → `/organization/<pk>/`, neither → the global executive overview. Clicking the active service clears it; clicking the active organization clears both. Services stay hidden until an organization is selected. List views follow the same scope automatically: a selected service scopes lists to it, and a selected organization scopes them to its subtree when no service is picked. An explicit `?organization=<pk>` (subtree scope) or `?service=<pk>` drill-down filter overrides the header scope for that request; an empty value (`?service=`) means “All”.
 
+### CI/CD & automatic deploy (GitHub Actions)
+
+- **Pull request into `dev`/`main`** → `.github/workflows/ci.yml` runs lint (ruff), `pip-audit` and pytest (Postgres 16).
+- **Push/merge to `dev`** → `.github/workflows/deploy-dev.yml` reruns the CI and, if it passes, SSHes into the server, checks out the pushed commit and runs `docker compose -f docker-compose.prod.yml up -d --build`, then waits for a health check.
+- `docker-compose.prod.yml` bakes the code into the image (no bind mounts), keeps Postgres off the host, forces `ENVIRONMENT=prod` (gunicorn + WhiteNoise) and seeds the demo data only when `SEED_DATA=1`.
+- Required secrets (GitHub Environment `dev`): `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PATH`, optional `DEPLOY_PORT`. The server keeps its own `.env`.
+- Server setup and rollback: `.opencode/obsidian/Procedures/Deploying.md`.
+
 ---
 
 ## 6. Test status & known issues
 
-- Test suite: **238 passed, 0 failed** (`.venv/bin/python -m pytest -q`).
+- Test suite: **312 passed, 0 failed** (`.venv/bin/python -m pytest -q`).
 - Lint and formatting are clean (`.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`).
 - Model state is in sync with migrations (`.venv/bin/python manage.py makemigrations --check --dry-run`).
 - Run pytest **sequentially** — concurrent runs race on the shared `test_orgplatform` database.

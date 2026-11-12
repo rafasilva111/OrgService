@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main, dev]
+  # Reused by deploy-dev.yml, which runs this whole CI before deploying `dev`
+  # (so pushes to `dev` are not tested twice).
+  workflow_call:
 
 jobs:
   lint:

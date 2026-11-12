@@ -14,11 +14,28 @@
         <span class="rounded-full bg-zinc-100 px-2.5 py-0.5 font-mono text-xs font-medium text-zinc-600">v{{ offering.version }}</span>
       </div>
       <p class="text-sm text-zinc-500">
-        {{ offering.service.name }}{% if offering.offering_type %} &middot; {{ offering.offering_type.name }}{% endif %} &middot; {{ offering.get_trigger_display }}
+        {{ offering.service.name }} &middot; {% if offering.offering_type %}{{ offering.offering_type.name }}{% else %}{% translate 'To be defined' %}{% endif %}
       </p>
       <p class="max-w-2xl text-sm text-zinc-600">{% if offering.description %}{{ offering.description }}{% else %}{% translate 'No description provided.' %}{% endif %}</p>
     </div>
-    <a href="{% url 'offerings:index' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50">&larr; {% translate 'Service Offerings' %}</a>
+    <div class="flex flex-wrap items-center gap-2">
+      {% if can_manage %}
+        {% if offering.is_editable %}
+        <a href="{% url 'offerings:edit' offering.pk %}" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700">{% translate 'Edit' %}</a>
+        <form method="post" action="{% url 'offerings:publish' offering.pk %}">{% csrf_token %}
+          <button type="submit" class="rounded-lg border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50">{% translate 'Publish' %}</button>
+        </form>
+        <form method="post" action="{% url 'offerings:delete' offering.pk %}" onsubmit="return confirm('{% translate "Delete this draft?" %}')">{% csrf_token %}
+          <button type="submit" class="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50">{% translate 'Delete' %}</button>
+        </form>
+        {% else %}
+        <form method="post" action="{% url 'offerings:new_version' offering.pk %}">{% csrf_token %}
+          <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700">{% translate 'New version' %}</button>
+        </form>
+        {% endif %}
+      {% endif %}
+      <a href="{% url 'offerings:index' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50">&larr; {% translate 'Service Offerings' %}</a>
+    </div>
   </div>
 
   {% if versions.count > 1 %}
@@ -32,6 +49,8 @@
     </div>
   </div>
   {% endif %}
+
+  {% include "offerings/_availability.html" %}
 
   {% include "offerings/_steps.html" %}
 

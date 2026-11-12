@@ -5,13 +5,14 @@ offering is ``(service, name)`` and ``version`` is a positive integer. New
 definitions are added as new rows, never by mutating a released version.
 
 The subject that starts an execution is intentionally generic
-(``GenericForeignKey``) so requests, incidents, changes and manual triggers
+(``GenericForeignKey``) so requests, incidents, changes and scheduled runs
 can all be wired without import cycles.
 """
 
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
-from django.db import models
+from django.db import models, transaction
+from django.db.models import Max
 from django.utils.translation import gettext_lazy as _
 
 from apps.common.models import TimeStampedModel
@@ -23,10 +24,22 @@ class OfferingStatus(models.TextChoices):
     DEPRECATED = "DEPRECATED", _("Deprecated")
 
 
-class OfferingTrigger(models.TextChoices):
-    MANUAL = "MANUAL", _("Manual")
-    REQUEST = "REQUEST", _("Request")
-    EVENT = "EVENT", _("Event")
+class RecurrenceFrequency(models.TextChoices):
+    DAILY = "DAILY", _("Daily")
+    WEEKLY = "WEEKLY", _("Weekly")
+    MONTHLY = "MONTHLY", _("Monthly")
+    YEARLY = "YEARLY", _("Yearly")
+
+
+RECURRENCE_FIELDS = (
+    "recurrence_frequency",
+    "recurrence_interval",
+    "recurrence_weekdays",
+    "recurrence_month_day",
+    "recurrence_month",
+    "recurrence_start",
+    "recurrence_end",
+)
 
 
 class ServiceOfferingType(TimeStampedModel):
@@ -64,9 +77,27 @@ class ServiceOffering(TimeStampedModel):
     status = models.CharField(
         _("status"), max_length=32, choices=OfferingStatus.choices, default=OfferingStatus.DRAFT
     )
-    trigger = models.CharField(
-        _("trigger"), max_length=32, choices=OfferingTrigger.choices, default=OfferingTrigger.MANUAL
+    # How the offering is started — independent flags, at least one is set:
+    # citizens can ask for it (Novo Pedido) and/or it runs on its recurrence.
+    on_request = models.BooleanField(_("on request"), default=True)
+    on_schedule = models.BooleanField(_("recurring"), default=False)
+    # Total SLA: sum of the step SLAs along the normal path Início → Fim
+    # (error branches excluded). Computed when the plan is saved; steps handed
+    # to another service take that offering's total (see builder.offering_sla).
+    sla_minutes = models.PositiveIntegerField(_("SLA (minutes)"), null=True, blank=True)
+    # Recurrence (only when ``on_schedule``): "every <interval> <frequency>" on
+    # the given weekdays (0 = Monday) / day of month / month, from start to end.
+    recurrence_frequency = models.CharField(
+        _("repeats"), max_length=16, choices=RecurrenceFrequency.choices, blank=True, default=""
     )
+    recurrence_interval = models.PositiveSmallIntegerField(_("every"), default=1)
+    recurrence_weekdays = models.JSONField(_("weekdays"), default=list, blank=True)
+    recurrence_month_day = models.PositiveSmallIntegerField(
+        _("day of month"), null=True, blank=True
+    )
+    recurrence_month = models.PositiveSmallIntegerField(_("month"), null=True, blank=True)
+    recurrence_start = models.DateField(_("starts on"), null=True, blank=True)
+    recurrence_end = models.DateField(_("ends on"), null=True, blank=True)
     offering_type = models.ForeignKey(
         ServiceOfferingType,
         on_delete=models.PROTECT,
@@ -90,14 +121,101 @@ class ServiceOffering(TimeStampedModel):
             models.UniqueConstraint(
                 fields=["service", "name", "version"], name="u_offering_version"
             ),
+            models.CheckConstraint(
+                condition=models.Q(on_request=True) | models.Q(on_schedule=True),
+                name="offering_on_request_or_schedule",
+            ),
         ]
         indexes = [
             models.Index(fields=["service", "status"]),
-            models.Index(fields=["status", "trigger"]),
+            models.Index(fields=["status", "on_request"]),
         ]
 
     def __str__(self):
         return f"{self.name} v{self.version} ({self.service})"
+
+    # ------------------------------------------------------------ recurrence
+    @property
+    def is_recurring(self):
+        return self.on_schedule and bool(self.recurrence_frequency)
+
+    def recurrence_summary(self):
+        """Human sentence, e.g. "Every month on day 1, starting 01/12/2026"."""
+        from apps.offerings.recurrence import summary
+
+        return summary(self) if self.is_recurring else ""
+
+    def availability_summary(self):
+        """E.g. "On request · Every month on day 1, starting 01/12/2026"."""
+        parts = []
+        if self.on_request:
+            parts.append(str(_("On request")))
+        if self.is_recurring:
+            parts.append(self.recurrence_summary())
+        return " · ".join(parts)
+
+    def next_occurrences(self, count=3, after=None):
+        from apps.offerings.recurrence import occurrences
+
+        return occurrences(self, count=count, after=after) if self.is_recurring else []
+
+    @property
+    def is_editable(self):
+        """Only drafts can change; published versions are immutable (ADR-005)."""
+        return self.status == OfferingStatus.DRAFT
+
+    def publish(self):
+        """Validate the step graph, make this version ACTIVE and deprecate the
+        previously active versions of the same ``(service, name)``."""
+        from apps.offerings.builder import validate_offering_graph
+
+        validate_offering_graph(self)
+        with transaction.atomic():
+            ServiceOffering.objects.filter(
+                service_id=self.service_id, name=self.name, status=OfferingStatus.ACTIVE
+            ).exclude(pk=self.pk).update(status=OfferingStatus.DEPRECATED)
+            self.status = OfferingStatus.ACTIVE
+            self.save(update_fields=["status", "updated_at"])
+
+    def new_version(self, created_by=None):
+        """Copy this offering (steps and transitions included) into a DRAFT with
+        the next version number."""
+        with transaction.atomic():
+            latest = ServiceOffering.objects.filter(
+                service_id=self.service_id, name=self.name
+            ).aggregate(v=Max("version"))["v"]
+            draft = ServiceOffering.objects.create(
+                service_id=self.service_id,
+                name=self.name,
+                description=self.description,
+                version=(latest or self.version) + 1,
+                status=OfferingStatus.DRAFT,
+                on_request=self.on_request,
+                on_schedule=self.on_schedule,
+                sla_minutes=self.sla_minutes,
+                **{name: getattr(self, name) for name in RECURRENCE_FIELDS},
+                offering_type_id=self.offering_type_id,
+                created_by=created_by,
+            )
+            copies = {}
+            for step in self.steps.order_by("order"):
+                old_pk = step.pk
+                step.pk = None
+                step.id = None
+                step.offering = draft
+                step.save()
+                copies[old_pk] = step
+            for tr in self.transitions.all():
+                OfferingTransition.objects.create(
+                    offering=draft,
+                    from_step=copies[tr.from_step_id],
+                    to_step=copies[tr.to_step_id],
+                    outcome=tr.outcome,
+                    order=tr.order,
+                    name=tr.name,
+                    condition=tr.condition,
+                )
+        return draft
 
     @classmethod
     def current_version(cls, service, name):
@@ -115,6 +233,7 @@ class StepType(models.TextChoices):
     TASK = "TASK", _("Task")
     GATEWAY = "GATEWAY", _("Gateway")
     APPROVAL = "APPROVAL", _("Approval")
+    NOTIFY = "NOTIFY", _("Notification")
     END = "END", _("End")
 
 
@@ -150,6 +269,9 @@ class OfferingStep(TimeStampedModel):
     sla_minutes = models.PositiveIntegerField(
         _("SLA (minutes)"), null=True, blank=True, help_text=_("Deadline for this step.")
     )
+    # Notification steps: text sent to the requester (declarative until an
+    # execution engine exists).
+    message = models.TextField(_("message"), blank=True, default="")
     required_inputs = models.JSONField(_("required inputs"), default=list, blank=True)
     outputs = models.JSONField(_("outputs"), default=list, blank=True)
 
@@ -174,8 +296,38 @@ class OfferingStep(TimeStampedModel):
         return self.effective_offering.service
 
     @property
+    def is_external(self):
+        """Handed to an offering of *another* service: its type and SLA come
+        from that offering and it has no role of its own."""
+        return (
+            self.service_offering_id is not None
+            and self.service_offering.service_id != self.offering.service_id
+        )
+
+    @property
     def is_delegated(self):
         return self.service_offering_id is not None and self.service_offering_id != self.offering_id
+
+    def _target(self, outcome):
+        # Iterates ``outgoing`` so a ``prefetch_related("outgoing__to_step")``
+        # avoids per-step queries.
+        for transition in self.outgoing.all():
+            if transition.outcome == outcome:
+                return transition.to_step
+        return None
+
+    @property
+    def next_step(self):
+        return self._target(TransitionOutcome.SUCCESS)
+
+    @property
+    def failure_step(self):
+        return self._target(TransitionOutcome.FAILURE)
+
+
+class TransitionOutcome(models.TextChoices):
+    SUCCESS = "SUCCESS", _("Success")
+    FAILURE = "FAILURE", _("Error")
 
 
 class OfferingTransition(TimeStampedModel):
@@ -188,6 +340,14 @@ class OfferingTransition(TimeStampedModel):
     to_step = models.ForeignKey(OfferingStep, on_delete=models.CASCADE, related_name="incoming")
     name = models.CharField(_("name"), max_length=255, blank=True, default="")
     order = models.PositiveIntegerField(_("order"), default=0)
+    # Branching: the SUCCESS edge is the normal path, FAILURE the "on error"
+    # path (e.g. notify the requester). At most one of each per step.
+    outcome = models.CharField(
+        _("outcome"),
+        max_length=16,
+        choices=TransitionOutcome.choices,
+        default=TransitionOutcome.SUCCESS,
+    )
     # "condition A" / "condition B" — JSON expression interpreted later.
     condition = models.JSONField(_("condition"), null=True, blank=True)
 
@@ -196,7 +356,7 @@ class OfferingTransition(TimeStampedModel):
         verbose_name_plural = _("offering transitions")
         constraints = [
             models.UniqueConstraint(
-                fields=["offering", "from_step", "order"], name="u_transition_order"
+                fields=["offering", "from_step", "outcome"], name="u_transition_outcome"
             ),
         ]
 

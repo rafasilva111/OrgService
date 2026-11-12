@@ -44,9 +44,9 @@ single authorization model can govern every one of them.
 | Model | Purpose | Key fields |
 |---|---|---|
 | `ServiceOfferingType` | Platform-wide category of offerings (replaces `RequestType`) | `code` unique, `name`, `description`. |
-| `ServiceOffering` | Versioned *definition* of work for a service | FK service, FK `offering_type` (PROTECT), `name`, `version` (default 1), `status` (DRAFT/ACTIVE/DEPRECATED), `trigger`, `created_by`. Unique `(service, name, version)`. `current_version()` = newest non-draft. |
-| `OfferingStep` | Activity/decision in a definition | FK offering, `code`, `step_type` (START/TASK/GATEWAY/APPROVAL/END), `order`, `responsible_role`, `service_offering` (responsible offering; blank = own, service via `service_offering.service`), `sla_minutes`, `required_inputs`/`outputs` (JSON). Unique `(offering, code)` and `(offering, order)`. |
-| `OfferingTransition` | Directed move between steps (branching) | FK offering, `from_step`, `to_step`, `condition` (JSON). Unique `(offering, from_step, order)`. |
+| `ServiceOffering` | Versioned *definition* of work for a service | FK service, FK `offering_type` (PROTECT), `name`, `version` (default 1), `status` (DRAFT/ACTIVE/DEPRECATED), `on_request` / `on_schedule` (at least one) + `recurrence_*` (frequency, interval, weekdays, month day, month, start, end), `created_by`. Unique `(service, name, version)`. `current_version()` = newest non-draft. |
+| `OfferingStep` | Activity/decision in a definition | FK offering, `code`, `step_type` (START/TASK/GATEWAY/APPROVAL/NOTIFY/END), `message` (NOTIFY: text for the requester), `order`, `responsible_role`, `service_offering` (responsible offering; blank = own, service via `service_offering.service`), `sla_minutes`, `required_inputs`/`outputs` (JSON). Unique `(offering, code)` and `(offering, order)`. |
+| `OfferingTransition` | Directed move between steps (branching) | FK offering, `from_step`, `to_step`, `outcome` (SUCCESS = next / FAILURE = on error), `condition` (JSON). Unique `(offering, from_step, outcome)`. |
 | `OfferingExecution` | An *instance* (run) of a definition | FK offering (PROTECT), `status` (PENDING/…), `current_step`, generic `subject`, timestamps, `created_by`. |
 | `OfferingTask` | Executable work item of an execution | FK execution, FK step, `title`, `assigned_to` (person), `status`, `deadline`, `result` (JSON). |
 

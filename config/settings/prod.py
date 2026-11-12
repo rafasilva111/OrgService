@@ -38,10 +38,18 @@ DEBUG = False
 ALLOWED_HOSTS = get_list("DJANGO_ALLOWED_HOSTS", required=True)
 
 # --- Static files -----------------------------------------------------------
-# Cache-busted filenames ("styles.abc123.css").
+# gunicorn serves the app directly (no nginx in docker-compose.prod.yml), so
+# WhiteNoise serves the collected files from STATIC_ROOT. It goes right after
+# SecurityMiddleware. Filenames are cache-busted ("styles.abc123.css") and
+# pre-compressed; `collectstatic` runs at image build time (Dockerfile).
+MIDDLEWARE = [
+    MIDDLEWARE[0],  # noqa: F405 — django.middleware.security.SecurityMiddleware
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    *MIDDLEWARE[1:],  # noqa: F405
+]
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
-    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
 }
 
 # --- Security hardening -----------------------------------------------------

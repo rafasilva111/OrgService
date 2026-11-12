@@ -1768,3 +1768,340 @@ msgstr "h"
 msgctxt "duration unit (minutes)"
 msgid "min"
 msgstr "min"
+
+msgid "A step cannot point to itself."
+msgstr "Um passo não pode apontar para si próprio."
+
+msgid "Add at least one step."
+msgstr "Adicione pelo menos um passo."
+
+msgid "Add step"
+msgstr "Adicionar passo"
+
+msgid ""
+"Define the work plan: the steps, who does them, and where to go when a step "
+"fails. Drafts can be changed freely; publishing makes the offering available"
+" for new requests."
+msgstr ""
+"Defina o plano de trabalho: os passos, quem os executa e para onde seguir "
+"quando um passo falha. Os rascunhos podem ser alterados livremente; ao "
+"publicar, a oferta fica disponível para novos pedidos."
+
+msgid "Delete this draft?"
+msgstr "Apagar este rascunho?"
+
+msgid "Draft deleted."
+msgstr "Rascunho apagado."
+
+msgid "Draft saved, but it cannot be published yet."
+msgstr "Rascunho guardado, mas ainda não pode ser publicado."
+
+msgid "Draft saved."
+msgstr "Rascunho guardado."
+
+msgid "Edit"
+msgstr "Editar"
+
+msgid "Edit %(name)s v%(version)s"
+msgstr "Editar %(name)s v%(version)s"
+
+msgid "Edit service offering"
+msgstr "Editar oferta de serviço"
+
+msgid "Error"
+msgstr "Erro"
+
+msgid "Fixed for new versions of an offering."
+msgstr "Fixo nas novas versões de uma oferta."
+
+msgid "Following step (default)"
+msgstr "Passo seguinte (por omissão)"
+
+msgid "Give the step a name."
+msgstr "Dê um nome ao passo."
+
+msgid "Message to the requester"
+msgstr "Mensagem para o requerente"
+
+msgid "Move down"
+msgstr "Mover para baixo"
+
+msgid "Move up"
+msgstr "Mover para cima"
+
+msgid "New draft version created."
+msgstr "Nova versão em rascunho criada."
+
+msgid "New service offering"
+msgstr "Nova oferta de serviço"
+
+msgid "New version"
+msgstr "Nova versão"
+
+msgid "No error branch"
+msgstr "Sem ramo de erro"
+
+msgid "Notification"
+msgstr "Notificação"
+
+msgid "On error"
+msgstr "Em caso de erro"
+
+msgid "Only draft offerings can be edited."
+msgstr "Só as ofertas em rascunho podem ser editadas."
+
+msgid "Points to a step that does not exist."
+msgstr "Aponta para um passo que não existe."
+
+msgid "Preview"
+msgstr "Pré-visualização"
+
+msgid "Publish"
+msgstr "Publicar"
+
+msgid "Remove step"
+msgstr "Remover passo"
+
+msgid "Required documents"
+msgstr "Documentos necessários"
+
+msgid "Responsible service offering"
+msgstr "Oferta de serviço responsável"
+
+msgid "SLA must be a whole number of minutes."
+msgstr "O SLA tem de ser um número inteiro de minutos."
+
+msgid "Save draft"
+msgstr "Guardar rascunho"
+
+msgid "Service offering published."
+msgstr "Oferta de serviço publicada."
+
+msgid "Start and End are added automatically."
+msgstr "Início e Fim são adicionados automaticamente."
+
+msgid "Step %(n)s"
+msgstr "Passo %(n)s"
+
+msgid "Step name"
+msgstr "Nome do passo"
+
+msgid "Success"
+msgstr "Sucesso"
+
+msgid "The responsible service offering is not available."
+msgstr "A oferta de serviço responsável não está disponível."
+
+msgid "The work plan could not be read."
+msgstr "Não foi possível ler o plano de trabalho."
+
+msgid "These steps can never be reached: %(steps)s."
+msgstr "Estes passos nunca são alcançados: %(steps)s."
+
+msgid "These steps never lead to the end: %(steps)s."
+msgstr "Estes passos nunca chegam ao fim: %(steps)s."
+
+msgid "This offering"
+msgstr "Esta oferta"
+
+msgid "This offering already has executions."
+msgstr "Esta oferta já tem execuções."
+
+msgid ""
+"This service already has an offering with this name — open it and create a "
+"new version instead."
+msgstr ""
+"Este serviço já tem uma oferta com este nome — abra-a e crie uma nova "
+"versão."
+
+msgid "Unknown role."
+msgstr "Papel desconhecido."
+
+msgid "Unknown step type."
+msgstr "Tipo de passo desconhecido."
+
+msgid "Unnamed step"
+msgstr "Passo sem nome"
+
+msgid "Write the message to send to the requester."
+msgstr "Escreva a mensagem a enviar ao requerente."
+
+msgid "comma separated"
+msgstr "separados por vírgulas"
+
+msgid "outcome"
+msgstr "resultado"
+
+msgid "Choose a district to list the offerings of other services."
+msgstr "Escolha um distrito para listar as ofertas de outros serviços."
+
+msgid "All municipalities"
+msgstr "Todos os municípios"
+
+msgid "All parishes"
+msgstr "Todas as freguesias"
+
+msgid "on %(days)s"
+msgstr "— %(days)s"
+
+msgid "on day %(day)s"
+msgstr "no dia %(day)s"
+
+msgid "on %(day)s %(month)s"
+msgstr "a %(day)s de %(month)s"
+
+msgid "starting %(date)s"
+msgstr "a partir de %(date)s"
+
+msgid "until %(date)s"
+msgstr "até %(date)s"
+
+msgid "On request"
+msgstr "Por pedido"
+
+msgid "on request"
+msgstr "por pedido"
+
+msgid "Recurring"
+msgstr "Recorrente"
+
+msgid "recurring"
+msgstr "recorrente"
+
+msgid "Citizens can ask for it in New request."
+msgstr "Os munícipes podem pedi-la em Novo pedido."
+
+msgid "It also runs on a repeating schedule."
+msgstr "Também é executada segundo uma agenda que se repete."
+
+msgid "Choose at least one: on request and/or recurring."
+msgstr "Escolha pelo menos uma: por pedido e/ou recorrente."
+
+msgid "Required for recurring offerings."
+msgstr "Obrigatório para ofertas recorrentes."
+
+msgid "Pick at least one day of the week."
+msgstr "Escolha pelo menos um dia da semana."
+
+msgid "Must be on or after the start date."
+msgstr "Tem de ser igual ou posterior à data de início."
+
+msgid "How it starts"
+msgstr "Como começa"
+
+msgid "Next runs"
+msgstr "Próximas execuções"
+
+msgid ""
+"The schedule is recorded with the offering; runs are not started "
+"automatically yet."
+msgstr ""
+"A agenda fica registada na oferta; as execuções ainda não são iniciadas "
+"automaticamente."
+
+msgid "Daily"
+msgstr "Diariamente"
+
+msgid "Weekly"
+msgstr "Semanalmente"
+
+msgid "Monthly"
+msgstr "Mensalmente"
+
+msgid "Yearly"
+msgstr "Anualmente"
+
+msgid "repeats"
+msgstr "repete"
+
+msgid "every"
+msgstr "a cada"
+
+msgid "weekdays"
+msgstr "dias da semana"
+
+msgid "day of month"
+msgstr "dia do mês"
+
+msgid "starts on"
+msgstr "começa em"
+
+msgid "ends on"
+msgstr "termina em"
+
+msgid "On"
+msgstr "Em"
+
+msgid "Day of month"
+msgstr "Dia do mês"
+
+msgid "Month"
+msgstr "Mês"
+
+msgid "Every day"
+msgid_plural "Every %(n)s days"
+msgstr[0] "Todos os dias"
+msgstr[1] "A cada %(n)s dias"
+
+msgid "Every week"
+msgid_plural "Every %(n)s weeks"
+msgstr[0] "Todas as semanas"
+msgstr[1] "A cada %(n)s semanas"
+
+msgid "Every month"
+msgid_plural "Every %(n)s months"
+msgstr[0] "Todos os meses"
+msgstr[1] "A cada %(n)s meses"
+
+msgid "Every year"
+msgid_plural "Every %(n)s years"
+msgstr[0] "Todos os anos"
+msgstr[1] "A cada %(n)s anos"
+
+msgid "Repeats"
+msgstr "Repete"
+
+msgid "month"
+msgstr "mês"
+
+msgctxt "recurrence unit"
+msgid "day"
+msgid_plural "days"
+msgstr[0] "dia"
+msgstr[1] "dias"
+
+msgctxt "recurrence unit"
+msgid "week"
+msgid_plural "weeks"
+msgstr[0] "semana"
+msgstr[1] "semanas"
+
+msgctxt "recurrence unit"
+msgid "month"
+msgid_plural "months"
+msgstr[0] "mês"
+msgstr[1] "meses"
+
+msgctxt "recurrence unit"
+msgid "year"
+msgid_plural "years"
+msgstr[0] "ano"
+msgstr[1] "anos"
+
+msgid "To be defined"
+msgstr "Por definir"
+
+msgid "e.g. 1d 4h 30m"
+msgstr "ex.: 1d 4h 30m"
+
+msgid "SLA must be a duration such as 1d 4h 30m."
+msgstr "O SLA tem de ser uma duração como 1d 4h 30m."
+
+msgid "Total SLA"
+msgstr "SLA total"
+
+msgid "From the responsible service offering"
+msgstr "Da oferta de serviço responsável"
+
+msgid "Total SLA of the responsible service offering"
+msgstr "SLA total da oferta de serviço responsável"

@@ -1,0 +1,47 @@
+# Production-style compose used by the automatic deploy (.github/workflows/deploy-dev.yml).
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Differences from docker-compose.yml (local development):
+# * code is baked into the image — no bind mounts, so the server runs exactly the
+#   commit that was deployed;
+# * Postgres is not published on the host, only reachable inside the compose network;
+# * always ENVIRONMENT=prod (gunicorn, DEBUG off, WhiteNoise static files);
+# * the demo dataset is NOT seeded unless SEED_DATA=1 is set in the server's .env.
+#
+# All configuration comes from .env next to this file on the server (never committed).
+name: orgservice
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    image: orgservice-web:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ENVIRONMENT: prod
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      SEED_DATA: ${SEED_DATA:-0}
+    ports:
+      - "${DJANGO_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

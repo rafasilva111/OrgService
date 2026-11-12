@@ -1,0 +1,6 @@
+{# Out-of-band: the summary under the schedule fields in the editor. #}
+<p id="schedule-summary" hx-swap-oob="true" class="text-sm font-medium text-indigo-700">{% if offering.is_recurring %}→ {{ offering.recurrence_summary }}{% endif %}</p>
+<div class="space-y-4">
+  {% include "offerings/_availability.html" %}
+  {% include "offerings/_steps.html" %}
+</div>

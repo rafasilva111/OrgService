@@ -17,6 +17,7 @@ dependencies = [
     "django-debug-toolbar==8.0.0",
     # Reads .env so config.settings can resolve ENVIRONMENT.
     "python-dotenv==1.2.4",
+    "whitenoise==6.9.0",
 ]
 
 [dependency-groups]
