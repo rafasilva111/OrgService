@@ -95,7 +95,7 @@ Portugal            (COUNTRY)
 - `ServiceAccess` rows restrict an org membership to specific services; **no rows = all services** under that org subtree.
 
 ### RBAC roles (`seed_rbac`, 41 permissions + 9 roles)
-Roles are permission bundles; every seeded person gets an `OrganizationMembership` (person↔org↔role):
+Roles are permission bundles; every seeded person gets an `OrganizationMembership` (person↔org↔role). Service managers get a **per-service** clone of `SERVICE_MANAGER` (e.g. `SERVICE_MANAGER_CEMETERIES`, every permission scoped to that one service) with a membership at the service's organization, so they only reach the services they manage:
 
 | Role | Focus | Key permissions |
 |---|---|---|
@@ -179,7 +179,7 @@ The header profile menu selects the working **organization** and then an optiona
 
 ## 6. Test status & known issues
 
-- Test suite: **211 passed, 0 failed** (`.venv/bin/python -m pytest -q`).
+- Test suite: **215 passed, 0 failed** (`.venv/bin/python -m pytest -q`).
 - Lint and formatting are clean (`.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`).
 - Model state is in sync with migrations (`.venv/bin/python manage.py makemigrations --check --dry-run`).
 - Run pytest **sequentially** — concurrent runs race on the shared `test_orgplatform` database.

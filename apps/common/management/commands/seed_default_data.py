@@ -32,6 +32,7 @@ from django.db import connection
 from django.utils import timezone
 
 from apps.access.models import Role
+from apps.access.scoping import ensure_service_manager_role
 from apps.audit.models import AuditLog
 from apps.changes.models import Change, ChangeApproval
 from apps.events.models import Event
@@ -484,6 +485,24 @@ class Command(BaseCommand):
         for svc_name, service in services.items():
             if not service.actors.filter(role=role_sm, active=True).exists():
                 self.stderr.write(self.style.ERROR(f"Service '{svc_name}' has NO Service Manager!"))
+
+        # Each Service Manager actor gets a service-scoped clone of the
+        # SERVICE_MANAGER role (every permission scoped SPECIFIC_SERVICE) and a
+        # membership at the service's organization, so they only reach the
+        # services they manage.
+        sm_actors = ServiceActor.objects.filter(
+            service__in=services.values(), role=role_sm, active=True, person__isnull=False
+        ).select_related("service", "person")
+        for actor in sm_actors:
+            scoped_role = ensure_service_manager_role(
+                role_sm, actor.service, key=SERVICE_MANAGER_ROLE_KEYS.get(actor.service.name)
+            )
+            OrganizationMembership.objects.get_or_create(
+                person=actor.person,
+                organization=actor.service.organization,
+                role=scoped_role,
+                defaults={"active": True},
+            )
         return people
 
     def _service_by_name(self, name):
