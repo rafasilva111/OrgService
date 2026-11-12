@@ -18,7 +18,7 @@ The default dataset makes the app immediately explorable — 9 municipal service
 
 | App | Holds | Notes |
 |---|---|---|
-| `organizations` | Organization (ltree tree), OrganizationMembership, OrganizationUnit | `PORTUGAL → LISBOA → TORRES-VEDRAS → 4 parishes` |
+| `organizations` | Organization (ltree tree), OrganizationMembership, OrganizationUnit | `PORTUGAL → LISBOA → TORRES-VEDRAS → 3 parishes` |
 | `services` | Service, ServiceActor, ServiceCapability/Assignment | each Service requires a Service Manager actor |
 | `people` | Person, Skill, PersonSkill | Person links 1:1 to a Django `User` |
 | `access` | Permission, Role, RolePermission, ServiceAccess | RBAC catalogue seeded by `seed_rbac` |
@@ -48,8 +48,7 @@ Seeded by `python manage.py seed_default_data [--reset]` (idempotent — stable 
 Portugal            (COUNTRY)
 └── Lisboa          (DISTRICT)
     └── Torres Vedras (MUNICIPALITY)
-        ├── São Pedro e Santiago (PARISH)
-        ├── Matacães             (PARISH)
+        ├── Santa Maria, São Pedro e Matacães (PARISH)
         ├── A dos Cunhados e Maceira (PARISH)
         └── Ramalhal             (PARISH)
 ```
@@ -64,9 +63,12 @@ Portugal            (COUNTRY)
 | Waste Management | Torres Vedras | OPERATIONAL | `a.duarte` |
 | Road Maintenance | Torres Vedras | OPERATIONAL | `t.pereira` |
 | Public Lighting | Torres Vedras | OPERATIONAL | `s.almeida` |
-| Public Health | São Pedro e Santiago | OPERATIONAL | `m.silva` |
-| Urban Cleaning | São Pedro e Santiago | OPERATIONAL | `p.lopes` |
-| Green Spaces & Parks | Matacães | OPERATIONAL | `r.costa` |
+| Serviços Gerais | Santa Maria, São Pedro e Matacães | OPERATIONAL | `m.silva` |
+| Serviços Educativos | Santa Maria, São Pedro e Matacães | OPERATIONAL | `r.costa` |
+| Espaço Público, Infraestruturas e Edifícios | Santa Maria, São Pedro e Matacães | OPERATIONAL | `p.lopes` |
+| Serviços Sociais e Associativismo | Santa Maria, São Pedro e Matacães | OPERATIONAL | `m.silva` |
+| Cemitérios | Santa Maria, São Pedro e Matacães | OPERATIONAL | `p.lopes` |
+| Limpeza Urbana e Espaços Verdes | Santa Maria, São Pedro e Matacães | OPERATIONAL | `p.lopes` |
 
 > Extra service actors: `l.rodrigues` (Operations Manager) on Water Supply; `p.nunes` (Operator) on Waste Management and Road Maintenance.
 
@@ -136,16 +138,16 @@ All demo users have password **`<username>123`** (e.g. `a.duarte` / `a.duarte123
 | `a.duarte` | Ana Duarte | SERVICE_MANAGER | Waste Management |
 | `t.pereira` | Tiago Pereira | SERVICE_MANAGER | Road Maintenance |
 | `s.almeida` | Sofia Almeida | SERVICE_MANAGER | Public Lighting |
-| `m.silva` | Mariana Silva | SERVICE_MANAGER | Public Health |
-| `r.costa` | Rui Costa | SERVICE_MANAGER | Green Spaces & Parks |
+| `m.silva` | Mariana Silva | SERVICE_MANAGER | Serviços Gerais, Serviços Sociais e Associativismo |
+| `r.costa` | Rui Costa | SERVICE_MANAGER | Serviços Educativos |
 | `n.barreto` | Nuno Barreto | SERVICE_MANAGER | Sanitation Network |
-| `p.lopes` | Paula Lopes | SERVICE_MANAGER | Urban Cleaning |
+| `p.lopes` | Paula Lopes | SERVICE_MANAGER | Espaço Público, Infraestruturas e Edifícios; Cemitérios; Limpeza Urbana e Espaços Verdes |
 | `l.rodrigues` | Luís Rodrigues | OPERATIONS_MANAGER | Torres Vedras (+Water actor) |
 | `m.mendes` | Marta Mendes | REQUEST_MANAGER | Torres Vedras |
 | `b.lopes` | Beatriz Lopes | INCIDENT_MANAGER | Torres Vedras |
 | `h.ferreira` | Hugo Ferreira | PROBLEM_MANAGER | Torres Vedras |
 | `i.cardoso` | Inês Cardoso | ANALYST | Torres Vedras |
-| `p.nunes` | Pedro Nunes | OPERATOR | São Pedro e Santiago (+ Waste/Road actors) |
+| `p.nunes` | Pedro Nunes | OPERATOR | Santa Maria, São Pedro e Matacães (+ Waste/Road actors) |
 
 ---
 
@@ -169,13 +171,15 @@ python manage.py seed_default_data
 python manage.py runserver        # or: pytest
 ```
 
-Main surfaces: `/` (Executive dashboard), `/organizations/tree/` (org tree with services & managers), `/services/`, `/requests/`, `/incidents/`, `/workflows/`, `/metrics/`, `/admin/`.
+Main surfaces: `/` (context-aware overview), `/organizations/tree/` (org tree with services & managers), `/services/`, `/requests/`, `/incidents/`, `/workflows/`, `/metrics/`, `/admin/`.
+
+The header profile menu selects the working **organization** and then an optional **service/role**. The Overview link follows that selection: service → `/service/<pk>/`, organization → `/organization/<pk>/`, neither → the global executive overview. Clicking the active service clears it; clicking the active organization clears both. Services stay hidden until an organization is selected. List views follow the same scope automatically: a selected service scopes lists to it, and a selected organization scopes them to its subtree when no service is picked. An explicit `?organization=<pk>` (subtree scope) or `?service=<pk>` drill-down filter overrides the header scope for that request; an empty value (`?service=`) means “All”.
 
 ---
 
 ## 6. Test status & known issues
 
-- Test suite: **169 passed, 0 failed** (`.venv/bin/python -m pytest -q`).
+- Test suite: **182 passed, 0 failed** (`.venv/bin/python -m pytest -q`).
 - Lint and formatting are clean (`.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`).
 - Model state is in sync with migrations (`.venv/bin/python manage.py makemigrations --check --dry-run`).
 - Run pytest **sequentially** — concurrent runs race on the shared `test_orgplatform` database.

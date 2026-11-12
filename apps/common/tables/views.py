@@ -19,6 +19,8 @@ from django.db.models import F, Q
 from django.utils.dateparse import parse_date
 from django.views.generic import ListView
 
+from apps.common.mixins import selected_organization_pk, selected_service_pk
+
 from .config import Column, FilterKind, TableConfig
 
 
@@ -39,6 +41,16 @@ class TableView(ListView):
     # or ``"workflow__service"``) to enable it.
     service_filter_field: str | None = None
 
+    # ``?organization=<pk>`` restricts rows to an organization subtree — the
+    # exact-match counterpart to the free-text organization column filter.
+    # Each entry is an ORM path to an organization FK; multiple entries are
+    # OR'ed (e.g. a resource owned by an org OR attached to a service there).
+    organization_filter_fields: tuple[str, ...] = ()
+
+    # ``?status=ACTIVE`` pseudo-filter meaning "not in these terminal states".
+    # Lets dashboard counters and their target list use the same definition.
+    active_status_exclusions: tuple[str, ...] | None = None
+
     # -- config -----------------------------------------------------------
 
     def get_table_config(self) -> TableConfig:
@@ -58,6 +70,8 @@ class TableView(ListView):
         if not self.service_filter_field:
             return qs
         raw_ids = [v for v in self.request.GET.getlist("service") if v.strip()]
+        if not raw_ids and self.context_service_pk is not None:
+            raw_ids = [str(self.context_service_pk)]
         if not raw_ids:
             return qs
         try:
@@ -65,6 +79,48 @@ class TableView(ListView):
         except ValueError:
             return qs
         return qs.filter(**{f"{self.service_filter_field}_id__in": pks})
+
+    def resolve_organization_path(self, pk: int) -> str | None:
+        """Path for a visible organization pk, or ``None`` (no disclosure)."""
+        from apps.common.mixins import visible_orgs
+
+        return (
+            visible_orgs(self.request.user)
+            .alive()
+            .filter(pk=pk)
+            .values_list("path", flat=True)
+            .first()
+        )
+
+    def resolve_filter_organization_pk(self) -> int | None:
+        """Explicit ``?organization=`` pk, else the header selection.
+
+        An explicit (even empty) parameter always wins, letting a list opt out
+        of the header scope for the current request.
+        """
+        raw = self.request.GET.get("organization", "").strip()
+        if raw:
+            try:
+                return int(raw)
+            except ValueError:
+                return None
+        if "organization" in self.request.GET:
+            return None
+        return self.context_organization_pk
+
+    def apply_organization_filter(self, qs):
+        if not self.organization_filter_fields:
+            return qs
+        pk = self.resolve_filter_organization_pk()
+        if pk is None:
+            return qs
+        path = self.resolve_organization_path(pk)
+        if not path:
+            return qs
+        query = Q()
+        for field in self.organization_filter_fields:
+            query |= Q(**{f"{field}__path__descendants": path})
+        return qs.filter(query)
 
     def apply_global_search(self, qs):
         q = self.request.GET.get("q", "").strip()
@@ -79,6 +135,9 @@ class TableView(ListView):
     def apply_column_filters(self, qs):
         config = self.get_table_config()
         active: dict[str, str] = {}
+        pseudo_active = (
+            self.active_status_exclusions is not None and self.request.GET.get("status") == "ACTIVE"
+        )
         for column in config.columns:
             filt = column.resolved_filter()
             if filt is None:
@@ -92,6 +151,9 @@ class TableView(ListView):
                     active[param] = value
             elif filt.kind == FilterKind.CHOICE:
                 value = self.request.GET.get(param, "").strip()
+                if pseudo_active and param == "status":
+                    # Handled once after the loop (exclude terminal states).
+                    continue
                 if value:
                     qs = qs.filter(**{lookup: value})
                     active[param] = value
@@ -110,6 +172,8 @@ class TableView(ListView):
                         active[f"{param}__to"] = d_to
             elif filt.kind == FilterKind.SUBTREE:
                 value = self.request.GET.get(param, "").strip()
+                if not value and param == "organization" and self.context_organization_pk:
+                    value = str(self.context_organization_pk)
                 try:
                     pk = int(value)
                 except ValueError:
@@ -119,9 +183,40 @@ class TableView(ListView):
                     if path:
                         # __descendants (<@) includes the node itself, so selecting
                         # a parent yields that node plus everything beneath it.
-                        qs = qs.filter(**{f"{lookup}__descendants": path})
+                        # Multiple lookups are OR'ed so a filter can cover several
+                        # paths (e.g. direct org OR the org of a linked service).
+                        query = Q()
+                        for lookup_path in filt.resolved_lookups(column.key):
+                            query |= Q(**{f"{lookup_path}__descendants": path})
+                        qs = qs.filter(query)
                         active[param] = value
+        if pseudo_active:
+            qs = qs.exclude(status__in=self.active_status_exclusions)
+            active["status"] = "ACTIVE"
+        if self.context_service_pk is not None:
+            # Reflect the header's service scope in the drawer's Service select,
+            # and its owning organization in the Organization select. Display
+            # only: the service already narrows the rows, so filtering by its
+            # organization too would be a no-op.
+            active.setdefault("service", str(self.context_service_pk))
+            org_pk = self.context_service_organization_pk()
+            if org_pk is not None:
+                active.setdefault("organization", str(org_pk))
         return qs, active
+
+    def context_service_organization_pk(self) -> int | None:
+        """Organization owning the header-selected service, if visible."""
+        from apps.common.mixins import visible_orgs
+        from apps.services.models import Service
+
+        org_pk = (
+            Service.objects.filter(pk=self.context_service_pk)
+            .values_list("organization_id", flat=True)
+            .first()
+        )
+        if org_pk is None or not visible_orgs(self.request.user).filter(pk=org_pk).exists():
+            return None
+        return org_pk
 
     def sort_expression(self, sort_key: str, column: Column):
         """Order-by expression for ``sort_key``, honouring ``nulls_first``.
@@ -150,8 +245,23 @@ class TableView(ListView):
         return qs, sort_key
 
     def get_queryset(self):
+        # Any explicit scope parameter (even empty) disables the header scope
+        # for this request; empty means "All" and lets a list opt out.
+        service_explicit = "service" in self.request.GET
+        organization_explicit = "organization" in self.request.GET
+        self.context_service_pk = (
+            None
+            if service_explicit or organization_explicit
+            else selected_service_pk(self.request.user, self.request.session)
+        )
+        self.context_organization_pk = (
+            None
+            if service_explicit or organization_explicit or self.context_service_pk is not None
+            else selected_organization_pk(self.request.user, self.request.session)
+        )
         qs = self.get_base_queryset()
         qs = self.apply_service_filter(qs)
+        qs = self.apply_organization_filter(qs)
         qs, self.active_q = self.apply_global_search(qs)
         qs, self.active_filters = self.apply_column_filters(qs)
         qs, self.sort_key = self.apply_sort(qs)

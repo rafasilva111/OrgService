@@ -16,6 +16,7 @@ from apps.common.mixins import (
     visible_services,
 )
 from apps.common.tables.config import BulkAction, Column, Filter, FilterKind, TableConfig
+from apps.common.tables.filters import organization_column
 from apps.common.tables.views import TableView
 from apps.people.models import Person
 from apps.requests.models import Priority, Request, RequestStatus, RequestType
@@ -56,6 +57,7 @@ class RequestListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
         key="requests",
         columns=[
             Column("title", _("Request"), sortable=True, searchable=True),
+            organization_column(),
             Column(
                 "service.name",
                 _("Service"),
@@ -63,6 +65,7 @@ class RequestListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
                 searchable=True,
                 filter=Filter(
                     FilterKind.CHOICE,
+                    param="service",
                     lookup="service_id",
                     choices_callable=service_filter_choices,
                 ),
@@ -106,6 +109,7 @@ class RequestListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
     )
     breadcrumb_title = _("Requests")
     service_filter_field = "service"
+    organization_filter_fields = ("service__organization",)
 
     def get_base_queryset(self):
         return Request.objects.visible_to(self.request.user, "request.view").select_related(

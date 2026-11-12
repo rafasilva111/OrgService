@@ -7,6 +7,7 @@ Idempotent: existing codes are updated, missing ones created.
 from django.core.management.base import BaseCommand
 
 from apps.access.models import Permission, Role, RolePermission
+from apps.access.scoping import ORG_WIDE_ROLE_CODES, ensure_org_wide_scopes
 
 PERMISSIONS = [
     ("service.view", "View service", "services"),
@@ -191,9 +192,16 @@ class Command(BaseCommand):
                 code=code,
                 defaults={"name": code.replace("_", " ").title(), "is_system": True},
             )
-            role.rolepermissions.all().delete()
+            desired_permission_codes = set(perm_codes)
             for pcode in perm_codes:
-                RolePermission.objects.create(role=role, permission=perms[pcode])
+                RolePermission.objects.update_or_create(
+                    role=role,
+                    permission=perms[pcode],
+                    defaults={"active": True},
+                )
+            role.rolepermissions.exclude(permission__code__in=desired_permission_codes).delete()
+            if code in ORG_WIDE_ROLE_CODES:
+                ensure_org_wide_scopes(role)
 
         self.stdout.write(
             self.style.SUCCESS(

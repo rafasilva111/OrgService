@@ -16,10 +16,12 @@ list other services it consumes via ``consumed_services`` (M2M through
 ``ServiceConsumption``).
 """
 
+from django.contrib.postgres.indexes import GistIndex
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from apps.common.fields import LTreeField
 from apps.common.models import ActiveModel, SoftDeleteModel, TimeStampedModel
 
 SERVICE_MANAGER_ROLE = "SERVICE_MANAGER"
@@ -93,6 +95,7 @@ class Service(SoftDeleteModel, ActiveModel):
         db_index=True,
         help_text=_("Parent service if this is a department/child service."),
     )
+    path = LTreeField(_("path"), null=True, blank=True, editable=False)
 
     class Meta:
         verbose_name = _("service")
@@ -104,10 +107,32 @@ class Service(SoftDeleteModel, ActiveModel):
             models.Index(fields=["organization", "active"]),
             models.Index(fields=["status", "active"]),
             models.Index(fields=["service_type"]),
+            GistIndex(name="service_path_gin_idx", fields=["path"], opclasses=["gist_ltree_ops"]),
         ]
 
     def __str__(self):
         return f"{self.organization} / {self.name}"
+
+    def save(self, *args, **kwargs):
+        # Build the ltree path after the pk exists (labels are ``s<pk>``).
+        super().save(*args, **kwargs)
+        label = f"s{self.pk}"
+        parent_path = None
+        if self.parent_id is not None:
+            parent_path = (
+                Service.objects.filter(pk=self.parent_id).values_list("path", flat=True).first()
+            )
+        path = f"{parent_path}.{label}" if parent_path else label
+        if self.path != path:
+            Service.objects.filter(pk=self.pk).update(path=path)
+            self.path = path
+
+    def get_descendants(self, include_self=False):
+        """Descendant services of this node (optionally including itself)."""
+        qs = Service.objects.filter(path__descendants=self.path)
+        if not include_self:
+            qs = qs.exclude(pk=self.pk)
+        return qs
 
     # ------------------------------------------------------------------ manager
     def manager(self):

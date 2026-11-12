@@ -1,14 +1,15 @@
 """People: directory (members of visible orgs), detail and skills."""
 
 from django import forms
-from django.db.models import Count
+from django.db.models import Count, Prefetch
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import DetailView, ListView
 
 from apps.common.breadcrumbs import BreadcrumbsMixin
 from apps.common.lifecycle import CatalogCreateView, LifecycleActionView
-from apps.common.mixins import PermissionRequiredMixin, visible_org_ids
+from apps.common.mixins import PermissionRequiredMixin, org_filter_choices, visible_org_ids
 from apps.common.tables.config import Column, Filter, FilterKind, TableConfig
+from apps.common.tables.filters import resolve_org_subtree_path
 from apps.common.tables.views import TableView
 from apps.organizations.models import OrganizationMembership
 from apps.people.models import Person, PersonType, Skill
@@ -41,6 +42,20 @@ class PersonDirectoryView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
                 filter=Filter(FilterKind.CHOICE, choices=PersonType.choices),
                 template="partials/pill.html",
             ),
+            # Not sortable/searchable: a person can belong to several
+            # organizations, and joining memberships would duplicate rows.
+            Column(
+                "active_memberships",
+                _("Organization"),
+                template="people/_organizations.html",
+                filter=Filter(
+                    FilterKind.SUBTREE,
+                    param="organization",
+                    lookups=("memberships__organization__path",),
+                    choices_callable=org_filter_choices,
+                    subtree_resolver=resolve_org_subtree_path,
+                ),
+            ),
             Column("active", _("Active"), sortable=True, template="partials/bool.html"),
         ],
         default_sort="full_name",
@@ -50,9 +65,43 @@ class PersonDirectoryView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
         row_url_name="people:detail",
     )
     breadcrumb_title = _("Directory")
+    organization_filter_fields = ("memberships__organization",)
+
+    def apply_organization_filter(self, qs):
+        """Filter to active members in an organization subtree.
+
+        Kept as one join so an inactive membership cannot satisfy the path
+        while a different active membership satisfies the flag.
+        """
+        pk = self.resolve_filter_organization_pk()
+        if pk is None:
+            return qs
+        path = self.resolve_organization_path(pk)
+        if not path:
+            return qs
+        return qs.filter(
+            memberships__organization__path__descendants=path,
+            memberships__active=True,
+        ).distinct()
+
+    def resolve_filter_organization_pk(self) -> int | None:
+        """People have no service FK, so a header-selected service scopes the
+        directory to the service's organization subtree instead."""
+        pk = super().resolve_filter_organization_pk()
+        if pk is None and self.context_service_pk is not None:
+            return self.context_service_organization_pk()
+        return pk
 
     def get_base_queryset(self):
-        return _base_person_queryset(self.request.user)
+        return _base_person_queryset(self.request.user).prefetch_related(
+            Prefetch(
+                "memberships",
+                queryset=OrganizationMembership.objects.filter(active=True)
+                .select_related("organization")
+                .order_by("organization__path"),
+                to_attr="active_memberships",
+            )
+        )
 
 
 class PersonDetailView(BreadcrumbsMixin, PermissionRequiredMixin, DetailView):

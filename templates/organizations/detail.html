@@ -32,7 +32,7 @@
     {% translate 'Open requests' as st_open_requests %}
     {% include "partials/stat_card.html" with label=st_orgs_scope value=visible_org_count icon="orgs" hint=st_subtree %}
     {% include "partials/stat_card.html" with label=st_members value=members_count icon="memberships" %}
-    {% include "partials/stat_card.html" with label=st_services value=services|length icon="services" %}
+    {% include "partials/stat_card.html" with label=st_services value=org_services|length icon="services" %}
     {% include "partials/stat_card.html" with label=st_open_requests value=open_request_count icon="requests" %}
   </div>
 
@@ -54,7 +54,7 @@
     <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
       <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Services' %}</h2>
       <ul class="divide-y divide-zinc-100">
-        {% for s in services %}
+        {% for s in org_services %}
         <li class="flex items-center gap-3 px-4 py-3">
           <a href="{% url 'services:detail' s.pk %}" class="min-w-0 flex-1 truncate text-sm font-medium text-indigo-600 hover:text-indigo-800">{{ s.name }}</a>
           <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ s.status|pill_class }}">{{ s.get_status_display }}</span>

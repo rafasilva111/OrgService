@@ -44,6 +44,12 @@ services:
       DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-admin@example.local}
     ports:
       - "${DJANGO_PORT:-8000}:8000"
+    volumes:
+      - ./apps:/app/apps
+      - ./templates:/app/templates
+      - ./config:/app/config
+      - ./locale:/app/locale
+      - ./manage.py:/app/manage.py
     depends_on:
       db:
         condition: service_healthy

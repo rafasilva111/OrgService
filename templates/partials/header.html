@@ -9,20 +9,6 @@
   </div>
   <div class="ml-auto flex items-center gap-2">
     {% block header_actions %}{% endblock %}
-    {% if active_service %}
-    {% if active_service.url %}
-    <a href="{{ active_service.url }}"
-       class="flex max-w-xs items-center gap-2 rounded-lg border border-zinc-200 px-3 py-1.5 hover:bg-zinc-100">
-    {% else %}
-    <div class="flex max-w-xs items-center gap-2 rounded-lg border border-zinc-200 px-3 py-1.5">
-    {% endif %}
-      <span class="flex min-w-0 flex-col">
-        <span class="truncate text-sm font-medium text-zinc-800">{{ active_service.name }}</span>
-        <span class="truncate text-xs text-zinc-500">{{ active_service.role_name }}{% if active_service.organization %} · {{ active_service.organization }}{% endif %}</span>
-      </span>
-      <span class="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">{% translate 'Current' %}</span>
-    {% if active_service.url %}</a>{% else %}</div>{% endif %}
-    {% endif %}
     <details class="relative">
       <summary class="flex cursor-pointer list-none items-center gap-2 rounded-full p-1 pr-2 hover:bg-zinc-100">
         <span class="grid size-9 place-items-center rounded-full bg-indigo-600 text-xs font-semibold text-white">{{ request.user|initials }}</span>
@@ -34,14 +20,19 @@
         </div>
         {% if organizations %}
         <div class="border-b border-zinc-100 px-4 py-2.5">
-          <p class="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">{% translate "Organization / Role" %}</p>
+          <p class="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">{% translate "Organization" %}</p>
           <ul class="grid gap-1.5">
             {% for o in organizations %}
             <li>
               <form method="post" action="{% url 'dashboard:set_org_context' %}">
                 {% csrf_token %}
                 <input type="hidden" name="organization" value="{{ o.pk }}">
+                {% if active_organization and active_organization.pk == o.pk %}
+                <input type="hidden" name="clear" value="1">
+                <input type="hidden" name="next" value="/">
+                {% else %}
                 <input type="hidden" name="next" value="{% if o.url %}{{ o.url }}{% else %}{{ request.path }}{% endif %}">
+                {% endif %}
                 <button type="submit"
                         class="flex w-full flex-col rounded-lg px-2 py-1.5 text-left {% if active_organization and active_organization.pk == o.pk %}bg-indigo-600 text-white{% else %}hover:bg-zinc-50{% endif %}">
                   <span class="text-sm font-medium {% if active_organization and active_organization.pk == o.pk %}text-white{% else %}text-zinc-800{% endif %}">{{ o.organization }}</span>
@@ -63,7 +54,12 @@
                 {% csrf_token %}
                 <input type="hidden" name="service" value="{{ s.pk }}">
                 <input type="hidden" name="role" value="{{ s.role_code }}">
+                {% if active_service and active_service.pk == s.pk and active_service.role_code == s.role_code %}
+                <input type="hidden" name="clear" value="1">
+                <input type="hidden" name="next" value="/">
+                {% else %}
                 <input type="hidden" name="next" value="{% if s.url %}{{ s.url }}{% else %}{{ request.path }}{% endif %}">
+                {% endif %}
                 <button type="submit"
                         class="flex w-full flex-col rounded-lg px-2 py-1.5 text-left {% if active_service and active_service.pk == s.pk and active_service.role_code == s.role_code %}bg-indigo-600 text-white{% else %}hover:bg-zinc-50{% endif %}">
                   <span class="text-sm font-medium {% if active_service and active_service.pk == s.pk and active_service.role_code == s.role_code %}text-white{% else %}text-zinc-800{% endif %}">{{ s.name }}</span>

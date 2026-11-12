@@ -27,7 +27,10 @@ class Filter:
     column key translated to ``__`` form) — e.g. a "Service" column keyed on
     ``service.name`` (for display/sort/search) can filter by ``service_id``
     instead, so a dropdown of services filters by an exact, unambiguous pk
-    rather than a name substring/exact match.
+    rather than a name substring/exact match. ``lookups`` is the multi-field
+    counterpart: subtree filters may need to match any of several ltree paths
+    (e.g. a change targeting a service's organization *or* an organization
+    directly); the lookups are OR'ed.
     ``choices_callable`` resolves choices dynamically per-request (e.g. the
     services the current user may see) — takes the ``TableView`` instance and
     returns ``[(value, label), ...]``. Takes precedence over ``choices``.
@@ -49,6 +52,7 @@ class Filter:
     placeholder: str = ""
     param: str | None = None
     lookup: str | None = None
+    lookups: tuple[str, ...] | None = None
     subtree_resolver: Callable[[Any, str], str | None] | None = None
 
     def resolved_param(self, column_key: str) -> str:
@@ -56,6 +60,11 @@ class Filter:
 
     def resolved_lookup(self, column_key: str) -> str:
         return self.lookup or column_key.replace(".", "__")
+
+    def resolved_lookups(self, column_key: str) -> tuple[str, ...]:
+        if self.lookups:
+            return self.lookups
+        return (self.resolved_lookup(column_key),)
 
     def resolved_choices(self, view: Any = None) -> list[tuple[str, str]]:
         if self.choices_callable is not None:

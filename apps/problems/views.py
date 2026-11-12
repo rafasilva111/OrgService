@@ -5,6 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from apps.common.breadcrumbs import BreadcrumbsMixin
 from apps.common.mixins import PermissionRequiredMixin, ScopedDetailView, service_filter_choices
 from apps.common.tables.config import Column, Filter, FilterKind, TableConfig
+from apps.common.tables.filters import organization_column
 from apps.common.tables.views import TableView
 from apps.problems.models import Problem, ProblemStatus
 from apps.requests.models import Priority
@@ -18,6 +19,7 @@ class ProblemListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
         key="problems",
         columns=[
             Column("title", _("Problem"), sortable=True, searchable=True),
+            organization_column(),
             Column(
                 "service.name",
                 _("Service"),
@@ -25,6 +27,7 @@ class ProblemListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
                 searchable=True,
                 filter=Filter(
                     FilterKind.CHOICE,
+                    param="service",
                     lookup="service_id",
                     choices_callable=service_filter_choices,
                 ),
@@ -54,6 +57,8 @@ class ProblemListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
     )
     breadcrumb_title = _("Problems")
     service_filter_field = "service"
+    organization_filter_fields = ("service__organization",)
+    active_status_exclusions = ("RESOLVED", "CLOSED")
 
     def get_base_queryset(self):
         return Problem.objects.visible_to(self.request.user, "problem.view").select_related(

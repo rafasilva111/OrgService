@@ -10,6 +10,7 @@ from apps.common.mixins import (
     visible_services,
 )
 from apps.common.tables.config import Column, Filter, FilterKind, TableConfig
+from apps.common.tables.filters import organization_column
 from apps.common.tables.views import TableView
 from apps.workflows.models import ExecutionStatus, Workflow, WorkflowExecution, WorkflowStatus
 
@@ -33,6 +34,7 @@ class WorkflowListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
                 searchable=True,
                 filter=Filter(
                     FilterKind.CHOICE,
+                    param="service",
                     lookup="service_id",
                     choices_callable=service_filter_choices,
                 ),
@@ -55,6 +57,7 @@ class WorkflowListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
     )
     breadcrumb_title = _("Workflows")
     service_filter_field = "service"
+    organization_filter_fields = ("service__organization",)
 
     def get_base_queryset(self):
         return Workflow.objects.visible_to(self.request.user, "workflow.view").select_related(
@@ -95,6 +98,10 @@ class WorkflowExecutionListView(BreadcrumbsMixin, PermissionRequiredMixin, Table
         key="workflows_executions",
         columns=[
             Column("workflow.name", _("Workflow"), sortable=True, searchable=True),
+            organization_column(
+                key="workflow.service.organization.name",
+                lookups=("workflow__service__organization__path",),
+            ),
             Column(
                 "workflow.service.name",
                 _("Service"),
@@ -102,6 +109,7 @@ class WorkflowExecutionListView(BreadcrumbsMixin, PermissionRequiredMixin, Table
                 searchable=True,
                 filter=Filter(
                     FilterKind.CHOICE,
+                    param="service",
                     lookup="workflow__service_id",
                     choices_callable=service_filter_choices,
                 ),
@@ -126,6 +134,7 @@ class WorkflowExecutionListView(BreadcrumbsMixin, PermissionRequiredMixin, Table
     breadcrumb_title = _("Executions")
     breadcrumb_parent = (_("Workflows"), "workflows:index")
     service_filter_field = "workflow__service"
+    organization_filter_fields = ("workflow__service__organization",)
 
     def get_base_queryset(self):
         service_ids = list(visible_services(self.request.user).values_list("id", flat=True))

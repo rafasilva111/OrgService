@@ -110,7 +110,7 @@ class OrganizationDetailView(BreadcrumbsMixin, ScopedDetailView):
         ctx["children"] = (
             org.get_children().filter(pk__in=subtree_visible_orgs.values("pk")).order_by("name")
         )
-        ctx["services"] = services_visible
+        ctx["org_services"] = services_visible
         ctx["visible_org_count"] = subtree_visible_orgs.count()
         ctx["members_count"] = (
             OrganizationMembership.objects.filter(organization_id__in=desc_ids, active=True)
@@ -214,6 +214,7 @@ class MembershipListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
     )
     breadcrumb_title = _("Memberships")
     breadcrumb_parent = (_("Organizations"), "organizations:index")
+    organization_filter_fields = ("organization",)
 
     def get_base_queryset(self):
         visible_orgs = Organization.objects.visible_to(self.request.user, "organization.view")

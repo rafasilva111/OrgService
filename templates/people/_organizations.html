@@ -1,0 +1,1 @@
+{% for membership in record.active_memberships %}{% ifchanged membership.organization_id %}{% if not forloop.first %}, {% endif %}{{ membership.organization.name }}{% endifchanged %}{% empty %}—{% endfor %}

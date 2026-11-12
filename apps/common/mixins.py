@@ -12,7 +12,6 @@ Two complementary mechanisms:
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q
 from django.views.generic import DetailView, ListView, View
 
 
@@ -33,6 +32,31 @@ def user_has_permission_code(user, code: str) -> bool:
 
 def user_has_any_permission(user, codes) -> bool:
     return any(user_has_permission_code(user, code) for code in codes or ())
+
+
+def user_has_scoped_permission(user, code: str, *, service=None, organization=None) -> bool:
+    """Can the user perform ``code`` on this service or organization?
+
+    Unlike ``user_has_permission_code`` this applies the membership's
+    ``GrantScope``/``ServiceAccess`` reach. It is the write-side counterpart of
+    ``Model.objects.visible_to``.
+    """
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if getattr(user, "is_superuser", False):
+        return True
+
+    if service is not None:
+        from apps.services.models import Service
+
+        pk = getattr(service, "pk", service)
+        return Service.objects.visible_to(user, code).filter(pk=pk).exists()
+    if organization is not None:
+        from apps.organizations.models import Organization
+
+        pk = getattr(organization, "pk", organization)
+        return Organization.objects.visible_to(user, code).filter(pk=pk).exists()
+    return user_has_permission_code(user, code)
 
 
 class PermissionRequiredMixin(LoginRequiredMixin, View):
@@ -126,6 +150,28 @@ def visible_orgs(user):
     return Organization.objects.visible_to(user, action="organization.view")
 
 
+def selected_service_pk(user, session) -> int | None:
+    """Service pk from the header's Service/Role pick, if still visible.
+
+    The session value is validated against the same authorization scope the
+    lists use, so a stale (or manipulated) pk can never widen access.
+    """
+    context = (session or {}).get("service_context") or {}
+    pk = context.get("pk")
+    if pk is None:
+        return None
+    return visible_services(user).alive().filter(pk=pk).values_list("pk", flat=True).first()
+
+
+def selected_organization_pk(user, session) -> int | None:
+    """Organization pk from the header's organization pick, if still visible."""
+    context = (session or {}).get("org_context") or {}
+    pk = context.get("pk")
+    if pk is None:
+        return None
+    return visible_orgs(user).alive().filter(pk=pk).values_list("pk", flat=True).first()
+
+
 def org_filter_choices(view):
     """Dynamic (pk, name) choices for a table's "Parent organization" dropdown.
 
@@ -146,28 +192,16 @@ def visible_org_ids(user):
     Mirrors ``Service.objects.visible_to`` semantics: unrestricted memberships
     contribute their whole organizational subtree; service-restricted
     memberships contribute only the organizations of their allowed services.
+    The union now comes from ``GrantScope`` when present, falling back to the
+    legacy membership behavior when no scope exists.
     """
-    from apps.access.models import ServiceAccess
-    from apps.organizations.models import Organization, OrganizationMembership
-    from apps.services.models import Service
+    from apps.common.authorization import authorization_scope_q
+    from apps.organizations.models import Organization
 
     if getattr(user, "is_superuser", False):
         return []
 
-    memberships = OrganizationMembership.objects.filter(person__user=user, active=True)
-    org_qs = Organization.objects.none()
-    for membership in memberships:
-        allowed = list(
-            ServiceAccess.objects.filter(membership=membership, active=True).values_list(
-                "service_id", flat=True
-            )
-        )
-        if allowed:
-            org_qs |= Organization.objects.filter(
-                pk__in=Service.objects.filter(pk__in=allowed).values("organization_id")
-            )
-        else:
-            org_qs |= Organization.objects.filter(
-                Q(pk=membership.organization_id) | Q(path__descendants=membership.organization.path)
-            )
-    return list(org_qs.values_list("pk", flat=True).distinct())
+    scope = authorization_scope_q(Organization, user, None)
+    if scope is None:
+        return []
+    return list(Organization.objects.filter(scope).values_list("pk", flat=True).distinct())

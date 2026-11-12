@@ -11,8 +11,7 @@ The demo org tree mirrors a real Portuguese geography:
     Portugal (COUNTRY)
     └── Lisboa (DISTRICT)
         └── Torres Vedras (MUNICIPALITY)
-            ├── São Pedro e Santiago (PARISH)
-            ├── Matacães (PARISH)
+            ├── Santa Maria, São Pedro e Matacães (PARISH)
             ├── A dos Cunhados e Maceira (PARISH)
             └── Ramalhal (PARISH)
 
@@ -78,6 +77,26 @@ _RESET_PREFIXES = (
 
 def _code(prefix, slug):
     return f"{prefix}_{slug}"
+
+
+SERVICE_MANAGER_ROLE_KEYS = {
+    "Municipal Administration": "MUNICIPAL_ADMIN",
+    "IT": "IT",
+    "Supplies": "SUPPLIES",
+    "Finance": "FINANCE",
+    "HR": "HR",
+    "Water Supply": "WATER",
+    "Sanitation Network": "SANITATION",
+    "Waste Management": "WASTE",
+    "Road Maintenance": "ROADS",
+    "Public Lighting": "LIGHTING",
+    "Serviços Gerais": "GENERAL",
+    "Serviços Educativos": "EDUCATION",
+    "Espaço Público, Infraestruturas e Edifícios": "PUBLIC_SPACE",
+    "Serviços Sociais e Associativismo": "SOCIAL",
+    "Cemitérios": "CEMETERIES",
+    "Limpeza Urbana e Espaços Verdes": "CLEANING",
+}
 
 
 class Command(BaseCommand):
@@ -181,18 +200,11 @@ class Command(BaseCommand):
                 "Municipality in the Lisboa district.",
             ),
             (
-                "sao-pedro-santiago",
-                "São Pedro e Santiago",
+                "santa-maria-sao-pedro-matacaes",
+                "Santa Maria, São Pedro e Matacães",
                 "PARISH",
                 "torres-vedras",
-                "Urban parish of Torres Vedras.",
-            ),
-            (
-                "matacaes",
-                "Matacães",
-                "PARISH",
-                "torres-vedras",
-                "Parish west of Torres Vedras town.",
+                "Union of the parishes of Santa Maria, São Pedro and Matacães.",
             ),
             (
                 "a-dos-cunhados",
@@ -244,10 +256,42 @@ class Command(BaseCommand):
             ("Waste Management", "torres-vedras", ServiceStatus.OPERATIONAL, "processes"),
             ("Road Maintenance", "torres-vedras", ServiceStatus.OPERATIONAL, "processes"),
             ("Public Lighting", "torres-vedras", ServiceStatus.OPERATIONAL, "processes"),
-            ("Public Health", "sao-pedro-santiago", ServiceStatus.OPERATIONAL, "hr"),
-            ("Urban Cleaning", "sao-pedro-santiago", ServiceStatus.OPERATIONAL, "processes"),
-            ("Green Spaces & Parks", "matacaes", ServiceStatus.OPERATIONAL, "processes"),
-            ("Culture Service", "sao-pedro-santiago", ServiceStatus.OPERATIONAL, "hr"),
+            (
+                "Serviços Gerais",
+                "santa-maria-sao-pedro-matacaes",
+                ServiceStatus.OPERATIONAL,
+                "management",
+            ),
+            (
+                "Serviços Educativos",
+                "santa-maria-sao-pedro-matacaes",
+                ServiceStatus.OPERATIONAL,
+                "hr",
+            ),
+            (
+                "Espaço Público, Infraestruturas e Edifícios",
+                "santa-maria-sao-pedro-matacaes",
+                ServiceStatus.OPERATIONAL,
+                "processes",
+            ),
+            (
+                "Serviços Sociais e Associativismo",
+                "santa-maria-sao-pedro-matacaes",
+                ServiceStatus.OPERATIONAL,
+                "hr",
+            ),
+            (
+                "Cemitérios",
+                "santa-maria-sao-pedro-matacaes",
+                ServiceStatus.OPERATIONAL,
+                "processes",
+            ),
+            (
+                "Limpeza Urbana e Espaços Verdes",
+                "santa-maria-sao-pedro-matacaes",
+                ServiceStatus.OPERATIONAL,
+                "processes",
+            ),
         ]
         services = {}
         for name, org_key, status, type_code in catalog:
@@ -358,22 +402,16 @@ class Command(BaseCommand):
         role_pm = Role.objects.get(code="PROBLEM_MANAGER")
         role_an = Role.objects.get(code="ANALYST")
 
+        # Membership roles are seeded below; service-scoped SERVICE_MANAGER
+        # memberships are added from the manager actor mapping.
         memberships = [
             ("r.martins", tv, role_exec),
-            ("j.fernandes", tv, role_sm),
-            ("a.duarte", tv, role_sm),
-            ("t.pereira", tv, role_sm),
-            ("s.almeida", tv, role_sm),
-            ("m.silva", tv, role_sm),
-            ("r.costa", tv, role_sm),
-            ("n.barreto", tv, role_sm),
-            ("p.lopes", tv, role_sm),
             ("l.rodrigues", tv, role_om),
             ("m.mendes", tv, role_rm),
             ("b.lopes", tv, role_im),
             ("h.ferreira", tv, role_pm),
             ("i.cardoso", tv, role_an),
-            ("p.nunes", orgs["sao-pedro-santiago"], role_op),
+            ("p.nunes", orgs["santa-maria-sao-pedro-matacaes"], role_op),
         ]
         for username, org, role in memberships:
             OrganizationMembership.objects.get_or_create(
@@ -390,7 +428,7 @@ class Command(BaseCommand):
             email=os.environ.get("DJANGO_SUPERUSER_EMAIL", "admin@example.local")
         ).first()
         if admin_person is not None:
-            for role in Role.objects.all():
+            for role in Role.objects.exclude(code__startswith="SERVICE_MANAGER_"):
                 OrganizationMembership.objects.get_or_create(
                     person=admin_person,
                     organization=tv,
@@ -410,10 +448,12 @@ class Command(BaseCommand):
             "Waste Management": "a.duarte",
             "Road Maintenance": "t.pereira",
             "Public Lighting": "s.almeida",
-            "Public Health": "m.silva",
-            "Urban Cleaning": "p.lopes",
-            "Green Spaces & Parks": "r.costa",
-            "Culture Service": "r.costa",
+            "Serviços Gerais": "m.silva",
+            "Serviços Educativos": "r.costa",
+            "Espaço Público, Infraestruturas e Edifícios": "p.lopes",
+            "Serviços Sociais e Associativismo": "m.silva",
+            "Cemitérios": "p.lopes",
+            "Limpeza Urbana e Espaços Verdes": "p.lopes",
         }
         for svc_name, username in managers.items():
             ServiceActor.objects.get_or_create(
@@ -431,7 +471,7 @@ class Command(BaseCommand):
             ("Finance", "a.duarte", role_sm),
             ("Supplies", "n.barreto", role_sm),
             ("HR", "m.silva", role_sm),
-            ("Culture Service", "m.mendes", role_rm),
+            ("Serviços Educativos", "m.mendes", role_rm),
         ]
         for svc_name, username, role in extra_actors:
             ServiceActor.objects.get_or_create(
@@ -708,9 +748,9 @@ class Command(BaseCommand):
                 None,
                 None,
             ),
-            # --- Green Spaces & Parks
+            # --- Limpeza Urbana e Espaços Verdes
             (
-                services["Green Spaces & Parks"],
+                services["Limpeza Urbana e Espaços Verdes"],
                 "GENERAL",
                 "Tree pruning in Praça do Município",
                 "Prune the cork oaks in Praça do Município before the summer.",
@@ -720,7 +760,7 @@ class Command(BaseCommand):
                 None,
             ),
             (
-                services["Green Spaces & Parks"],
+                services["Limpeza Urbana e Espaços Verdes"],
                 "COMPLAINT",
                 "Playground swing repair",
                 "One swing broken in the Matacães playground.",
@@ -729,9 +769,9 @@ class Command(BaseCommand):
                 None,
                 None,
             ),
-            # --- Public Health
+            # --- Serviços Sociais e Associativismo
             (
-                services["Public Health"],
+                services["Serviços Sociais e Associativismo"],
                 "GENERAL",
                 "Rat control campaign",
                 "Planning a community rat-control and hygiene awareness campaign.",
@@ -741,7 +781,7 @@ class Command(BaseCommand):
                 None,
             ),
             (
-                services["Public Health"],
+                services["Serviços Sociais e Associativismo"],
                 "GENERAL",
                 "Mosquito breeding hotspots",
                 "Identified standing-water hotspots around the market needing treatment.",
@@ -751,7 +791,7 @@ class Command(BaseCommand):
                 None,
             ),
             (
-                services["Public Health"],
+                services["Serviços Sociais e Associativismo"],
                 "GENERAL",
                 "Food safety inspection",
                 "Routine inspection of the summer festival food stalls.",
@@ -760,9 +800,9 @@ class Command(BaseCommand):
                 "i.cardoso",
                 None,
             ),
-            # --- Urban Cleaning
+            # --- Limpeza Urbana e Espaços Verdes
             (
-                services["Urban Cleaning"],
+                services["Limpeza Urbana e Espaços Verdes"],
                 "COMPLAINT",
                 "Illegal dumping on the Matacães road",
                 "Furniture and construction debris dumped on the roadside.",
@@ -772,7 +812,7 @@ class Command(BaseCommand):
                 None,
             ),
             (
-                services["Urban Cleaning"],
+                services["Limpeza Urbana e Espaços Verdes"],
                 "COMPLAINT",
                 "Graffiti removal at the station",
                 "Graffiti covering the pedestrian underpass at the station.",
@@ -900,7 +940,7 @@ class Command(BaseCommand):
                 "n.barreto",
             ),
             (
-                services["Public Health"],
+                services["Serviços Sociais e Associativismo"],
                 "Suspected contamination at the fountain",
                 "Test results flagged possible contamination at the public fountain.",
                 IncidentStatus.OPEN,

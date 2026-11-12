@@ -38,6 +38,19 @@ msgstr "risco %(risk)s"
 msgid "Account"
 msgstr "Conta"
 
+msgid "Access forbidden"
+msgstr "Acesso proibido"
+
+msgid ""
+"You don't have permission to view this page. If you think this is a "
+"mistake, contact your administrator."
+msgstr ""
+"Não tem permissão para ver esta página. Se acredita que é um erro, contacte "
+"o administrador."
+
+msgid "Back to dashboard"
+msgstr "Voltar ao painel"
+
 msgid "action"
 msgstr "ação"
 
@@ -102,6 +115,12 @@ msgstr "Todos"
 
 msgid "All organizations"
 msgstr "Todas as organizações"
+
+msgid "Global"
+msgstr "Global"
+
+msgid "Governance"
+msgstr "Governação"
 
 msgid "All services"
 msgstr "Todos os serviços"
@@ -855,8 +874,8 @@ msgstr "Organização"
 msgid "organization"
 msgstr "organização"
 
-msgid "Organization / Role"
-msgstr "Organização / Função"
+msgid "Organization"
+msgstr "Organização"
 
 msgid "Organization activated."
 msgstr "Organização ativada."

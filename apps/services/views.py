@@ -203,6 +203,7 @@ class ServiceListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
         row_url_name="services:detail",
     )
     breadcrumb_title = _("Services")
+    organization_filter_fields = ("organization",)
 
     def get_base_queryset(self):
         return (

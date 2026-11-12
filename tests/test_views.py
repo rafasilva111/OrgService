@@ -114,6 +114,15 @@ def test_no_permission_403(client, make_user, make_member, org_tree, url_name):
     assert response.status_code == 403
 
 
+def test_forbidden_page_uses_branded_template(client, make_user, make_member, org_tree):
+    user = make_user("nobody")
+    make_member(user, org_tree["parish_a"])  # no permissions granted
+    client.force_login(user)
+    response = client.get(reverse("organizations:index"))
+    assert response.status_code == 403
+    assert "Back to dashboard" in response.content.decode()
+
+
 # ---------------------------------------------------------------------------
 # Superuser renders every list page
 # ---------------------------------------------------------------------------
@@ -349,7 +358,7 @@ def test_header_shows_organization_and_role(client, make_user, make_member, staf
     client.force_login(staff_user)
     response = client.get(reverse("dashboard"))
     assert response.status_code == 200
-    assert "Organization / Role" not in response.content.decode()
+    assert reverse("dashboard:set_org_context") not in response.content.decode()
 
 
 def test_sidebar_footer_shows_org_service_role(

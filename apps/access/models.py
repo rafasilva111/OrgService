@@ -7,6 +7,7 @@ Deliberately NOT the Django ``auth.Group``/``Permission`` mechanism:
     (see ``apps.common.authorization``).
 """
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
@@ -85,6 +86,88 @@ class RolePermission(TimeStampedModel):
 
     def __str__(self):
         return f"{self.role}:{self.permission}"
+
+
+class GrantScopeType(models.TextChoices):
+    """How a ``RolePermission`` is narrowed for a membership."""
+
+    INHERIT = "INHERIT", _("Inherit membership scope")
+    ALL_SERVICES = "ALL_SERVICES", _("All services")
+    BELOW_SERVICES = "BELOW_SERVICES", _("Below a service or organization")
+    SPECIFIC_SERVICE = "SPECIFIC_SERVICE", _("Specific service")
+    ORG_SUBTREE = "ORG_SUBTREE", _("Membership organization subtree")
+
+
+class GrantScope(TimeStampedModel, ActiveModel):
+    """Optional scope attached to a single role permission.
+
+    No scope rows means ``INHERIT``: the membership's organization subtree (and
+    any ``ServiceAccess`` rows) decides the reach. An explicit scope overrides
+    that default for the permission it belongs to.
+    """
+
+    role_permission = models.ForeignKey(
+        RolePermission, on_delete=models.CASCADE, related_name="grant_scopes"
+    )
+    scope_type = models.CharField(
+        _("scope type"),
+        max_length=32,
+        choices=GrantScopeType.choices,
+        default=GrantScopeType.INHERIT,
+        db_index=True,
+    )
+    service = models.ForeignKey(
+        "services.Service",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="grant_scopes",
+    )
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="grant_scopes",
+    )
+
+    class Meta:
+        verbose_name = _("grant scope")
+        verbose_name_plural = _("grant scopes")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["role_permission", "scope_type", "service", "organization"],
+                name="u_grant_scope",
+                nulls_distinct=False,
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["role_permission", "active"]),
+            models.Index(fields=["scope_type", "service"]),
+        ]
+
+    def __str__(self):
+        target = self.service or self.organization or "membership"
+        return f"{self.role_permission} → {self.get_scope_type_display()} ({target})"
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.scope_type == GrantScopeType.SPECIFIC_SERVICE:
+            if self.service_id is None:
+                errors["service"] = _("A specific-service scope requires a service.")
+            if self.organization_id is not None:
+                errors["organization"] = _("A specific-service scope cannot have an organization.")
+        elif self.scope_type == GrantScopeType.BELOW_SERVICES:
+            if (self.service_id is None) == (self.organization_id is None):
+                errors["service"] = _(
+                    "A below-services scope requires exactly one service or organization."
+                )
+        elif self.scope_type in (GrantScopeType.ALL_SERVICES, GrantScopeType.ORG_SUBTREE):
+            if self.service_id is not None or self.organization_id is not None:
+                errors["service"] = _("This scope type cannot have a service or organization.")
+        if errors:
+            raise ValidationError(errors)
 
 
 class ServiceAccess(TimeStampedModel, ActiveModel):

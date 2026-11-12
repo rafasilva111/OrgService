@@ -28,7 +28,7 @@ from apps.changes.models import Change
 from apps.common.breadcrumbs import BreadcrumbsMixin
 from apps.common.mixins import PermissionRequiredMixin, visible_services
 from apps.incidents.models import Incident, IncidentStatus
-from apps.organizations.models import Organization, OrganizationMembership
+from apps.organizations.models import Organization
 from apps.people.models import Person
 from apps.problems.models import Problem
 from apps.requests.models import Request, RequestStatus
@@ -90,19 +90,37 @@ class SetServiceContextView(LoginRequiredMixin, View):
     http_method_names = ["post"]
 
     def post(self, request, *args, **kwargs):
-        from apps.common.context_processors import _visible_services_list
+        from apps.common.context_processors import (
+            _visible_services_list,
+            user_organization_pks,
+        )
 
+        current = request.session.get("service_context") or {}
         pair = (request.POST.get("service"), request.POST.get("role"))
         try:
             pk = int(pair[0])
         except (TypeError, ValueError):
+            pk = None
+        role = pair[1] or ""
+
+        # Clicking the selected service toggles it off.
+        if request.POST.get("clear") or (
+            pk is not None and current.get("pk") == pk and current.get("role") == role
+        ):
+            request.session.pop("service_context", None)
+            return redirect("/")
+
+        org_context = request.session.get("org_context") or {}
+        org_pk = org_context.get("pk")
+        if org_pk is None or org_pk not in user_organization_pks(request.user):
+            request.session.pop("org_context", None)
             request.session.pop("service_context", None)
             return self._redirect(request)
-        role = pair[1] or ""
+
         match = next(
             (
                 s
-                for s in _visible_services_list(request.user)
+                for s in _visible_services_list(request.user, org_pk=org_pk)
                 if s["pk"] == pk and s["role_code"] == role
             ),
             None,
@@ -124,8 +142,8 @@ class SetOrganizationContextView(LoginRequiredMixin, View):
     """Store the user's current organization pick (session) via a POST.
 
     Only one organization can be selected at a time; picking a new one
-    replaces the previous choice. Also clears any selected service/role
-    that no longer belongs to a membership at the newly chosen organization.
+    replaces the previous choice and always clears the selected service/role.
+    Clicking the selected organization again clears it, returning to global.
     """
 
     http_method_names = ["post"]
@@ -133,26 +151,27 @@ class SetOrganizationContextView(LoginRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         from apps.common.context_processors import user_organization_pks
 
+        current = request.session.get("org_context") or {}
         try:
             pk = int(request.POST.get("organization"))
         except (TypeError, ValueError):
-            request.session.pop("org_context", None)
-            return self._redirect(request)
-        if pk not in user_organization_pks(request.user):
-            request.session.pop("org_context", None)
-            return self._redirect(request)
-        request.session["org_context"] = {"pk": pk}
-        service_context = request.session.get("service_context")
-        if service_context is not None:
-            from apps.common.context_processors import _visible_services_list
+            pk = None
 
-            still_valid = any(
-                s["pk"] == service_context.get("pk")
-                and s["role_code"] == service_context.get("role")
-                for s in _visible_services_list(request.user, org_pk=pk)
-            )
-            if not still_valid:
-                request.session.pop("service_context", None)
+        # Clicking the selected organization toggles it (and the service) off,
+        # returning to the global overview.
+        if request.POST.get("clear") or (pk is not None and current.get("pk") == pk):
+            request.session.pop("org_context", None)
+            request.session.pop("service_context", None)
+            return redirect("/")
+
+        if pk is None or pk not in user_organization_pks(request.user):
+            request.session.pop("org_context", None)
+            request.session.pop("service_context", None)
+            return self._redirect(request)
+
+        request.session["org_context"] = {"pk": pk}
+        # Any organization change resets the service selection.
+        request.session.pop("service_context", None)
         return self._redirect(request)
 
     def _redirect(self, request):
@@ -237,6 +256,52 @@ class ExecutiveDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView
     platform_codes = ("organization.view", "service.view", "metrics.view")
     breadcrumb_title = _("Overview")
 
+    def dispatch(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            target = self._context_target(request)
+            if target is not None:
+                return redirect(target)
+        return super().dispatch(request, *args, **kwargs)
+
+    def _context_target(self, request):
+        """Route ``/`` to the selected service or organization dashboard.
+
+        Stale session picks are cleared instead of redirecting to a 404/403.
+        """
+        from apps.common.context_processors import (
+            _visible_services_list,
+            user_organization_pks,
+        )
+
+        service_context = request.session.get("service_context") or {}
+        service_pk = service_context.get("pk")
+        if service_pk is not None:
+            match = next(
+                (
+                    s
+                    for s in _visible_services_list(request.user)
+                    if s["pk"] == service_pk and s["role_code"] == service_context.get("role")
+                ),
+                None,
+            )
+            if match is not None and match.get("url"):
+                return match["url"]
+            request.session.pop("service_context", None)
+
+        org_context = request.session.get("org_context") or {}
+        org_pk = org_context.get("pk")
+        if org_pk is not None:
+            visible = (
+                Organization.objects.visible_to(request.user, "organization.view")
+                .filter(pk=org_pk)
+                .exists()
+            )
+            if visible and org_pk in user_organization_pks(request.user):
+                return reverse("dashboard:organization_dashboard", args=[org_pk])
+            request.session.pop("org_context", None)
+            request.session.pop("service_context", None)
+        return None
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         user = self.request.user
@@ -292,15 +357,15 @@ class ExecutiveDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView
                 "label": _("Active Incidents"),
                 "value": incidents.exclude(status__in=INACTIVE_INCIDENTS).count(),
                 "icon": "incidents",
-                "url": reverse("incidents:index") + "?status=OPEN",
-                "filter": "OPEN",
+                "url": reverse("incidents:index") + "?status=ACTIVE",
+                "filter": "ACTIVE",
             },
             {
                 "label": _("Open Problems"),
                 "value": problems.exclude(status__in=("RESOLVED", "CLOSED")).count(),
                 "icon": "problems",
-                "url": reverse("problems:index") + "?status=OPEN",
-                "filter": "OPEN",
+                "url": reverse("problems:index") + "?status=ACTIVE",
+                "filter": "ACTIVE",
             },
             {
                 "label": _("Active Changes"),
@@ -308,7 +373,8 @@ class ExecutiveDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView
                     status__in=("IMPLEMENTED", "VERIFIED", "REJECTED", "ROLLED_BACK")
                 ).count(),
                 "icon": "changes",
-                "url": reverse("changes:index"),
+                "url": reverse("changes:index") + "?status=ACTIVE",
+                "filter": "ACTIVE",
             },
         ]
 
@@ -363,7 +429,7 @@ class OrganizationDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateV
         org = self.organization
         descendants = org.get_descendants(include_self=True)
         desc_ids = descendants.values_list("pk", flat=True)
-        orgs_qs = Organization.objects.filter(pk__in=desc_ids)
+        orgs_qs = Organization.objects.visible_to(user, "organization.view").filter(pk__in=desc_ids)
         services = visible_services(user).filter(organization_id__in=desc_ids)
         service_ids = list(services.values_list("pk", flat=True))
         requests = Request.objects.visible_to(user, "request.view").filter(
@@ -372,37 +438,45 @@ class OrganizationDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateV
         incidents = Incident.objects.visible_to(user, "incident.view").filter(
             service__organization_id__in=desc_ids
         )
+        problems = Problem.objects.visible_to(user, "problem.view").filter(
+            service__organization_id__in=desc_ids
+        )
+        changes = Change.objects.visible_to(user, "change.view").filter(
+            Q(service__organization_id__in=desc_ids) | Q(organization_id__in=desc_ids)
+        )
+        executions = WorkflowExecution.objects.filter(workflow__service_id__in=service_ids)
+        people = (
+            _visible_people(user)
+            .filter(memberships__organization_id__in=desc_ids, memberships__active=True)
+            .distinct()
+        )
 
         ctx["organization"] = org
         ctx["children"] = org.get_children().order_by("name")
         ctx["stats"] = [
             {
-                "label": "Organizations",
+                "label": _("Organizations"),
                 "value": orgs_qs.count(),
                 "icon": "orgs",
-                "url": reverse("organizations:index"),
+                "url": _list_url("organizations:index", parent=org.pk),
             },
             {
                 "label": _("Services"),
                 "value": services.count(),
                 "icon": "services",
-                "url": reverse("services:index"),
+                "url": _list_url("services:index", organization=org.pk),
             },
             {
                 "label": _("Members"),
-                "value": OrganizationMembership.objects.filter(
-                    organization_id__in=desc_ids, active=True
-                )
-                .distinct("person_id")
-                .count(),
+                "value": people.count(),
                 "icon": "memberships",
-                "url": reverse("organizations:memberships"),
+                "url": _list_url("people:directory", organization=org.pk),
             },
             {
                 "label": _("Open Requests"),
                 "value": requests.exclude(status__in=CLOSED_STATUSES).count(),
                 "icon": "requests",
-                "url": _list_url("requests:index", service=service_ids, status="OPEN"),
+                "url": _list_url("requests:index", organization=org.pk, status="OPEN"),
             },
         ]
         ctx["work_stats"] = [
@@ -410,34 +484,30 @@ class OrganizationDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateV
                 "label": _("Active Incidents"),
                 "value": incidents.exclude(status__in=INACTIVE_INCIDENTS).count(),
                 "icon": "incidents",
-                "url": _list_url("incidents:index", service=service_ids, status="OPEN"),
+                "url": _list_url("incidents:index", organization=org.pk, status="ACTIVE"),
             },
             {
                 "label": _("Problems"),
-                "value": Problem.objects.filter(service__organization_id__in=desc_ids).count(),
+                "value": problems.count(),
                 "icon": "problems",
-                "url": _list_url("problems:index", service=service_ids),
+                "url": _list_url("problems:index", organization=org.pk),
             },
             {
                 "label": _("Changes"),
-                "value": Change.objects.filter(
-                    Q(service__organization_id__in=desc_ids) | Q(organization_id__in=desc_ids)
-                ).count(),
+                "value": changes.count(),
                 "icon": "changes",
-                "url": reverse("changes:index"),
+                "url": _list_url("changes:index", organization=org.pk),
             },
             {
                 "label": _("Executions"),
-                "value": WorkflowExecution.objects.filter(
-                    workflow__service__organization_id__in=desc_ids
-                ).count(),
+                "value": executions.count(),
                 "icon": "executions",
-                "url": _list_url("workflows:executions", service=service_ids),
+                "url": _list_url("workflows:executions", organization=org.pk),
             },
         ]
         ctx["requests_chart"] = json.dumps(_requests_by_status_chart(requests, RequestStatus))
         ctx["trend_chart"] = json.dumps(_requests_trend_chart(requests))
-        ctx["services"] = services.select_related("organization").order_by("name")[:10]
+        ctx["org_services"] = services.select_related("organization").order_by("name")[:10]
         ctx["open_requests"] = (
             requests.exclude(status__in=CLOSED_STATUSES)
             .select_related("service", "request_type")
@@ -484,13 +554,13 @@ class ServiceDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView):
                 "label": _("Active Incidents"),
                 "value": incidents.exclude(status__in=INACTIVE_INCIDENTS).count(),
                 "icon": "incidents",
-                "url": _list_url("incidents:index", service=service.pk, status="OPEN"),
+                "url": _list_url("incidents:index", service=service.pk, status="ACTIVE"),
             },
             {
                 "label": _("Open Problems"),
                 "value": problems.exclude(status__in=("RESOLVED", "CLOSED")).count(),
                 "icon": "problems",
-                "url": _list_url("problems:index", service=service.pk, status="OPEN"),
+                "url": _list_url("problems:index", service=service.pk, status="ACTIVE"),
             },
             {
                 "label": _("Workflows"),
@@ -504,7 +574,7 @@ class ServiceDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView):
                 "label": _("Active Incidents"),
                 "value": incidents.exclude(status__in=INACTIVE_INCIDENTS).count(),
                 "icon": "incidents",
-                "url": _list_url("incidents:index", service=service.pk, status="OPEN"),
+                "url": _list_url("incidents:index", service=service.pk, status="ACTIVE"),
             },
             {
                 "label": _("Incident Executions"),
