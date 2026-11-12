@@ -4,10 +4,15 @@ from django.db.models import Count, Q
 from django.utils.translation import gettext_lazy as _
 
 from apps.common.breadcrumbs import BreadcrumbsMixin
-from apps.common.mixins import PermissionRequiredMixin, ScopedDetailView, visible_services
+from apps.common.mixins import (
+    PermissionRequiredMixin,
+    ScopedDetailView,
+    service_filter_choices,
+    visible_services,
+)
 from apps.common.tables.config import Column, Filter, FilterKind, TableConfig
 from apps.common.tables.views import TableView
-from apps.metrics.models import KPI, AggregationType, Metric
+from apps.metrics.models import KPI, SLA, AggregationType, Metric, ScopeType
 
 
 def _metric_queryset(user):
@@ -113,3 +118,59 @@ class KpiListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
             .select_related("service")
             .annotate(metrics_count=Count("metrics", distinct=True))
         )
+
+
+def _sla_queryset(user):
+    qs = SLA.objects.all()
+    if getattr(user, "is_superuser", False):
+        return qs
+    service_ids = list(visible_services(user).values_list("id", flat=True))
+    return qs.filter(Q(service__isnull=True) | Q(service_id__in=service_ids))
+
+
+class SlaListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
+    """Service-level targets, including the one generated for each offering."""
+
+    model = SLA
+    template_name = "metrics/slas.html"
+    platform_codes = ("metrics.view", "offering.view")
+    table_config = TableConfig(
+        key="slas",
+        columns=[
+            Column("name", _("SLA"), sortable=True, searchable=True),
+            Column(
+                "service.name",
+                _("Service"),
+                sortable=True,
+                searchable=True,
+                filter=Filter(
+                    FilterKind.CHOICE,
+                    param="service",
+                    lookup="service_id",
+                    choices_callable=service_filter_choices,
+                ),
+            ),
+            Column("offering", _("Service Offering"), template="metrics/_sla_offering.html"),
+            Column(
+                "scope",
+                _("Scope"),
+                sortable=True,
+                filter=Filter(FilterKind.CHOICE, choices=ScopeType.choices),
+                template="partials/pill.html",
+            ),
+            Column(
+                "target_minutes", _("Target"), sortable=True, template="offerings/_sla_cell.html"
+            ),
+            Column("active", _("Active"), sortable=True, template="partials/bool.html"),
+        ],
+        default_sort="name",
+        caption="SLAs",
+        empty_headline="No SLAs in scope",
+        empty_body="SLAs of your services and of their service offerings will appear here.",
+    )
+    breadcrumb_title = _("SLAs")
+    service_filter_field = "service"
+    organization_filter_fields = ("service__organization",)
+
+    def get_base_queryset(self):
+        return _sla_queryset(self.request.user).select_related("service", "offering")

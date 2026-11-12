@@ -707,3 +707,63 @@ def test_preview_total_sla_and_editor_rows_carry_service_sla_and_type(ctx):
     )
     row = next(r for r in options["offerings"] if r[0] == ctx["cleaning"].pk)
     assert row[3] == ctx["cleaning"].service_id and row[4] == "8h" and row[5] == "Limpeza"
+
+
+# ------------------------------------------------ one SLA record per offering
+def _offering_sla(offering):
+    from apps.metrics.models import SLA
+
+    return SLA.objects.get(offering=offering)
+
+
+def test_saving_a_plan_creates_the_offering_sla(ctx):
+    from apps.metrics.models import ScopeType
+
+    plan = [{"key": "a", "name": "A", "sla": "1d 2h"}]
+    _post(ctx, reverse("offerings:create"), plan)
+    offering = ServiceOffering.objects.get(name="Realizar um funeral")
+    sla = _offering_sla(offering)
+    assert (sla.target_minutes, sla.scope, sla.service_id) == (
+        26 * 60,
+        ScopeType.RESOLUTION,
+        ctx["cemetery"].pk,
+    )
+    assert sla.name == "Realizar um funeral v1"
+    assert not sla.active  # draft
+
+    plan[0]["sla"] = "3h"
+    _post(ctx, reverse("offerings:edit", args=[offering.pk]), plan)
+    assert _offering_sla(offering).target_minutes == 180  # updated, not duplicated
+
+
+def test_publish_activates_sla_and_new_version_gets_its_own(ctx):
+    _post(ctx, reverse("offerings:create"), [{"key": "a", "name": "A", "sla": "2h"}], "publish")
+    v1 = ServiceOffering.objects.get(name="Realizar um funeral")
+    assert _offering_sla(v1).active
+
+    v2 = v1.new_version()
+    assert _offering_sla(v2).target_minutes == 120 and not _offering_sla(v2).active
+    v2.publish()
+    assert _offering_sla(v2).active
+    assert not _offering_sla(v1).active  # deprecated version's SLA is switched off
+
+
+def test_deleting_a_draft_removes_its_sla(ctx):
+    from apps.metrics.models import SLA
+
+    _post(ctx, reverse("offerings:create"), [{"key": "a", "name": "A", "sla": "2h"}])
+    offering = ServiceOffering.objects.get(name="Realizar um funeral")
+    ctx["client"].post(reverse("offerings:delete", args=[offering.pk]))
+    assert not SLA.objects.filter(name="Realizar um funeral v1").exists()
+
+
+def test_sla_list_shows_offering_slas_in_scope(ctx, make_role, make_person, make_membership):
+    from apps.metrics.models import SLA
+
+    _post(ctx, reverse("offerings:create"), [{"key": "a", "name": "A", "sla": "2h"}], "publish")
+    SLA.objects.create(service=ctx["outside"], name="Hidden SLA", target_minutes=60)
+    body = ctx["client"].get(reverse("metrics:slas")).content.decode()
+    assert "Realizar um funeral v1" in body
+    assert reverse("offerings:detail", args=[ServiceOffering.objects.get().pk]) in body
+    assert "2h" in body
+    assert "Hidden SLA" not in body

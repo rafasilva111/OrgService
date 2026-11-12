@@ -284,6 +284,7 @@ def save_definition(offering, specs):
             link(src, created[spec.on_error], TransitionOutcome.FAILURE)
     offering.sla_minutes = specs_sla(specs)
     offering.save(update_fields=["sla_minutes", "updated_at"])
+    sync_offering_sla(offering)
     return offering
 
 
@@ -318,7 +319,31 @@ def offering_sla(offering):
 def refresh_offering_sla(offering):
     offering.sla_minutes = offering_sla(offering)
     offering.save(update_fields=["sla_minutes", "updated_at"])
+    sync_offering_sla(offering)
     return offering.sla_minutes
+
+
+def sync_offering_sla(offering):
+    """Create/update the offering's resolution SLA (``metrics.SLA``) from its
+    total SLA. Active only while the offering version is ACTIVE; removed when
+    the offering has no total."""
+    from apps.metrics.models import SLA, ScopeType
+    from apps.offerings.models import OfferingStatus
+
+    if offering.sla_minutes is None:
+        SLA.objects.filter(offering=offering).delete()
+        return None
+    sla, _created = SLA.objects.update_or_create(
+        offering=offering,
+        scope=ScopeType.RESOLUTION,
+        defaults={
+            "service_id": offering.service_id,
+            "name": f"{offering.name} v{offering.version}"[:128],
+            "target_minutes": offering.sla_minutes,
+            "active": offering.status == OfferingStatus.ACTIVE,
+        },
+    )
+    return sla
 
 
 def steps_queryset(offering):

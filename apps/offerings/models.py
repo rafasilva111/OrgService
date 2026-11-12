@@ -167,15 +167,22 @@ class ServiceOffering(TimeStampedModel):
     def publish(self):
         """Validate the step graph, make this version ACTIVE and deprecate the
         previously active versions of the same ``(service, name)``."""
-        from apps.offerings.builder import validate_offering_graph
+        from apps.offerings.builder import sync_offering_sla, validate_offering_graph
 
         validate_offering_graph(self)
         with transaction.atomic():
-            ServiceOffering.objects.filter(
-                service_id=self.service_id, name=self.name, status=OfferingStatus.ACTIVE
-            ).exclude(pk=self.pk).update(status=OfferingStatus.DEPRECATED)
+            previous = list(
+                ServiceOffering.objects.filter(
+                    service_id=self.service_id, name=self.name, status=OfferingStatus.ACTIVE
+                ).exclude(pk=self.pk)
+            )
+            for old in previous:
+                old.status = OfferingStatus.DEPRECATED
+                old.save(update_fields=["status", "updated_at"])
+                sync_offering_sla(old)  # its SLA becomes inactive
             self.status = OfferingStatus.ACTIVE
             self.save(update_fields=["status", "updated_at"])
+            sync_offering_sla(self)
 
     def new_version(self, created_by=None):
         """Copy this offering (steps and transitions included) into a DRAFT with
@@ -215,6 +222,9 @@ class ServiceOffering(TimeStampedModel):
                     name=tr.name,
                     condition=tr.condition,
                 )
+            from apps.offerings.builder import sync_offering_sla
+
+            sync_offering_sla(draft)
         return draft
 
     @classmethod

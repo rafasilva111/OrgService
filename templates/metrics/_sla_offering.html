@@ -1,0 +1,1 @@
+{% if record.offering_id %}<a href="{% url 'offerings:detail' record.offering_id %}" class="text-indigo-600 hover:text-indigo-800">{{ record.offering.name }} <span class="text-xs text-zinc-500">v{{ record.offering.version }}</span></a>{% else %}<span class="text-zinc-400">—</span>{% endif %}

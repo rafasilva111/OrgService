@@ -1488,7 +1488,7 @@ class Command(BaseCommand):
 
             KpiMetric.objects.get_or_create(kpi=kpi, metric=metrics[code], defaults={"weight": 1})
 
-        if not SLA.objects.exists():
+        if not SLA.objects.filter(offering__isnull=True).exists():
             SLA.objects.get_or_create(
                 service=mt_waste,
                 name="Response target",

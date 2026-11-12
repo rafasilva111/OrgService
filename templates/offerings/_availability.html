@@ -10,7 +10,11 @@
   <p class="mt-1 text-sm text-red-600">{% translate 'Choose at least one: on request and/or recurring.' %}</p>
   {% endif %}
   {% if offering.sla_minutes is not None %}
-  <p class="mt-2 text-sm text-zinc-700"><span class="font-medium">{% translate 'Total SLA' %}:</span> {{ offering.sla_minutes|minutes }}</p>
+  <p class="mt-2 text-sm text-zinc-700"><span class="font-medium">{% translate 'Total SLA' %}:</span> {{ offering.sla_minutes|minutes }}
+    {% if offering.pk %}{% with sla=offering.slas.first %}{% if sla %}
+    &middot; <a href="{% url 'metrics:slas' %}?service={{ offering.service_id }}" class="text-indigo-600 hover:text-indigo-800">{% translate 'SLA' %} {{ sla.get_scope_display|lower }}</a>{% if not sla.active %} <span class="text-xs text-zinc-500">({% translate 'inactive' %})</span>{% endif %}
+    {% endif %}{% endwith %}{% endif %}
+  </p>
   {% endif %}
 </div>
 {% endwith %}

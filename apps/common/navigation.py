@@ -53,7 +53,8 @@ NAV_ITEMS = [
     NavItem(_("Executions"), "offerings:executions", "executions", G_OFFERINGS, "runs tasks"),
     NavItem(_("Events"), "events:timeline", "events", G_ANALYTICS, "audit stream activity"),
     NavItem(_("Metrics"), "metrics:index", "metrics", G_ANALYTICS, "measurements values"),
-    NavItem(_("KPIs"), "metrics:kpis", "kpis", G_ANALYTICS, "targets slas"),
+    NavItem(_("KPIs"), "metrics:kpis", "kpis", G_ANALYTICS, "targets"),
+    NavItem(_("SLAs"), "metrics:slas", "kpis", G_ANALYTICS, "service level targets offerings"),
     NavItem(_("Roles & Permissions"), "access:roles", "roles", G_ADMINISTRATION, "rbac grants"),
     NavItem(_("Audit Log"), "audit:log", "audit", G_ADMINISTRATION, "immutable trail"),
 ]

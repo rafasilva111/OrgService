@@ -204,3 +204,14 @@ def test_funeral_total_sla_counts_the_external_step(seeded):
     # validate 4h + assign 4h + prepare 2d + burial 0 + register 1d; notify branch excluded
     assert funeral.sla_minutes == 240 + 240 + 2880 + 0 + 1440
     assert all(o.sla_minutes is not None for o in ServiceOffering.objects.all())
+
+
+def test_every_seeded_offering_has_its_sla_and_service_slas_remain(seeded):
+    from apps.metrics.models import SLA
+    from apps.offerings.models import ServiceOffering
+
+    for offering in ServiceOffering.objects.all():
+        sla = SLA.objects.get(offering=offering)
+        assert sla.target_minutes == offering.sla_minutes and sla.active
+    # The service-level SLAs on Waste Management are still seeded.
+    assert SLA.objects.filter(offering__isnull=True, service__name="Waste Management").count() == 2
