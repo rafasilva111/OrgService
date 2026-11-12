@@ -97,3 +97,47 @@ def test_execution_generic_subject(offering_graph):
     ex.subject = g["person"]
     ex.save()
     assert ex.subject == g["person"]
+
+
+# ---------------------------------------------------------------------------
+# Step responsibility: service_offering (blank = the step's own offering)
+# ---------------------------------------------------------------------------
+
+
+def test_step_defaults_to_its_own_offering(offering_graph):
+    step = offering_graph["steps"][2]
+    assert step.service_offering is None
+    assert step.effective_offering == offering_graph["wf"]
+    assert step.effective_service == offering_graph["service"]
+    assert not step.is_delegated
+
+
+def test_step_handed_to_another_services_offering(offering_graph, make_service, org_tree):
+    other = make_service(org_tree["parish_a"], "Limpeza Urbana")
+    cleaning = ServiceOffering.objects.create(service=other, name="Limpeza", status="ACTIVE")
+    step = offering_graph["steps"][2]
+    step.service_offering = cleaning
+    step.save()
+    step.refresh_from_db()
+    assert step.service_offering.service == other
+    assert step.effective_offering == cleaning
+    assert step.effective_service == other
+    assert step.is_delegated
+
+
+def test_pointing_at_own_offering_is_not_a_delegation(offering_graph):
+    step = offering_graph["steps"][2]
+    step.service_offering = offering_graph["wf"]
+    assert not step.is_delegated
+
+
+def test_responsible_offering_in_use_cannot_be_deleted(offering_graph, make_service, org_tree):
+    from django.db.models import ProtectedError
+
+    other = make_service(org_tree["parish_a"], "Other")
+    target = ServiceOffering.objects.create(service=other, name="Target", status="ACTIVE")
+    step = offering_graph["steps"][2]
+    step.service_offering = target
+    step.save()
+    with pytest.raises(ProtectedError):
+        target.delete()

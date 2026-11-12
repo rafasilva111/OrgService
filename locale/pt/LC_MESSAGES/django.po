@@ -1423,8 +1423,8 @@ msgstr "competências"
 msgid "SLA"
 msgstr "SLA"
 
-msgid "SLA %(minutes)sm"
-msgstr "SLA %(minutes)s min"
+msgid "SLA %(duration)s"
+msgstr "SLA %(duration)s"
 
 msgid "SLA (minutes)"
 msgstr "SLA (minutos)"
@@ -1729,3 +1729,42 @@ msgstr "Sim"
 
 msgid "Active offerings"
 msgstr "Ofertas ativas"
+
+msgid "Select a service offering"
+msgstr "Selecione uma oferta de serviço"
+
+msgid "Select a service first"
+msgstr "Selecione primeiro um serviço"
+
+msgid "service offering type"
+msgstr "tipo de oferta de serviço"
+
+msgid "service offering types"
+msgstr "tipos de oferta de serviço"
+
+msgid "type"
+msgstr "tipo"
+
+msgid "Request created."
+msgstr "Pedido criado."
+
+msgid "Select a service offering to see its steps."
+msgstr "Selecione uma oferta de serviço para ver os seus passos."
+
+msgid "Responsible service"
+msgstr "Serviço responsável"
+
+msgid "responsible service offering"
+msgstr "oferta de serviço responsável"
+
+msgctxt "duration unit (days)"
+msgid "d"
+msgstr "d"
+
+msgctxt "duration unit (hours)"
+msgid "h"
+msgstr "h"
+
+msgctxt "duration unit (minutes)"
+msgid "min"
+msgstr "min"

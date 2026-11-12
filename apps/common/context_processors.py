@@ -71,30 +71,18 @@ def user_context(request):
         )
         if rows:
             from apps.organizations.models import Organization
-            from apps.services.models import ServiceActor
 
             visible_ids = set(
                 Organization.objects.visible_to(user, "organization.view").values_list(
                     "pk", flat=True
                 )
             )
-            actors = ServiceActor.objects.filter(person=person).select_related("service")
             for m in rows:
                 org = m.organization
-                service = next(
-                    (
-                        a.service.name
-                        for a in actors
-                        if a.service.organization_id
-                        in set(org.get_descendants(include_self=True).values_list("pk", flat=True))
-                    ),
-                    None,
-                )
                 memberships.append(
                     {
                         "pk": org.pk,
                         "organization": org.name,
-                        "service": service,
                         "organization_type": org.get_organization_type_display(),
                         "role": m.role.name,
                         "url": f"/organization/{org.pk}/" if org.pk in visible_ids else None,

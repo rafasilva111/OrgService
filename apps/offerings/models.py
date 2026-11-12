@@ -29,6 +29,26 @@ class OfferingTrigger(models.TextChoices):
     EVENT = "EVENT", _("Event")
 
 
+class ServiceOfferingType(TimeStampedModel):
+    """Platform-wide category of service offerings (Manutenção, Reclamação, …).
+
+    Replaces the former ``requests.RequestType``: a request's type is now
+    derived from the offering it asks for (``request.offering.offering_type``).
+    """
+
+    code = models.SlugField(_("code"), unique=True, max_length=64)
+    name = models.CharField(_("name"), max_length=128)
+    description = models.TextField(_("description"), blank=True, default="")
+
+    class Meta:
+        verbose_name = _("service offering type")
+        verbose_name_plural = _("service offering types")
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class ServiceOffering(TimeStampedModel):
     """A versioned definition of how work is performed for a service."""
 
@@ -46,6 +66,14 @@ class ServiceOffering(TimeStampedModel):
     )
     trigger = models.CharField(
         _("trigger"), max_length=32, choices=OfferingTrigger.choices, default=OfferingTrigger.MANUAL
+    )
+    offering_type = models.ForeignKey(
+        ServiceOfferingType,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="offerings",
+        verbose_name=_("type"),
     )
     created_by = models.ForeignKey(
         "people.Person",
@@ -108,6 +136,17 @@ class OfferingStep(TimeStampedModel):
         related_name="offering_steps",
         help_text=_("Role that performs this step."),
     )
+    # Offering accountable for the step; its service is
+    # ``service_offering.service``. Blank means the step's own offering, so set
+    # it only to hand the step to another offering (usually of another service).
+    service_offering = models.ForeignKey(
+        ServiceOffering,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="responsible_steps",
+        verbose_name=_("responsible service offering"),
+    )
     sla_minutes = models.PositiveIntegerField(
         _("SLA (minutes)"), null=True, blank=True, help_text=_("Deadline for this step.")
     )
@@ -124,6 +163,19 @@ class OfferingStep(TimeStampedModel):
 
     def __str__(self):
         return f"{self.offering} · {self.order}: {self.name}"
+
+    @property
+    def effective_offering(self):
+        """Offering accountable for this step (defaults to the step's own offering)."""
+        return self.service_offering or self.offering
+
+    @property
+    def effective_service(self):
+        return self.effective_offering.service
+
+    @property
+    def is_delegated(self):
+        return self.service_offering_id is not None and self.service_offering_id != self.offering_id
 
 
 class OfferingTransition(TimeStampedModel):

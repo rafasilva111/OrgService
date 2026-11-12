@@ -13,7 +13,7 @@ import pytest
 from django.urls import reverse
 
 from apps.organizations.models import Organization
-from apps.requests.models import Request, RequestStatus, RequestType
+from apps.requests.models import Request, RequestStatus
 
 pytestmark = pytest.mark.django_db
 
@@ -22,13 +22,8 @@ def _member(make_person, make_membership, user, org, role):
     return make_membership(make_person(user), org, role)
 
 
-@pytest.fixture
-def request_type(db):
-    return RequestType.objects.create(code="generic", name="Generic")
-
-
 def test_service_dashboard_open_requests_link_is_scoped(
-    client, make_user, make_person, make_role, make_membership, org_tree, make_service, request_type
+    client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
     other_service = make_service(org_tree["municipality"], "Other Service")
     service = make_service(org_tree["municipality"], "Target Service")
@@ -37,18 +32,14 @@ def test_service_dashboard_open_requests_link_is_scoped(
     _member(make_person, make_membership, user, org_tree["municipality"], role)
     assert client.login(username=user.username, password="x")
 
-    Request.objects.create(
-        service=service, request_type=request_type, title="Open on target", status=RequestStatus.NEW
-    )
+    Request.objects.create(service=service, title="Open on target", status=RequestStatus.NEW)
     Request.objects.create(
         service=service,
-        request_type=request_type,
         title="Closed on target",
         status=RequestStatus.CLOSED,
     )
     Request.objects.create(
         service=other_service,
-        request_type=request_type,
         title="Open on other",
         status=RequestStatus.NEW,
     )
@@ -64,7 +55,7 @@ def test_service_dashboard_open_requests_link_is_scoped(
 
 
 def test_requests_list_service_filter_is_exact_not_substring(
-    client, make_user, make_person, make_role, make_membership, org_tree, make_service, request_type
+    client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
     """``?service=<pk>`` must be an exact match — unlike the free-text
     ``service.name`` column filter it replaces for dashboard links."""
@@ -75,12 +66,9 @@ def test_requests_list_service_filter_is_exact_not_substring(
     _member(make_person, make_membership, user, org_tree["municipality"], role)
     assert client.login(username=user.username, password="x")
 
-    Request.objects.create(
-        service=alpha, request_type=request_type, title="Alpha request", status=RequestStatus.NEW
-    )
+    Request.objects.create(service=alpha, title="Alpha request", status=RequestStatus.NEW)
     Request.objects.create(
         service=alpha_two,
-        request_type=request_type,
         title="Alpha Two request",
         status=RequestStatus.NEW,
     )
@@ -91,7 +79,7 @@ def test_requests_list_service_filter_is_exact_not_substring(
 
 
 def test_requests_list_status_open_pseudo_filter(
-    client, make_user, make_person, make_role, make_membership, org_tree, make_service, request_type
+    client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
     service = make_service(org_tree["municipality"], "Svc")
     user = make_user()
@@ -99,18 +87,13 @@ def test_requests_list_status_open_pseudo_filter(
     _member(make_person, make_membership, user, org_tree["municipality"], role)
     assert client.login(username=user.username, password="x")
 
-    Request.objects.create(
-        service=service, request_type=request_type, title="New one", status=RequestStatus.NEW
-    )
+    Request.objects.create(service=service, title="New one", status=RequestStatus.NEW)
     Request.objects.create(
         service=service,
-        request_type=request_type,
         title="In progress one",
         status=RequestStatus.IN_PROGRESS,
     )
-    Request.objects.create(
-        service=service, request_type=request_type, title="Closed one", status=RequestStatus.CLOSED
-    )
+    Request.objects.create(service=service, title="Closed one", status=RequestStatus.CLOSED)
 
     body = client.get(reverse("requests:index"), {"status": "OPEN"}).content.decode()
     assert "New one" in body
@@ -119,7 +102,7 @@ def test_requests_list_status_open_pseudo_filter(
 
 
 def test_requests_service_column_filter_is_a_dropdown(
-    client, make_user, make_person, make_role, make_membership, org_tree, make_service, request_type
+    client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
     """The "Service" column filter in the drawer is a <select> of the user's
     visible services (scoped, exact-match), not a free-text search box."""
@@ -167,7 +150,7 @@ def test_requests_service_column_filter_scoped_to_visible_services(
 
 
 def test_requests_service_column_filter_by_id_is_exact(
-    client, make_user, make_person, make_role, make_membership, org_tree, make_service, request_type
+    client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
     """The drawer's Service dropdown uses the same exact ``?service=<pk>`` param
     as dashboard links, so a dashboard selection is reflected back in the form."""
@@ -178,12 +161,9 @@ def test_requests_service_column_filter_by_id_is_exact(
     _member(make_person, make_membership, user, org_tree["municipality"], role)
     assert client.login(username=user.username, password="x")
 
-    Request.objects.create(
-        service=alpha, request_type=request_type, title="Alpha req", status=RequestStatus.NEW
-    )
+    Request.objects.create(service=alpha, title="Alpha req", status=RequestStatus.NEW)
     Request.objects.create(
         service=alpha_two,
-        request_type=request_type,
         title="Alpha Two req",
         status=RequestStatus.NEW,
     )
@@ -555,16 +535,12 @@ def _filter_member(make_user, make_person, make_role, make_membership, org, perm
 
 
 def test_requests_organization_filter_is_subtree_dropdown(
-    client, make_user, make_person, make_role, make_membership, org_tree, make_service, request_type
+    client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
     service_a = make_service(org_tree["parish_a"], "Waste A")
     service_b = make_service(org_tree["parish_b"], "Waste B")
-    Request.objects.create(
-        service=service_a, request_type=request_type, title="Req A", status=RequestStatus.NEW
-    )
-    Request.objects.create(
-        service=service_b, request_type=request_type, title="Req B", status=RequestStatus.NEW
-    )
+    Request.objects.create(service=service_a, title="Req A", status=RequestStatus.NEW)
+    Request.objects.create(service=service_b, title="Req B", status=RequestStatus.NEW)
 
     municipality = org_tree["municipality"]
     user = _filter_member(
@@ -598,12 +574,10 @@ def test_requests_organization_filter_is_subtree_dropdown(
 
 
 def test_requests_organization_filter_ignores_unresolvable_pk(
-    client, make_user, make_person, make_role, make_membership, org_tree, make_service, request_type
+    client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
     service = make_service(org_tree["parish_a"], "Waste A")
-    Request.objects.create(
-        service=service, request_type=request_type, title="Req A", status=RequestStatus.NEW
-    )
+    Request.objects.create(service=service, title="Req A", status=RequestStatus.NEW)
     user = _filter_member(
         make_user,
         make_person,
@@ -622,16 +596,12 @@ def test_requests_organization_filter_ignores_unresolvable_pk(
 
 
 def test_requests_organization_and_service_filters_combine(
-    client, make_user, make_person, make_role, make_membership, org_tree, make_service, request_type
+    client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
     service_a = make_service(org_tree["parish_a"], "Waste A")
     service_b = make_service(org_tree["parish_b"], "Waste B")
-    Request.objects.create(
-        service=service_a, request_type=request_type, title="Req A", status=RequestStatus.NEW
-    )
-    Request.objects.create(
-        service=service_b, request_type=request_type, title="Req B", status=RequestStatus.NEW
-    )
+    Request.objects.create(service=service_a, title="Req A", status=RequestStatus.NEW)
+    Request.objects.create(service=service_b, title="Req B", status=RequestStatus.NEW)
     user = _filter_member(
         make_user,
         make_person,
@@ -826,17 +796,13 @@ def _set_header_scope(client, org, service=None, role="ctxrole"):
 
 
 def test_requests_list_follows_header_service_scope(
-    client, make_user, make_person, make_role, make_membership, org_tree, make_service, request_type
+    client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
     """Selecting a service in the header scopes Requests without a URL param."""
     target = make_service(org_tree["municipality"], "Cemiterios")
     other = make_service(org_tree["municipality"], "Waste")
-    Request.objects.create(
-        service=target, request_type=request_type, title="Cemiterios req", status=RequestStatus.NEW
-    )
-    Request.objects.create(
-        service=other, request_type=request_type, title="Waste req", status=RequestStatus.NEW
-    )
+    Request.objects.create(service=target, title="Cemiterios req", status=RequestStatus.NEW)
+    Request.objects.create(service=other, title="Waste req", status=RequestStatus.NEW)
     user = _filter_member(
         make_user,
         make_person,
@@ -857,16 +823,12 @@ def test_requests_list_follows_header_service_scope(
 
 
 def test_explicit_service_param_overrides_header_scope(
-    client, make_user, make_person, make_role, make_membership, org_tree, make_service, request_type
+    client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
     scoped = make_service(org_tree["municipality"], "Scoped")
     explicit = make_service(org_tree["municipality"], "Explicit")
-    Request.objects.create(
-        service=scoped, request_type=request_type, title="Scoped req", status=RequestStatus.NEW
-    )
-    Request.objects.create(
-        service=explicit, request_type=request_type, title="Explicit req", status=RequestStatus.NEW
-    )
+    Request.objects.create(service=scoped, title="Scoped req", status=RequestStatus.NEW)
+    Request.objects.create(service=explicit, title="Explicit req", status=RequestStatus.NEW)
     user = _filter_member(
         make_user,
         make_person,
@@ -885,16 +847,12 @@ def test_explicit_service_param_overrides_header_scope(
 
 
 def test_empty_service_param_clears_header_scope(
-    client, make_user, make_person, make_role, make_membership, org_tree, make_service, request_type
+    client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
     scoped = make_service(org_tree["municipality"], "Scoped")
     other = make_service(org_tree["municipality"], "Other")
-    Request.objects.create(
-        service=scoped, request_type=request_type, title="Scoped req", status=RequestStatus.NEW
-    )
-    Request.objects.create(
-        service=other, request_type=request_type, title="Other req", status=RequestStatus.NEW
-    )
+    Request.objects.create(service=scoped, title="Scoped req", status=RequestStatus.NEW)
+    Request.objects.create(service=other, title="Other req", status=RequestStatus.NEW)
     user = _filter_member(
         make_user,
         make_person,
@@ -922,17 +880,12 @@ def test_header_service_scope_is_ignored_when_not_visible(
     grant_service,
     org_tree,
     make_service,
-    request_type,
 ):
     """A stale/forged session pk cannot filter (or leak) outside the user's scope."""
     allowed = make_service(org_tree["municipality"], "Allowed")
     hidden = make_service(org_tree["municipality"], "Hidden")
-    Request.objects.create(
-        service=allowed, request_type=request_type, title="Allowed req", status=RequestStatus.NEW
-    )
-    Request.objects.create(
-        service=hidden, request_type=request_type, title="Hidden req", status=RequestStatus.NEW
-    )
+    Request.objects.create(service=allowed, title="Allowed req", status=RequestStatus.NEW)
+    Request.objects.create(service=hidden, title="Hidden req", status=RequestStatus.NEW)
     user = make_user()
     role = make_role(code="ctxrestricted", permissions=["request.view", "service.view"])
     membership = _member(make_person, make_membership, user, org_tree["municipality"], role)
@@ -946,16 +899,12 @@ def test_header_service_scope_is_ignored_when_not_visible(
 
 
 def test_requests_list_follows_header_organization_scope(
-    client, make_user, make_person, make_role, make_membership, org_tree, make_service, request_type
+    client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
     service_a = make_service(org_tree["parish_a"], "Waste A")
     service_b = make_service(org_tree["parish_b"], "Waste B")
-    Request.objects.create(
-        service=service_a, request_type=request_type, title="Req A", status=RequestStatus.NEW
-    )
-    Request.objects.create(
-        service=service_b, request_type=request_type, title="Req B", status=RequestStatus.NEW
-    )
+    Request.objects.create(service=service_a, title="Req A", status=RequestStatus.NEW)
+    Request.objects.create(service=service_b, title="Req B", status=RequestStatus.NEW)
     user = _filter_member(
         make_user,
         make_person,

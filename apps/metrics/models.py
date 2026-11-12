@@ -7,6 +7,7 @@ requests/incidents/offerings (see spec §21).
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from apps.common.durations import humanize_minutes
 from apps.common.models import ActiveModel, TimeStampedModel
 
 
@@ -152,4 +153,4 @@ class SLA(TimeStampedModel, ActiveModel):
         ]
 
     def __str__(self):
-        return f"{self.service} / {self.name} ({self.target_minutes}min)"
+        return f"{self.service} / {self.name} ({humanize_minutes(self.target_minutes)})"

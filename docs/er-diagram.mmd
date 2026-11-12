@@ -23,7 +23,8 @@ erDiagram
     RolePermission }o--|| Role : "grants"
 
     Service ||--o{ Request : "receives"
-    RequestType ||--o{ Request : "classifies"
+    ServiceOffering ||--o{ Request : "requested as"
+    ServiceOfferingType ||--o{ ServiceOffering : "classifies"
     Service ||--o{ Incident : "suffers"
     Service ||--o{ Problem : "root causes"
     Problem }o--o{ Incident : "linked via"
@@ -101,7 +102,7 @@ erDiagram
     Request {
         int id PK
         int service_id FK
-        int request_type_id FK
+        int offering_id FK
         string title
         string status
         string priority

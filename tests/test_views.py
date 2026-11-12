@@ -164,16 +164,14 @@ def test_superuser_renders_detail_pages(client, staff_user, org_tree, make_servi
     from apps.offerings.models import ServiceOffering
     from apps.people.models import Skill
     from apps.problems.models import Problem, ProblemStatus
-    from apps.requests.models import Priority, Request, RequestStatus, RequestType
+    from apps.requests.models import Priority, Request, RequestStatus
     from apps.resources.models import Resource, ResourceType
 
     client.force_login(staff_user)
 
     service = make_service(org_tree["parish_a"], name="SvcDetail")
-    req_type = RequestType.objects.create(name="Standard")
     req = Request.objects.create(
         service=service,
-        request_type=req_type,
         title="Req",
         status=RequestStatus.NEW,
         priority=Priority.MEDIUM,
@@ -295,16 +293,11 @@ def test_incident_create_with_perm_renders(client, make_user, make_member, org_t
 
 
 def test_request_bulk_mark_closed(client, make_user, make_member, org_tree, make_service):
-    from apps.requests.models import Request, RequestStatus, RequestType
+    from apps.requests.models import Request, RequestStatus
 
     service = make_service(org_tree["parish_a"])
-    req_type = RequestType.objects.create(name="Standard")
-    req1 = Request.objects.create(
-        service=service, request_type=req_type, title="A", status=RequestStatus.NEW
-    )
-    req2 = Request.objects.create(
-        service=service, request_type=req_type, title="B", status=RequestStatus.NEW
-    )
+    req1 = Request.objects.create(service=service, title="A", status=RequestStatus.NEW)
+    req2 = Request.objects.create(service=service, title="B", status=RequestStatus.NEW)
 
     user = make_user("closer")
     make_member(user, org_tree["parish_a"], "request.view", "request.update")
@@ -347,13 +340,12 @@ def test_organization_dashboard_renders(client, make_user, make_member, org_tree
 
 def test_header_shows_organization_and_role(client, make_user, make_member, staff_user, org_tree):
     user = make_user("op")
-    person = make_member(user, org_tree["municipality"], "organization.view", "service.view")
+    make_member(user, org_tree["municipality"], "organization.view", "service.view")
     client.force_login(user)
     response = client.get(reverse("dashboard"))
     assert response.status_code == 200
     html = response.content.decode()
     assert org_tree["municipality"].name in html
-    assert person.memberships.get().role.name in html
 
     client.force_login(staff_user)
     response = client.get(reverse("dashboard"))
@@ -361,7 +353,7 @@ def test_header_shows_organization_and_role(client, make_user, make_member, staf
     assert reverse("dashboard:set_org_context") not in response.content.decode()
 
 
-def test_sidebar_footer_shows_org_service_role(
+def test_sidebar_footer_does_not_list_memberships(
     client, make_user, make_member, org_tree, make_service
 ):
     user = make_user("sm")
@@ -374,9 +366,10 @@ def test_sidebar_footer_shows_org_service_role(
     response = client.get(reverse("dashboard"))
     html = response.content.decode()
     footer = html[html.find("border-t border-zinc-800") : html.find("</aside>")]
-    assert org_tree["municipality"].name in footer
-    assert "Waste Management" in footer
-    assert membership.memberships.get().role.name in footer
+    assert "border-t border-zinc-800" in html
+    assert org_tree["municipality"].name not in footer
+    assert "Waste Management" not in footer
+    assert membership.memberships.get().role.name not in footer
 
 
 def test_service_dashboard_renders(client, make_user, make_member, org_tree, make_service):

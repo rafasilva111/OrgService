@@ -77,17 +77,6 @@
   </nav>
 
   <div class="border-t border-zinc-800 px-5 py-4 text-xs">
-    {% if memberships %}
-    <div class="grid gap-2">
-      {% for m in memberships %}
-      <div class="grid gap-0.5">
-        <span class="font-medium text-zinc-300">{{ m.organization }}</span>
-        <span class="text-zinc-500">{% if m.service %}{{ m.service }} · {% endif %}{{ m.role }}</span>
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
     <p class="text-zinc-500">{% translate 'OrgService Platform — apex-guided UI' %}</p>
-    {% endif %}
   </div>
 </aside>

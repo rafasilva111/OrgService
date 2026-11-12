@@ -43,8 +43,9 @@ single authorization model can govern every one of them.
 
 | Model | Purpose | Key fields |
 |---|---|---|
-| `ServiceOffering` | Versioned *definition* of work for a service | FK service, `name`, `version` (default 1), `status` (DRAFT/ACTIVE/DEPRECATED), `trigger`, `created_by`. Unique `(service, name, version)`. `current_version()` = newest non-draft. |
-| `OfferingStep` | Activity/decision in a definition | FK offering, `code`, `step_type` (START/TASK/GATEWAY/APPROVAL/END), `order`, `responsible_role`, `sla_minutes`, `required_inputs`/`outputs` (JSON). Unique `(offering, code)` and `(offering, order)`. |
+| `ServiceOfferingType` | Platform-wide category of offerings (replaces `RequestType`) | `code` unique, `name`, `description`. |
+| `ServiceOffering` | Versioned *definition* of work for a service | FK service, FK `offering_type` (PROTECT), `name`, `version` (default 1), `status` (DRAFT/ACTIVE/DEPRECATED), `trigger`, `created_by`. Unique `(service, name, version)`. `current_version()` = newest non-draft. |
+| `OfferingStep` | Activity/decision in a definition | FK offering, `code`, `step_type` (START/TASK/GATEWAY/APPROVAL/END), `order`, `responsible_role`, `service_offering` (responsible offering; blank = own, service via `service_offering.service`), `sla_minutes`, `required_inputs`/`outputs` (JSON). Unique `(offering, code)` and `(offering, order)`. |
 | `OfferingTransition` | Directed move between steps (branching) | FK offering, `from_step`, `to_step`, `condition` (JSON). Unique `(offering, from_step, order)`. |
 | `OfferingExecution` | An *instance* (run) of a definition | FK offering (PROTECT), `status` (PENDING/…), `current_step`, generic `subject`, timestamps, `created_by`. |
 | `OfferingTask` | Executable work item of an execution | FK execution, FK step, `title`, `assigned_to` (person), `status`, `deadline`, `result` (JSON). |
@@ -55,8 +56,7 @@ A request triggers an offering; the linkage is the generic `subject` on `Offerin
 
 | Model | Purpose | Key fields |
 |---|---|---|
-| `Request` | A demand entering the service | FK service, FK `request_type`, `title`, `status` (NEW…CLOSED/CANCELLED), `priority`, `requester`/`created_by`/`assigned_to` (people), optional FK `offering` to trigger. |
-| `RequestType` | Reusable category | `code` unique; optional per-service scoping. |
+| `Request` | A demand entering the service | FK service, FK `offering` (PROTECT; required in forms, must belong to the service), `title`, `status` (NEW…CLOSED/CANCELLED), `priority`, `requester`/`created_by`/`assigned_to` (people). Type = `offering.offering_type`. |
 | `RequestComment` | Communication on a request | FK request, FK `author` (person), `body`. |
 
 ## incidents & problems

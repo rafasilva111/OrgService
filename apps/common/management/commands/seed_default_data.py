@@ -47,12 +47,13 @@ from apps.offerings.models import (
     OfferingTransition,
     OfferingTrigger,
     ServiceOffering,
+    ServiceOfferingType,
     StepType,
 )
 from apps.organizations.models import Organization, OrganizationMembership
 from apps.people.models import Person, PersonType, Skill
 from apps.problems.models import Problem
-from apps.requests.models import Priority, Request, RequestComment, RequestStatus, RequestType
+from apps.requests.models import Priority, Request, RequestComment, RequestStatus
 from apps.resources.models import Equipment, Resource, ResourceAssignment, ResourceType
 from apps.services.models import ActorType, Service, ServiceActor, ServiceStatus, ServiceType
 
@@ -118,7 +119,7 @@ class Command(BaseCommand):
         orgs = self._seed_org_tree()
         services = self._seed_services(orgs)
         people = self._seed_people(orgs, services)
-        self._seed_request_types(services)
+        self._seed_offering_types()
         self._seed_skills()
         self._seed_offerings(services, people)
         self._seed_requests(services, people)
@@ -508,19 +509,18 @@ class Command(BaseCommand):
     def _service_by_name(self, name):
         return Service.objects.get(name=name)
 
-    # ----------------------------------------------------------- request types
-    def _seed_request_types(self, services):
+    # --------------------------------------------------- service offering types
+    def _seed_offering_types(self):
         catalog = [
-            ("NEW_EQUIPMENT", "New Equipment", None),
-            ("MAINTENANCE", "Maintenance Request", services.get("Water Supply")),
-            ("COMPLAINT", "Public Complaint", None),
-            ("GENERAL", "General Request", None),
+            ("MAINTENANCE", "Manutenção"),
+            ("COLLECTION", "Recolha"),
+            ("CLEANING", "Limpeza"),
+            ("FUNERAL", "Serviço funerário"),
+            ("SUPPORT", "Apoio ao munícipe"),
+            ("ADMINISTRATIVE", "Pedido administrativo"),
         ]
-        for code, name, service in catalog:
-            RequestType.objects.get_or_create(
-                code=code,
-                defaults={"name": name, "service": service},
-            )
+        for code, name in catalog:
+            ServiceOfferingType.objects.get_or_create(code=code, defaults={"name": name})
 
     # ------------------------------------------------------------------- skills
     def _seed_skills(self):
@@ -537,7 +537,16 @@ class Command(BaseCommand):
         role_op = Role.objects.get(code="OPERATOR")
         role_sm = Role.objects.get(code="SERVICE_MANAGER")
 
-        def build(name, service, description, steps):
+        def build(
+            name,
+            service,
+            description,
+            steps,
+            trigger=OfferingTrigger.REQUEST,
+            created_by="a.duarte",
+            offering_type=None,
+        ):
+            otype = ServiceOfferingType.objects.get(code=offering_type) if offering_type else None
             wf, _created = ServiceOffering.objects.get_or_create(
                 service=service,
                 name=name,
@@ -545,10 +554,14 @@ class Command(BaseCommand):
                     "description": description,
                     "version": 1,
                     "status": OfferingStatus.ACTIVE,
-                    "trigger": OfferingTrigger.REQUEST,
-                    "created_by": people.get("a.duarte"),
+                    "trigger": trigger,
+                    "created_by": people.get(created_by),
+                    "offering_type": otype,
                 },
             )
+            if otype is not None and wf.offering_type_id is None:
+                wf.offering_type = otype
+                wf.save(update_fields=["offering_type", "updated_at"])
             created = {}
             for code, sname, step_type, order, role, inputs, sla in steps:
                 step, _created = OfferingStep.objects.get_or_create(
@@ -564,20 +577,14 @@ class Command(BaseCommand):
                     },
                 )
                 created[code] = step
-            transitions = [
-                ("assign", "start", 10),
-                ("collect", "assign", 10),
-                ("verify", "collect", 10),
-                ("end", "verify", 10),
-            ]
-            for to_code, from_code, order in transitions:
-                if to_code not in created or from_code not in created:
-                    continue
+            # Linear flow: each step moves to the next one by ``order``.
+            ordered = [created[code] for code, *_rest in sorted(steps, key=lambda s: s[3])]
+            for from_step, to_step in zip(ordered, ordered[1:], strict=False):
                 OfferingTransition.objects.get_or_create(
                     offering=wf,
-                    from_step=created[from_code],
-                    order=order,
-                    defaults={"to_step": created[to_code]},
+                    from_step=from_step,
+                    order=10,
+                    defaults={"to_step": to_step},
                 )
             return wf
 
@@ -592,6 +599,7 @@ class Command(BaseCommand):
                 ("verify", "Verify Completion", StepType.APPROVAL, 40, role_sm, [], 240),
                 ("end", "End", StepType.END, 50, None, [], None),
             ],
+            offering_type="COLLECTION",
         )
         build(
             "Water Maintenance Request",
@@ -604,18 +612,204 @@ class Command(BaseCommand):
                 ("verify", "Verify Fix", StepType.APPROVAL, 40, role_sm, [], 240),
                 ("end", "End", StepType.END, 50, None, [], None),
             ],
+            created_by="j.fernandes",
+            offering_type="MAINTENANCE",
+        )
+
+        # One default offering for every other service that receives requests.
+        def simple(name, service_name, description, work, manager, offering_type):
+            build(
+                name,
+                services[service_name],
+                description,
+                [
+                    ("start", "Start", StepType.START, 10, None, [], None),
+                    ("triage", "Triage", StepType.TASK, 20, role_sm, [], 1440),
+                    ("work", work, StepType.TASK, 30, role_op, [], None),
+                    ("verify", "Verify", StepType.APPROVAL, 40, role_sm, [], 1440),
+                    ("end", "End", StepType.END, 50, None, [], None),
+                ],
+                created_by=manager,
+                offering_type=offering_type,
+            )
+
+        simple(
+            "Road Repair Request",
+            "Road Maintenance",
+            "Potholes, damaged pavement and road signage repairs.",
+            "Repair Road",
+            "t.pereira",
+            "MAINTENANCE",
+        )
+        simple(
+            "Street Light Repair",
+            "Public Lighting",
+            "Faulty or damaged street lights and new lighting points.",
+            "Repair Light",
+            "s.almeida",
+            "MAINTENANCE",
+        )
+        simple(
+            "Sewer Maintenance Request",
+            "Sanitation Network",
+            "Blockages, odours and repairs on the sewer network.",
+            "Clear / Repair Sewer",
+            "n.barreto",
+            "MAINTENANCE",
+        )
+        simple(
+            "General Administrative Request",
+            "Municipal Administration",
+            "Certificates, licences and other administrative requests.",
+            "Process Request",
+            "r.martins",
+            "ADMINISTRATIVE",
+        )
+        simple(
+            "Limpeza de espaço público",
+            "Limpeza Urbana e Espaços Verdes",
+            "Limpeza de ruas, largos e espaços verdes da freguesia.",
+            "Executar limpeza",
+            "p.lopes",
+            "CLEANING",
+        )
+        simple(
+            "Manutenção de espaço público",
+            "Espaço Público, Infraestruturas e Edifícios",
+            "Manutenção de espaços públicos, infraestruturas e edifícios da freguesia, "
+            "incluindo a preparação de sepulturas.",
+            "Executar trabalho",
+            "p.lopes",
+            "MAINTENANCE",
+        )
+        simple(
+            "Apoio social",
+            "Serviços Sociais e Associativismo",
+            "Pedidos de apoio social e às associações da freguesia.",
+            "Prestar apoio",
+            "m.silva",
+            "SUPPORT",
+        )
+
+        # --- Cemitérios (Santa Maria, São Pedro e Matacães)
+        cemiterios = services["Cemitérios"]
+        build(
+            "Limpar cemitério",
+            cemiterios,
+            "Limpeza periódica do cemitério: remoção de ervas e resíduos, limpeza de "
+            "arruamentos e zonas comuns.",
+            [
+                ("start", "Início", StepType.START, 10, None, [], None),
+                ("plan", "Planear limpeza", StepType.TASK, 20, role_sm, [], 1440),
+                (
+                    "clean",
+                    "Executar limpeza",
+                    StepType.TASK,
+                    30,
+                    role_op,
+                    ["equipa", "ferramentas"],
+                    480,
+                ),
+                ("verify", "Verificar limpeza", StepType.APPROVAL, 40, role_sm, [], 1440),
+                ("end", "Fim", StepType.END, 50, None, [], None),
+            ],
+            trigger=OfferingTrigger.MANUAL,
+            created_by="p.lopes",
+            offering_type="CLEANING",
+        )
+        build(
+            "Realizar um funeral",
+            cemiterios,
+            "Inumação no cemitério paroquial: validação da documentação, atribuição e "
+            "preparação da sepultura, e realização do funeral.",
+            [
+                ("start", "Início", StepType.START, 10, None, [], None),
+                (
+                    "validate",
+                    "Validar documentação",
+                    StepType.TASK,
+                    20,
+                    role_sm,
+                    ["certidão de óbito", "requerimento"],
+                    240,
+                ),
+                (
+                    "assign_grave",
+                    "Atribuir sepultura",
+                    StepType.APPROVAL,
+                    30,
+                    role_sm,
+                    ["sepultura"],
+                    240,
+                ),
+                ("prepare", "Preparar sepultura", StepType.TASK, 40, role_op, [], 1440),
+                ("burial", "Realizar inumação", StepType.TASK, 50, role_op, [], None),
+                ("register", "Registar inumação", StepType.TASK, 60, role_sm, [], 1440),
+                ("end", "Fim", StepType.END, 70, None, [], None),
+            ],
+            created_by="p.lopes",
+            offering_type="FUNERAL",
+        )
+        build(
+            "Realizar transladação",
+            cemiterios,
+            "Transladação de restos mortais: aprovação do requerimento, exumação, "
+            "transporte e registo.",
+            [
+                ("start", "Início", StepType.START, 10, None, [], None),
+                (
+                    "validate",
+                    "Validar requerimento",
+                    StepType.TASK,
+                    20,
+                    role_sm,
+                    ["requerimento", "autorização de transladação"],
+                    1440,
+                ),
+                ("approve", "Aprovar transladação", StepType.APPROVAL, 30, role_sm, [], 2880),
+                ("schedule", "Agendar exumação", StepType.TASK, 40, role_sm, [], 1440),
+                ("exhume", "Realizar exumação", StepType.TASK, 50, role_op, [], None),
+                ("transport", "Transportar restos mortais", StepType.TASK, 60, role_op, [], None),
+                ("register", "Registar transladação", StepType.TASK, 70, role_sm, [], 1440),
+                ("end", "Fim", StepType.END, 80, None, [], None),
+            ],
+            created_by="p.lopes",
+            offering_type="FUNERAL",
+        )
+
+        # Steps handed to another service's offering (blank = the step's own offering).
+        def delegate(offering_name, step_code, service_name, responsible_offering_name):
+            step = OfferingStep.objects.get(
+                offering__service=cemiterios, offering__name=offering_name, code=step_code
+            )
+            if step.service_offering_id is None:
+                step.service_offering = ServiceOffering.objects.get(
+                    service=services[service_name], name=responsible_offering_name
+                )
+                step.save(update_fields=["service_offering", "updated_at"])
+
+        delegate(
+            "Limpar cemitério",
+            "clean",
+            "Limpeza Urbana e Espaços Verdes",
+            "Limpeza de espaço público",
+        )
+        delegate(
+            "Realizar um funeral",
+            "prepare",
+            "Espaço Público, Infraestruturas e Edifícios",
+            "Manutenção de espaço público",
         )
 
     # ---------------------------------------------------------------- requests
     def _seed_requests(self, services, people):
         wf_waste = ServiceOffering.objects.filter(name="Waste Collection Request").first()
         wf_water = ServiceOffering.objects.filter(name="Water Maintenance Request").first()
-        # (service, type_code, title, desc, status, priority, assigned_key, wf)
+        # (service, title, desc, status, priority, assigned_key, offering or None)
         samples = [
             # --- Waste Management
             (
                 services["Waste Management"],
-                "NEW_EQUIPMENT",
                 "New skip bins for the market",
                 "Requesting two additional 8m³ skip bins for the municipal market.",
                 RequestStatus.IN_PROGRESS,
@@ -625,7 +819,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Waste Management"],
-                "COMPLAINT",
                 "Missed collection on Rua de São Miguel",
                 "Residents report no collection for the past two weeks on Rua de São Miguel.",
                 RequestStatus.NEW,
@@ -635,7 +828,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Waste Management"],
-                "NEW_EQUIPMENT",
                 "Broken skip bin lid",
                 "Skip bin at the market square has a damaged lid that cannot be closed securely.",
                 RequestStatus.NEW,
@@ -645,7 +837,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Waste Management"],
-                "COMPLAINT",
                 "Tyres dumped near the cemetery",
                 "A pile of old tyres was abandoned on the access road behind the cemetery.",
                 RequestStatus.IN_PROGRESS,
@@ -656,7 +847,6 @@ class Command(BaseCommand):
             # --- Water Supply
             (
                 services["Water Supply"],
-                "GENERAL",
                 "Borehole inspection on Rua do Forte",
                 "Schedule a preventative inspection of the Matacães borehole.",
                 RequestStatus.WAITING,
@@ -666,7 +856,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Water Supply"],
-                "COMPLAINT",
                 "Leak in front of the school",
                 "Water leaking from the main in front of the primary school; pavers lifting.",
                 RequestStatus.IN_PROGRESS,
@@ -676,7 +865,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Water Supply"],
-                "NEW_EQUIPMENT",
                 "New connection for the bakery",
                 "Bakery on Rua Augusta requesting a new water connection.",
                 RequestStatus.WAITING,
@@ -686,7 +874,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Water Supply"],
-                "MAINTENANCE",
                 "Hydrant check on Praça do Município",
                 "Annual inspection of the public hydrant on the municipal square.",
                 RequestStatus.NEW,
@@ -697,7 +884,6 @@ class Command(BaseCommand):
             # --- Road Maintenance
             (
                 services["Road Maintenance"],
-                "COMPLAINT",
                 "Sinkhole near the roundabout",
                 "Sinkhole forming on the approach to the EN8 roundabout; kernel hazard.",
                 RequestStatus.IN_PROGRESS,
@@ -707,7 +893,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Road Maintenance"],
-                "GENERAL",
                 "Repave Rua dos Ciprestes",
                 "Surface crumbling on Rua dos Ciprestes; full resurfacing requested.",
                 RequestStatus.WAITING,
@@ -717,7 +902,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Road Maintenance"],
-                "COMPLAINT",
                 "Damaged pedestrian crossing",
                 "Faded striping on the pedestrian crossing near the station.",
                 RequestStatus.NEW,
@@ -728,7 +912,6 @@ class Command(BaseCommand):
             # --- Public Lighting
             (
                 services["Public Lighting"],
-                "COMPLAINT",
                 "Streetlight outage on Av. 25 de Abril",
                 "Three streetlights out along Avenida 25 de Abril near the stadium.",
                 RequestStatus.IN_PROGRESS,
@@ -738,7 +921,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Public Lighting"],
-                "NEW_EQUIPMENT",
                 "New lamppost for the park",
                 "Additional lamppost requested for the children's playground.",
                 RequestStatus.WAITING,
@@ -749,7 +931,6 @@ class Command(BaseCommand):
             # --- Sanitation Network
             (
                 services["Sanitation Network"],
-                "COMPLAINT",
                 "Blocked sewer on Rua do Moinho",
                 "Sewer backing up at Rua do Moinho; odours in neighbouring houses.",
                 RequestStatus.IN_PROGRESS,
@@ -759,7 +940,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Sanitation Network"],
-                "MAINTENANCE",
                 "Replacement of manhole cover",
                 "Cracked manhole cover in the middle of Rua da Fonte.",
                 RequestStatus.NEW,
@@ -770,7 +950,6 @@ class Command(BaseCommand):
             # --- Limpeza Urbana e Espaços Verdes
             (
                 services["Limpeza Urbana e Espaços Verdes"],
-                "GENERAL",
                 "Tree pruning in Praça do Município",
                 "Prune the cork oaks in Praça do Município before the summer.",
                 RequestStatus.IN_PROGRESS,
@@ -780,7 +959,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Limpeza Urbana e Espaços Verdes"],
-                "COMPLAINT",
                 "Playground swing repair",
                 "One swing broken in the Matacães playground.",
                 RequestStatus.NEW,
@@ -791,7 +969,6 @@ class Command(BaseCommand):
             # --- Serviços Sociais e Associativismo
             (
                 services["Serviços Sociais e Associativismo"],
-                "GENERAL",
                 "Rat control campaign",
                 "Planning a community rat-control and hygiene awareness campaign.",
                 RequestStatus.RESOLVED,
@@ -801,7 +978,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Serviços Sociais e Associativismo"],
-                "GENERAL",
                 "Mosquito breeding hotspots",
                 "Identified standing-water hotspots around the market needing treatment.",
                 RequestStatus.NEW,
@@ -811,7 +987,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Serviços Sociais e Associativismo"],
-                "GENERAL",
                 "Food safety inspection",
                 "Routine inspection of the summer festival food stalls.",
                 RequestStatus.WAITING,
@@ -822,7 +997,6 @@ class Command(BaseCommand):
             # --- Limpeza Urbana e Espaços Verdes
             (
                 services["Limpeza Urbana e Espaços Verdes"],
-                "COMPLAINT",
                 "Illegal dumping on the Matacães road",
                 "Furniture and construction debris dumped on the roadside.",
                 RequestStatus.IN_PROGRESS,
@@ -832,7 +1006,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Limpeza Urbana e Espaços Verdes"],
-                "COMPLAINT",
                 "Graffiti removal at the station",
                 "Graffiti covering the pedestrian underpass at the station.",
                 RequestStatus.NEW,
@@ -843,7 +1016,6 @@ class Command(BaseCommand):
             # --- Municipal Administration
             (
                 services["Municipal Administration"],
-                "GENERAL",
                 "Archives records request",
                 "Citizen requesting urbanism records for a property in the old town.",
                 RequestStatus.RESOLVED,
@@ -853,7 +1025,6 @@ class Command(BaseCommand):
             ),
             (
                 services["Municipal Administration"],
-                "GENERAL",
                 "Licence renewal for street vendor",
                 "Renewal of the market license for a vegetable vendor.",
                 RequestStatus.IN_PROGRESS,
@@ -862,12 +1033,16 @@ class Command(BaseCommand):
                 None,
             ),
         ]
-        for service, rtype_code, title, desc, status, priority, assigned_key, offering in samples:
+        # Samples without an explicit offering use their service's default one.
+        default_offering = {}
+        for offering in ServiceOffering.objects.filter(status=OfferingStatus.ACTIVE).order_by("pk"):
+            default_offering.setdefault(offering.service_id, offering)
+        for service, title, desc, status, priority, assigned_key, offering in samples:
+            offering = offering or default_offering[service.pk]
             req, _created = Request.objects.get_or_create(
                 service=service,
                 title=title,
                 defaults={
-                    "request_type": RequestType.objects.get(code=rtype_code),
                     "description": desc,
                     "requester": people.get("i.cardoso"),
                     "created_by": people.get("m.mendes"),
@@ -877,6 +1052,9 @@ class Command(BaseCommand):
                     "offering": offering,
                 },
             )
+            if req.offering_id is None:
+                req.offering = offering
+                req.save(update_fields=["offering", "updated_at"])
             if not RequestComment.objects.filter(request=req).exists():
                 RequestComment.objects.create(
                     request=req,

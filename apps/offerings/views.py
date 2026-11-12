@@ -17,7 +17,13 @@ from apps.offerings.models import (
     OfferingExecution,
     OfferingStatus,
     ServiceOffering,
+    ServiceOfferingType,
 )
+
+
+def offering_type_choices(view):
+    return [(str(t.pk), t.name) for t in ServiceOfferingType.objects.order_by("name")]
+
 
 ACTIVE_STATUS_CHOICES = tuple(
     c for c in OfferingStatus.choices if c[0] != OfferingStatus.DEPRECATED
@@ -32,6 +38,17 @@ class ServiceOfferingListView(BreadcrumbsMixin, PermissionRequiredMixin, TableVi
         key="offerings",
         columns=[
             Column("name", _("Service Offering"), sortable=True, searchable=True),
+            Column(
+                "offering_type.name",
+                _("Type"),
+                sortable=True,
+                filter=Filter(
+                    FilterKind.CHOICE,
+                    param="type",
+                    lookup="offering_type_id",
+                    choices_callable=offering_type_choices,
+                ),
+            ),
             Column(
                 "service.name",
                 _("Service"),
@@ -67,7 +84,7 @@ class ServiceOfferingListView(BreadcrumbsMixin, PermissionRequiredMixin, TableVi
     def get_base_queryset(self):
         return ServiceOffering.objects.visible_to(
             self.request.user, "offering.view"
-        ).select_related("service")
+        ).select_related("service", "offering_type")
 
 
 class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
@@ -80,11 +97,13 @@ class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
         return f"{self.object.name} v{self.object.version}"
 
     def get_queryset(self):
-        return super().get_queryset().select_related("service")
+        return super().get_queryset().select_related("service", "offering_type")
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        ctx["steps"] = self.object.steps.select_related("responsible_role").order_by("order")
+        ctx["steps"] = self.object.steps.select_related(
+            "responsible_role", "offering__service", "service_offering__service"
+        ).order_by("order")
         ctx["versions"] = (
             ServiceOffering.objects.visible_to(self.request.user, "offering.view")
             .filter(service=self.object.service, name=self.object.name)

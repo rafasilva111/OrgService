@@ -25,7 +25,7 @@ Modular monolith (Django 5.2) for an **organizational services platform** — mu
 │   ├── access/        # Permission, Role, RolePermission, ServiceAccess + seed_rbac
 │   ├── services/      # Service, ServiceType, ServiceCapability(+Assignment), ServiceActor
 │   ├── offerings/     # ServiceOffering (definitions), OfferingExecution (instances), Tasks
-│   ├── requests/      # Request, RequestType, RequestComment
+│   ├── requests/      # Request, RequestComment
 │   ├── incidents/     # Incident, IncidentUpdate
 │   ├── problems/      # Problem, ProblemIncident
 │   ├── changes/       # Change, ChangeApproval

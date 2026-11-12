@@ -69,3 +69,61 @@ def test_service_manager_reach_is_limited_to_managed_services(seeded):
     visible = Request.objects.visible_to(user, "request.view")
     assert visible.exists()
     assert not visible.exclude(service__name__in=names).exists()
+
+
+@pytest.mark.parametrize(
+    "name, first, last",
+    [
+        ("Limpar cemitério", "Planear limpeza", "Verificar limpeza"),
+        ("Realizar um funeral", "Validar documentação", "Registar inumação"),
+        ("Realizar transladação", "Validar requerimento", "Registar transladação"),
+    ],
+)
+def test_cemeteries_default_offerings(seeded, name, first, last):
+    from apps.offerings.models import OfferingStatus, ServiceOffering, StepType
+
+    offering = ServiceOffering.objects.get(service__name="Cemitérios", name=name)
+    assert offering.status == OfferingStatus.ACTIVE
+    assert offering.created_by.user.username == "p.lopes"
+
+    steps = list(offering.steps.order_by("order"))
+    assert steps[0].step_type == StepType.START
+    assert steps[-1].step_type == StepType.END
+    assert steps[1].name == first
+    assert steps[-2].name == last
+    # Linear chain: one transition from every step to the next.
+    pairs = set(offering.transitions.values_list("from_step_id", "to_step_id"))
+    assert pairs == {(a.pk, b.pk) for a, b in zip(steps, steps[1:], strict=False)}
+
+
+def test_every_seeded_offering_is_fully_connected(seeded):
+    from apps.offerings.models import ServiceOffering
+
+    for offering in ServiceOffering.objects.all():
+        steps = offering.steps.count()
+        assert offering.transitions.count() == steps - 1, offering.name
+
+
+def test_every_seeded_request_has_a_typed_offering_of_its_service(seeded):
+    from apps.offerings.models import ServiceOffering
+
+    assert not ServiceOffering.objects.filter(offering_type__isnull=True).exists()
+    for req in Request.objects.select_related("offering"):
+        assert req.offering is not None, req.title
+        assert req.offering.service_id == req.service_id, req.title
+
+
+def test_cemetery_steps_handed_to_other_parish_services(seeded):
+    from apps.offerings.models import OfferingStep
+
+    clean = OfferingStep.objects.get(offering__name="Limpar cemitério", code="clean")
+    assert clean.service_offering.name == "Limpeza de espaço público"
+    assert clean.service_offering.service.name == "Limpeza Urbana e Espaços Verdes"
+
+    prepare = OfferingStep.objects.get(offering__name="Realizar um funeral", code="prepare")
+    assert prepare.service_offering.name == "Manutenção de espaço público"
+    assert prepare.service_offering.service.name == "Espaço Público, Infraestruturas e Edifícios"
+
+    plan = OfferingStep.objects.get(offering__name="Limpar cemitério", code="plan")
+    assert plan.service_offering is None
+    assert plan.effective_service.name == "Cemitérios"

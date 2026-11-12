@@ -5,7 +5,8 @@ Provides:
   * ``pill_class``  — Tailwind classes for status/priority badges;
   * ``fieldvalue``  — dotted-path attribute access inside table cells;
   * ``apex_field``  — consistent form-field rendering;
-  * ``initials``    — avatar initials from a User.
+  * ``initials``    — avatar initials from a User;
+  * ``minutes``     — whole minutes as a compact duration ("1d", "2h 30min").
 """
 
 from django import forms
@@ -149,6 +150,14 @@ def elapsed(value, end=None):
     if minutes:
         return f"{minutes}m {secs:02d}s"
     return f"{secs}s"
+
+
+@register.filter
+def minutes(value):
+    """Whole minutes as a human-readable duration (see ``humanize_minutes``)."""
+    from apps.common.durations import humanize_minutes
+
+    return humanize_minutes(value)
 
 
 @register.filter

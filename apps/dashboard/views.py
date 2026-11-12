@@ -389,7 +389,7 @@ class ExecutiveDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView
 
         ctx["open_requests"] = (
             requests.exclude(status__in=CLOSED_STATUSES)
-            .select_related("service", "request_type")
+            .select_related("service", "offering__offering_type")
             .order_by("-created_at")[:8]
         )
         ctx["active_incidents"] = (
@@ -510,7 +510,7 @@ class OrganizationDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateV
         ctx["org_services"] = services.select_related("organization").order_by("name")[:10]
         ctx["open_requests"] = (
             requests.exclude(status__in=CLOSED_STATUSES)
-            .select_related("service", "request_type")
+            .select_related("service", "offering__offering_type")
             .order_by("-created_at")[:8]
         )
         return ctx
@@ -589,7 +589,7 @@ class ServiceDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView):
         ctx["trend_chart"] = json.dumps(_requests_trend_chart(requests))
         ctx["open_requests"] = (
             requests.exclude(status__in=CLOSED_STATUSES)
-            .select_related("request_type")
+            .select_related("offering__offering_type")
             .order_by("-created_at")[:8]
         )
         ctx["active_incidents"] = incidents.exclude(status__in=INACTIVE_INCIDENTS).order_by(

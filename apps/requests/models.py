@@ -1,8 +1,8 @@
 """Requests: demands entering an organization/service.
 
-A request is independent from any offering definition. It may *trigger* a
-offering (which then produces a ``OfferingExecution``); the linkage is by the
-generic ``subject`` on ``OfferingExecution``.
+A request asks for one ``ServiceOffering`` of its service; its type is the
+offering's ``ServiceOfferingType``. Running the offering produces an
+``OfferingExecution`` whose generic ``subject`` points back at the request.
 """
 
 from django.db import models
@@ -38,9 +38,6 @@ class Request(TimeStampedModel):
     service = models.ForeignKey(
         "services.Service", on_delete=models.PROTECT, related_name="requests"
     )
-    request_type = models.ForeignKey(
-        "RequestType", on_delete=models.PROTECT, related_name="requests"
-    )
     title = models.CharField(_("title"), max_length=255)
     description = models.TextField(_("description"), blank=True, default="")
     requester = models.ForeignKey(
@@ -70,13 +67,14 @@ class Request(TimeStampedModel):
         blank=True,
         related_name="requests_assigned",
     )
-    # The offering definition this request may trigger (optional at create time).
+    # What is being asked for; the request's type is ``offering.offering_type``.
+    # Required in forms (blank=False); nullable in the DB only for legacy rows.
     offering = models.ForeignKey(
         "offerings.ServiceOffering",
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
-        blank=True,
-        related_name="pending_requests",
+        related_name="requests",
+        verbose_name=_("service offering"),
     )
 
     class Meta:
@@ -91,29 +89,6 @@ class Request(TimeStampedModel):
 
     def __str__(self):
         return f"#{self.pk} {self.title}"
-
-
-class RequestType(TimeStampedModel):
-    """Reusable request category (NEW_EQUIPMENT, WASTE_COLLECTION, …)."""
-
-    code = models.SlugField(_("code"), unique=True, max_length=64)
-    name = models.CharField(_("name"), max_length=128)
-    description = models.TextField(_("description"), blank=True, default="")
-    # Optional: request types may be shared platform-wide or service-specific.
-    service = models.ForeignKey(
-        "services.Service",
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name="request_types",
-    )
-
-    class Meta:
-        verbose_name = _("request type")
-        verbose_name_plural = _("request types")
-
-    def __str__(self):
-        return self.name
 
 
 class RequestComment(TimeStampedModel):

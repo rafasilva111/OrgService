@@ -22,11 +22,11 @@ The default dataset makes the app immediately explorable — 9 municipal service
 | `services` | Service, ServiceActor, ServiceCapability/Assignment | each Service requires a Service Manager actor |
 | `people` | Person, Skill, PersonSkill | Person links 1:1 to a Django `User` |
 | `access` | Permission, Role, RolePermission, ServiceAccess | RBAC catalogue seeded by `seed_rbac` |
-| `requests` | Request, RequestType, RequestComment | citizen-facing demand tickets |
+| `requests` | Request, RequestComment | citizen-facing demand tickets; each asks for one service offering |
 | `incidents` | Incident, IncidentUpdate | disruptions & outages (+ Impact/Urgency) |
 | `problems` | Problem, ProblemIncident | root-cause management |
 | `changes` | Change, ChangeApproval | planned changes + approval chain |
-| `offerings` | ServiceOffering, OfferingStep, OfferingTransition, OfferingExecution, OfferingTask | definition ≠ instance |
+| `offerings` | ServiceOfferingType, ServiceOffering, OfferingStep, OfferingTransition, OfferingExecution, OfferingTask | definition ≠ instance; type classifies offerings |
 | `resources` | Resource, Asset, Equipment, Material, ResourceAssignment | vehicles/equipment |
 | `metrics` | Metric, MetricValue, KPI/KpiMetric, SLA | dashboard data |
 | `events` | Event | immutable, generic-FK |
@@ -78,7 +78,8 @@ Portugal            (COUNTRY)
 - **Incidents** (8): `Burst main on Rua do Espírito Santo` (INVESTIGATING), `Substation fault…` (OPEN), `Collection vehicle breakdown` (RESOLVED), etc.
 - **Problems** (3): `Recurring water main failures`, `Failing lighting control gear`, `Sewer blockages in the old town` (linked to incidents).
 - **Changes** (4): `Replace aging trunk main section` (PROPOSED), `Smart bins pilot rollout` (SCHEDULED), with EXECUTIVE approval rows.
-- **Service Offerings** (2): `Waste Collection Request` and `Water Maintenance Request` — each a `start → assign → work → verify → end` definition with transitions, plus 4 executions/tasks (running + completed).
+- **Service Offerings** (5): `Waste Collection Request` and `Water Maintenance Request` — each a `start → assign → work → verify → end` definition with transitions, plus 4 executions/tasks (running + completed).
+  Cemitérios (Matacães) adds three Portuguese offerings owned by `p.lopes`: `Limpar cemitério` (manual), `Realizar um funeral` and `Realizar transladação`. Every offering's steps are chained linearly by `order`. A step can name a responsible offering of another service (`OfferingStep.service_offering`; its service is `service_offering.service`).
 - **Resources**: skip truck `TV-103`, bulk water tanker, road compactor — each assigned to field operator `p.nunes`.
 - **Metrics**: `requests_created`/`requests_resolved` with 6 months of monthly values (a "waste service health" story), plus KPI `waste_service_health` and two SLAs (240 min / 1440 min response and resolution targets on Waste Management).
 - **Events/audit**: a `request.created` Event and a `seed.default_dataset` AuditLog.
@@ -118,11 +119,14 @@ A Service is created with a **Service Manager** (`ServiceCreateForm`/`ServiceCre
 ### Service Offerings (definition vs instance)
 `ServiceOffering` = immutable definition (service, name, version, status ACTIVE, trigger REQUEST) with ordered `OfferingStep`s (START / TASK / APPROVAL / END, `responsible_role`, `required_inputs`, SLA minutes) and `OfferingTransition`s. `OfferingExecution` = a run of a definition: `status` (RUNNING/COMPLETED/…), `current_step`, `completed_at`, plus `OfferingTask`s (assigned to a person, PENDING/IN_PROGRESS/DONE, deadline).
 
+### New request = service + offering
+`/requests/new/` asks for a **Service** first — pre-selected from the header's service (or `?service=<pk>`) — and then one of **that service's active offerings** (required). Changing the service reloads the offering list over HTMX (`/requests/new/offerings/?service=<pk>`). There is no separate request type: the type is the offering's `ServiceOfferingType` (e.g. Manutenção, Limpeza, Serviço funerário).
+
 ### Catalog lifecycle (soft-delete)
 Organization / Service / Person / Resource / Role support **create / activate / deactivate / soft-delete** via generic lifecycle views (`apps/common/lifecycle.py`): POST-only, gated by `*.create` / `*.manage` / `*.delete`, scoped (404 outside scope). `soft_delete()` fills `deleted_at`; lists hide deleted rows via `.alive()` (seeds keep working because `get_or_create` still sees them).
 
 ### Data flow for a request
-`Request` (`requester`, `service`, `request_type`, `status`, `priority`, `assigned_to`, `offering`) → optional `OfferingExecution`/`OfferingTask` → comments, linked incidents → problems/changes for root cause → metrics/KPI rolled up → `Event`/`AuditLog` recorded → dashboards aggregate counts.
+`Request` (`requester`, `service`, `offering` → its `offering_type`, `status`, `priority`, `assigned_to`) → optional `OfferingExecution`/`OfferingTask` → comments, linked incidents → problems/changes for root cause → metrics/KPI rolled up → `Event`/`AuditLog` recorded → dashboards aggregate counts.
 
 ---
 
@@ -179,7 +183,7 @@ The header profile menu selects the working **organization** and then an optiona
 
 ## 6. Test status & known issues
 
-- Test suite: **215 passed, 0 failed** (`.venv/bin/python -m pytest -q`).
+- Test suite: **238 passed, 0 failed** (`.venv/bin/python -m pytest -q`).
 - Lint and formatting are clean (`.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`).
 - Model state is in sync with migrations (`.venv/bin/python manage.py makemigrations --check --dry-run`).
 - Run pytest **sequentially** — concurrent runs race on the shared `test_orgplatform` database.
