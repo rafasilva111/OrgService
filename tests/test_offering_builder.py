@@ -764,6 +764,7 @@ def test_sla_list_shows_offering_slas_in_scope(ctx, make_role, make_person, make
     SLA.objects.create(service=ctx["outside"], name="Hidden SLA", target_minutes=60)
     body = ctx["client"].get(reverse("metrics:slas")).content.decode()
     assert "Realizar um funeral v1" in body
-    assert reverse("offerings:detail", args=[ServiceOffering.objects.get().pk]) in body
+    funeral = ServiceOffering.objects.get(name="Realizar um funeral")
+    assert reverse("offerings:detail", args=[funeral.pk]) in body
     assert "2h" in body
     assert "Hidden SLA" not in body

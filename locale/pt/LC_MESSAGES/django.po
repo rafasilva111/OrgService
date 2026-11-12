@@ -2105,3 +2105,16 @@ msgstr "Da oferta de serviço responsável"
 
 msgid "Total SLA of the responsible service offering"
 msgstr "SLA total da oferta de serviço responsável"
+
+msgid "Scope"
+msgstr "Âmbito"
+
+msgid "inactive"
+msgstr "inativo"
+
+msgid ""
+"Service-level targets. Each service offering keeps a resolution SLA equal to"
+" its total SLA."
+msgstr ""
+"Objetivos de nível de serviço. Cada oferta de serviço mantém um SLA de "
+"resolução igual ao seu SLA total."
