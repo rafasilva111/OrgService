@@ -1,12 +1,10 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main, dev]
-  # Reused by deploy-dev.yml, which runs this whole CI before deploying `dev`
-  # (so pushes to `dev` are not tested twice).
+  # Pushes to `main`/`dev` run this CI through deploy.yml, which deploys only if
+  # it passes (so those pushes are not tested twice).
   workflow_call:
 
 jobs:

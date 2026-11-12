@@ -11,7 +11,7 @@ Provides:
 
 from django import forms
 from django.template import Library
-from django.utils.html import format_html
+from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 
 register = Library()
@@ -220,8 +220,10 @@ def apex_field(bound_field, size: str = "md", **attrs):
             else ""
         ),
         rendered,
-        "".join(
-            format_html('<p class="text-xs text-red-600">{}</p>', err) for err in bound_field.errors
+        # format_html_join keeps the result safe; a plain "".join() would be
+        # escaped by the outer format_html and show the <p> tags as text.
+        format_html_join(
+            "", '<p class="text-xs text-red-600">{}</p>', ((err,) for err in bound_field.errors)
         )
         if bound_field.errors
         else "",

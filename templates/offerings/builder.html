@@ -131,13 +131,13 @@
                 <template x-for="o in offeringsFor(step)" :key="o[0]"><option :value="String(o[0])" x-text="o[1]" :selected="String(o[0]) === step.service_offering"></option></template>
               </select>
               <p x-show="!loc(step).district" class="text-xs text-zinc-500">{% translate 'Choose a district to list the offerings of other services.' %}</p>
-              <p x-show="external(step) && offeringRow(step)?.[6]" x-text="offeringRow(step)?.[6]"
-                 class="rounded-md bg-zinc-50 px-2 py-1.5 text-xs text-zinc-600"></p>
               <label class="grid gap-1 text-xs font-medium text-zinc-600 sm:max-w-xs">{% translate 'SLA' %}
                 <input x-show="!external(step)" type="text" x-model="step.sla" placeholder="{% translate 'e.g. 1d 4h 30m' %}" class="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm">
                 <span x-show="external(step)" x-text="offeringRow(step)?.[4] || '—'" title="{% translate 'Total SLA of the responsible service offering' %}"
                       class="rounded-lg border border-zinc-200 bg-zinc-100 px-2 py-1.5 text-sm text-zinc-600"></span>
               </label>
+              <p x-show="external(step) && offeringRow(step)?.[6]" x-text="offeringRow(step)?.[6]"
+                 class="rounded-md bg-zinc-50 px-2 py-1.5 text-xs text-zinc-600"></p>
             </fieldset>
 
 

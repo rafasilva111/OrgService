@@ -185,9 +185,9 @@ The header profile menu selects the working **organization** and then an optiona
 ### CI/CD & automatic deploy (GitHub Actions)
 
 - **Pull request into `dev`/`main`** → `.github/workflows/ci.yml` runs lint (ruff), `pip-audit` and pytest (Postgres 16).
-- **Push/merge to `dev`** → `.github/workflows/deploy-dev.yml` reruns the CI and, if it passes, SSHes into the server, checks out the pushed commit and runs `docker compose -f docker-compose.prod.yml up -d --build`, then waits for a health check.
+- **Push/merge to `main` or `dev`** → `.github/workflows/deploy.yml` reruns the CI and, if it passes, SSHes into the server, checks out the pushed commit and runs `docker compose -f docker-compose.prod.yml up -d --build`, then waits for a health check.
 - `docker-compose.prod.yml` bakes the code into the image (no bind mounts), keeps Postgres off the host, forces `ENVIRONMENT=prod` (gunicorn + WhiteNoise) and seeds the demo data only when `SEED_DATA=1`.
-- Required secrets (GitHub Environment `dev`): `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PATH`, optional `DEPLOY_PORT`. The server keeps its own `.env`.
+- Required secrets, in a GitHub Environment named after each branch (`main`, `dev`): `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`, `DEPLOY_PATH`, optional `DEPLOY_PORT`. The server keeps its own `.env`.
 - Server setup and rollback: `.opencode/obsidian/Procedures/Deploying.md`.
 
 ---

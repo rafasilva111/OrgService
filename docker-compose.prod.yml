@@ -1,4 +1,4 @@
-# Production-style compose used by the automatic deploy (.github/workflows/deploy-dev.yml).
+# Production-style compose used by the automatic deploy (.github/workflows/deploy.yml).
 #
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
@@ -10,7 +10,10 @@
 # * the demo dataset is NOT seeded unless SEED_DATA=1 is set in the server's .env.
 #
 # All configuration comes from .env next to this file on the server (never committed).
-name: orgservice
+#
+# No fixed project name and no container_name: the compose project is named after
+# the checkout folder, so `main` and `dev` can live side by side on one server
+# (e.g. /srv/orgservice and /srv/orgservice-dev, each with its own DJANGO_PORT).
 
 services:
   db:
@@ -28,7 +31,6 @@ services:
 
   web:
     build: .
-    image: orgservice-web:latest
     restart: unless-stopped
     env_file:
       - .env
