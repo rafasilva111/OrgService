@@ -140,6 +140,15 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
+# Uploaded files (request attachments). Never served from a public URL: the
+# ``requests:attachment`` view checks the user can see the request first.
+MEDIA_ROOT = Path(get_str("MEDIA_ROOT", str(BASE_DIR / "media")))
+MEDIA_URL = "/media/"
+
+# Request form attachments: size limit and accepted file types.
+REQUEST_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
+REQUEST_ATTACHMENT_EXTENSIONS = ("pdf", "jpg", "jpeg", "png", "doc", "docx", "odt")
+
 # --- Models -----------------------------------------------------------------
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

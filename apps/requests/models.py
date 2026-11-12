@@ -76,6 +76,10 @@ class Request(TimeStampedModel):
         related_name="requests",
         verbose_name=_("service offering"),
     )
+    # Answers to the offering's request form (``OfferingFormField.key`` → value).
+    # Attachments are ``RequestAttachment`` rows; their entry here holds the
+    # attachment id and file name.
+    form_data = models.JSONField(_("form answers"), default=dict, blank=True)
 
     class Meta:
         verbose_name = _("request")
@@ -111,3 +115,26 @@ class RequestComment(TimeStampedModel):
 
     def __str__(self):
         return f"Comment on #{self.request_id} by {self.author}"
+
+
+def attachment_path(instance, filename):
+    # Outside any public URL: files are served by a permission-checked view.
+    return f"requests/{instance.request_id}/{filename}"
+
+
+class RequestAttachment(TimeStampedModel):
+    """A file uploaded for a request form question of type Attachment."""
+
+    request = models.ForeignKey(Request, on_delete=models.CASCADE, related_name="attachments")
+    field_key = models.SlugField(_("form field"), max_length=64)
+    file = models.FileField(_("file"), upload_to=attachment_path, max_length=255)
+    original_name = models.CharField(_("file name"), max_length=255)
+    size = models.PositiveIntegerField(_("size (bytes)"), default=0)
+    content_type = models.CharField(_("content type"), max_length=128, blank=True, default="")
+
+    class Meta:
+        verbose_name = _("request attachment")
+        verbose_name_plural = _("request attachments")
+
+    def __str__(self):
+        return self.original_name

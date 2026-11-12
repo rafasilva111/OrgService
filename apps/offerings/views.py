@@ -42,11 +42,19 @@ from apps.offerings.forms import (
 )
 from apps.offerings.models import (
     ExecutionStatus,
+    FormFieldType,
     OfferingExecution,
     OfferingStatus,
     ServiceOffering,
     ServiceOfferingType,
     StepType,
+)
+from apps.offerings.request_form import (
+    RequestAnswersForm,
+    answers_form_for,
+    form_definition_from_offering,
+    parse_form_definition,
+    save_form_definition,
 )
 
 
@@ -132,6 +140,7 @@ class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["steps"] = annotate_flow(steps_queryset(self.object))
+        ctx["answers_form"] = answers_form_for(self.object, disabled=True)
         ctx["can_manage"] = (
             manageable_services(self.request.user).filter(pk=self.object.service_id).exists()
         )
@@ -272,6 +281,15 @@ class OfferingBuilderView(BreadcrumbsMixin, CreatePermissionMixin, FormView):
             definition = definition_from_offering(self.object)
         else:
             definition = [{"key": "step-1", "name": "", "step_type": StepType.TASK}]
+        if form.is_bound:
+            try:
+                form_definition = json.loads(form.data.get("form_definition") or "[]")
+            except ValueError:
+                form_definition = []
+        elif self.object is not None:
+            form_definition = form_definition_from_offering(self.object)
+        else:
+            form_definition = []
         organizations, offering_rows, service_chains = location_options(
             responsible_offering_choices(self.request.user),
             form.fields["service"].queryset,
@@ -281,6 +299,9 @@ class OfferingBuilderView(BreadcrumbsMixin, CreatePermissionMixin, FormView):
                 "offering": self.object,
                 "editor_definition": definition,
                 "editor_definition_json": json.dumps(definition),
+                "editor_form": form_definition,
+                "editor_form_json": json.dumps(form_definition),
+                "form_field_errors": getattr(self, "form_field_errors", {}),
                 "editor_schedule": {
                     "onRequest": bool(form["on_request"].value()),
                     "onSchedule": bool(form["on_schedule"].value()),
@@ -311,6 +332,7 @@ class OfferingBuilderView(BreadcrumbsMixin, CreatePermissionMixin, FormView):
                     "offerings": offering_rows,
                     "organizations": organizations,
                     "serviceChains": service_chains,
+                    "formFieldTypes": [[k, str(v)] for k, v in FormFieldType.choices],
                 },
                 "step_errors": getattr(self, "step_errors", {}),
                 "plan_errors": getattr(self, "plan_errors", []),
@@ -321,8 +343,11 @@ class OfferingBuilderView(BreadcrumbsMixin, CreatePermissionMixin, FormView):
     def form_valid(self, form):
         service = form.cleaned_data.get("service")
         parsed = self._parse(form.cleaned_data.get("definition"), getattr(service, "pk", None))
-        if not parsed.ok:
-            self.step_errors, self.plan_errors = parsed.step_errors, parsed.errors
+        form_specs, form_errors = parse_form_definition(self.request.POST.get("form_definition"))
+        if not parsed.ok or form_errors:
+            self.step_errors, self.plan_errors = parsed.step_errors, list(parsed.errors)
+            self.plan_errors += form_errors.pop(-1, [])
+            self.form_field_errors = form_errors
             return self.form_invalid(form)
         publishing = self.request.POST.get("action") == "publish"
         try:
@@ -334,6 +359,7 @@ class OfferingBuilderView(BreadcrumbsMixin, CreatePermissionMixin, FormView):
                     offering.created_by = getattr(self.request.user, "person", None)
                 offering.save()
                 save_definition(offering, parsed.steps)
+                save_form_definition(offering, form_specs)
         except ValidationError as exc:
             self.plan_errors = exc.messages
             return self.form_invalid(form)
@@ -369,7 +395,14 @@ class OfferingPreviewView(CreatePermissionMixin, View):
         return render(
             request,
             "offerings/_preview.html",
-            {"offering": own, "steps": preview_steps(parsed.steps, own), "preview": True},
+            {
+                "offering": own,
+                "steps": preview_steps(parsed.steps, own),
+                "answers_form": RequestAnswersForm(
+                    parse_form_definition(request.POST.get("form_definition"))[0], disabled=True
+                ),
+                "preview": True,
+            },
         )
 
 

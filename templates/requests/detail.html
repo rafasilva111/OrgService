@@ -32,6 +32,8 @@
     <p class="whitespace-pre-wrap text-sm leading-relaxed text-zinc-600">{% if req.description %}{{ req.description }}{% else %}{% translate 'No description provided.' %}{% endif %}</p>
   </div>
 
+  {% include "requests/_answers.html" %}
+
   <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
     <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Timeline' %}</h2>
     <ul class="divide-y divide-zinc-100">

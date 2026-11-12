@@ -212,6 +212,11 @@ class ServiceOffering(TimeStampedModel):
                 step.offering = draft
                 step.save()
                 copies[old_pk] = step
+            for field in self.form_fields.order_by("order"):
+                field.pk = None
+                field.id = None
+                field.offering = draft
+                field.save()
             for tr in self.transitions.all():
                 OfferingTransition.objects.create(
                     offering=draft,
@@ -330,6 +335,53 @@ class OfferingStep(TimeStampedModel):
     @property
     def failure_step(self):
         return self._target(TransitionOutcome.FAILURE)
+
+
+class FormFieldType(models.TextChoices):
+    """Kinds of question an offering's request form can ask."""
+
+    TEXT = "TEXT", _("Short text")
+    TEXTAREA = "TEXTAREA", _("Long text")
+    NUMBER = "NUMBER", _("Number")
+    DATE = "DATE", _("Date")
+    BOOLEAN = "BOOLEAN", _("Yes / No")
+    EMAIL = "EMAIL", _("Email")
+    PHONE = "PHONE", _("Phone")
+    CHOICE = "CHOICE", _("Choice")
+    MULTICHOICE = "MULTICHOICE", _("Multiple choice")
+    FILE = "FILE", _("Attachment")
+    ADDRESS = "ADDRESS", _("Address")
+
+
+class OfferingFormField(TimeStampedModel):
+    """One question of the form a requester fills in when asking for this
+    offering (Novo Pedido). Answers are stored on ``Request.form_data`` under
+    ``key``; attachments as ``RequestAttachment`` rows."""
+
+    offering = models.ForeignKey(
+        ServiceOffering, on_delete=models.CASCADE, related_name="form_fields"
+    )
+    key = models.SlugField(_("key"), max_length=64)
+    label = models.CharField(_("label"), max_length=255)
+    field_type = models.CharField(
+        _("field type"), max_length=16, choices=FormFieldType.choices, default=FormFieldType.TEXT
+    )
+    required = models.BooleanField(_("required"), default=False)
+    help_text = models.CharField(_("help text"), max_length=255, blank=True, default="")
+    # CHOICE / MULTICHOICE: the options offered.
+    options = models.JSONField(_("options"), default=list, blank=True)
+    order = models.PositiveIntegerField(_("order"), default=0)
+
+    class Meta:
+        verbose_name = _("request form field")
+        verbose_name_plural = _("request form fields")
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(fields=["offering", "key"], name="u_offering_form_field_key"),
+        ]
+
+    def __str__(self):
+        return f"{self.offering} · {self.label}"
 
 
 class TransitionOutcome(models.TextChoices):

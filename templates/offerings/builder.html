@@ -10,6 +10,8 @@
 {{ step_errors|json_script:"editor-step-errors" }}
 {{ editor_schedule|json_script:"editor-schedule" }}
 {{ editor_units|json_script:"editor-units" }}
+{{ editor_form|json_script:"editor-form" }}
+{{ form_field_errors|json_script:"editor-form-errors" }}
 <div class="space-y-6">
   <div>
     <h1 class="text-xl font-semibold text-zinc-900">
@@ -32,6 +34,7 @@
           x-data="offeringBuilder()" @submit="sync()" @change="changed()">
       {% csrf_token %}
       <input type="hidden" name="definition" id="id_definition" value="{{ editor_definition_json }}">
+      <input type="hidden" name="form_definition" id="id_form_definition" value="{{ editor_form_json }}">
       <div class="grid gap-4 sm:grid-cols-2">
         {% apex_field form.service %}
         {% apex_field form.offering_type %}
@@ -86,6 +89,39 @@
           <p id="schedule-summary" class="text-sm font-medium text-indigo-700"></p>
           <p class="text-xs text-zinc-500">{% translate 'The schedule is recorded with the offering; runs are not started automatically yet.' %}</p>
         </div>
+      </fieldset>
+
+      <fieldset class="space-y-3 rounded-lg border border-zinc-200 p-4">
+        <legend class="px-1 text-sm font-semibold text-zinc-800">{% translate 'Request form' %}</legend>
+        <p class="text-xs text-zinc-500">{% translate 'Questions the requester answers in New request, besides title and description.' %}</p>
+        <template x-for="(f, i) in fields" :key="f.uid">
+          <div class="space-y-2 rounded-lg border p-3" :class="formErrors[i] ? 'border-red-300 bg-red-50/40' : 'border-zinc-200 bg-zinc-50/40'">
+            <div class="flex items-center gap-2">
+              <input type="text" x-model="f.label" placeholder="{% translate 'Question' %}"
+                     class="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-indigo-500">
+              <select x-model="f.field_type" class="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm" aria-label="{% translate 'Field type' %}">
+                <template x-for="t in options.formFieldTypes" :key="t[0]"><option :value="t[0]" x-text="t[1]" :selected="t[0] === f.field_type"></option></template>
+              </select>
+              <button type="button" @click="moveField(i, -1)" :disabled="i === 0" class="grid size-8 place-items-center rounded-lg border border-zinc-300 text-zinc-500 hover:bg-zinc-100 disabled:opacity-40" aria-label="{% translate 'Move up' %}">↑</button>
+              <button type="button" @click="moveField(i, 1)" :disabled="i === fields.length - 1" class="grid size-8 place-items-center rounded-lg border border-zinc-300 text-zinc-500 hover:bg-zinc-100 disabled:opacity-40" aria-label="{% translate 'Move down' %}">↓</button>
+              <button type="button" @click="fields.splice(i, 1); formErrors = {}" class="grid size-8 place-items-center rounded-lg border border-red-200 text-red-500 hover:bg-red-50" aria-label="{% translate 'Remove question' %}">✕</button>
+            </div>
+            <div class="grid gap-2 sm:grid-cols-[auto_1fr] sm:items-center">
+              <label class="inline-flex items-center gap-1.5 text-sm text-zinc-700"><input type="checkbox" x-model="f.required"> {% translate 'Required' %}</label>
+              <input type="text" x-model="f.help_text" placeholder="{% translate 'Help text (optional)' %}" class="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm">
+            </div>
+            <label x-show="f.field_type === 'CHOICE' || f.field_type === 'MULTICHOICE'" class="grid gap-1 text-xs font-medium text-zinc-600">{% translate 'Options (one per line)' %}
+              <textarea x-model="f.options" rows="3" class="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm"></textarea>
+            </label>
+            <template x-if="formErrors[i]">
+              <ul class="space-y-0.5 text-xs text-red-600"><template x-for="e in formErrors[i]"><li x-text="e"></li></template></ul>
+            </template>
+          </div>
+        </template>
+        <button type="button" @click="addField()"
+                class="w-full rounded-lg border border-dashed border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-700">
+          + {% translate 'Add question' %}
+        </button>
       </fieldset>
 
       <div class="space-y-3">
@@ -233,6 +269,7 @@
         // depends on it (external steps, cascade pre-fill) re-evaluates on change.
         this.$watch("service", () => this.followService());
         this.$watch("steps", () => this.changed(), { deep: true });
+        this.$watch("fields", () => this.changed(), { deep: true });
         this.sync();
       },
       org(id) {
@@ -340,6 +377,28 @@
       },
       sync() {
         document.getElementById("id_definition").value = JSON.stringify(this.steps);
+        document.getElementById("id_form_definition").value = JSON.stringify(this.fields);
+      },
+      // Request form questions (posted as ``form_definition``).
+      fields: read("editor-form").map((f) => ({
+        uid: newKey(), // editor-only identity; ``key`` is derived from the label on save
+        key: str(f.key),
+        label: str(f.label),
+        field_type: str(f.field_type) || "TEXT",
+        required: Boolean(f.required),
+        help_text: str(f.help_text),
+        options: str(f.options),
+      })),
+      formErrors: read("editor-form-errors"),
+      addField() {
+        this.fields.push({ uid: newKey(), key: "", label: "", field_type: "TEXT", required: false, help_text: "", options: "" });
+      },
+      moveField(i, delta) {
+        const j = i + delta;
+        if (j < 0 || j >= this.fields.length) return;
+        const [f] = this.fields.splice(i, 1);
+        this.fields.splice(j, 0, f);
+        this.formErrors = {};
       },
       changed() {
         this.sync();

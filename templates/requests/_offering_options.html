@@ -2,3 +2,4 @@
 {% for pk, label in offerings %}<option value="{{ pk }}">{{ label }}</option>
 {% endfor %}
 <aside id="offering-steps" class="min-w-0 grow basis-[40rem] lg:sticky lg:top-6" hx-swap-oob="true">{% include "requests/_steps_panel.html" with steps=None %}</aside>
+<div id="offering-form-fields" hx-swap-oob="true" class="mt-4 grid gap-4"></div>

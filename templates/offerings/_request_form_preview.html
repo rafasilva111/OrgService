@@ -1,0 +1,8 @@
+{% load i18n %}
+<div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+  <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Request form' %}</h2>
+  <div class="grid gap-4 p-4">
+    {% include "offerings/_request_form_fields.html" %}
+    {% if not answers_form.specs %}<p class="text-center text-sm text-zinc-500">{% translate 'No questions — the requester only gives a title and description.' %}</p>{% endif %}
+  </div>
+</div>

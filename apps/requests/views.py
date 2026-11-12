@@ -2,6 +2,7 @@
 
 from django import forms
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
@@ -22,8 +23,9 @@ from apps.common.tables.filters import organization_column
 from apps.common.tables.views import TableView
 from apps.offerings.builder import annotate_flow, steps_queryset
 from apps.offerings.models import OfferingStatus, ServiceOffering
+from apps.offerings.request_form import answer_rows, answers_form_for
 from apps.people.models import Person
-from apps.requests.models import Priority, Request, RequestStatus
+from apps.requests.models import Priority, Request, RequestAttachment, RequestStatus
 
 CLOSED_STATUSES = (RequestStatus.RESOLVED, RequestStatus.CLOSED, RequestStatus.CANCELLED)
 
@@ -235,27 +237,63 @@ class RequestCreateView(BreadcrumbsMixin, CreatePermissionMixin, FormView):
         kwargs["user"] = self.request.user
         return kwargs
 
-    def get_context_data(self, **kwargs):
-        """Render the selected offering's steps (initial value or re-display)."""
-        ctx = super().get_context_data(**kwargs)
-        form = ctx["form"]
-        ctx["offering_steps"] = None
+    @staticmethod
+    def _selected_offering(form):
+        """The chosen offering, if it is one the form may accept."""
         pk = form["offering"].value()
-        if pk:
-            try:
-                selected = form.fields["offering"].queryset.filter(pk=int(pk)).first()
-            except (TypeError, ValueError):
-                selected = None
-            if selected is not None:
-                ctx["offering_steps"] = offering_steps(selected)
+        try:
+            return form.fields["offering"].queryset.filter(pk=int(pk)).first() if pk else None
+        except (TypeError, ValueError):
+            return None
+
+    def get_context_data(self, **kwargs):
+        """Render the selected offering's steps and request form questions
+        (initial value or re-display after errors)."""
+        ctx = super().get_context_data(**kwargs)
+        selected = self._selected_offering(ctx["form"])
+        ctx["offering_steps"] = offering_steps(selected) if selected else None
+        ctx["answers_form"] = getattr(self, "answers_form", None) or (
+            answers_form_for(selected) if selected else None
+        )
         return ctx
 
+    def post(self, request, *args, **kwargs):
+        # The request fields and the offering's own questions are validated
+        # together; nothing is saved unless both are valid.
+        form = self.get_form()
+        selected = self._selected_offering(form)
+        self.answers_form = (
+            answers_form_for(selected, request.POST, request.FILES) if selected else None
+        )
+        answers_ok = self.answers_form is None or self.answers_form.is_valid()
+        if form.is_valid() and answers_ok:
+            return self.form_valid(form)
+        return self.form_invalid(form)
+
+    @transaction.atomic
     def form_valid(self, form):
         request_obj = form.save(commit=False)
         created_by = Person.objects.filter(user=self.request.user).first()
         request_obj.created_by = created_by
         request_obj.status = RequestStatus.NEW
+        data, uploads = self.answers_form.answers() if self.answers_form else ({}, [])
+        request_obj.form_data = data
         request_obj.save()
+        for key, upload in uploads:
+            attachment = RequestAttachment(
+                request=request_obj,
+                field_key=key,
+                original_name=upload.name[:255],
+                size=upload.size,
+                content_type=(getattr(upload, "content_type", "") or "")[:128],
+            )
+            attachment.file.save(upload.name, upload, save=True)
+            request_obj.form_data[key] = {
+                "attachment": attachment.pk,
+                "name": attachment.original_name,
+            }
+        if uploads:
+            request_obj.save(update_fields=["form_data", "updated_at"])
         self.object = request_obj
         from django.contrib import messages
 
@@ -290,7 +328,8 @@ class RequestOfferingOptionsView(CreatePermissionMixin, View):
 
 class RequestOfferingStepsView(CreatePermissionMixin, View):
     """HTMX fragment for the form's right-hand panel: the steps of
-    ``?offering=<pk>`` (an active, visible offering), else a hint."""
+    ``?offering=<pk>`` (an active, visible offering), else a hint — plus, out of
+    band, that offering's request form questions."""
 
     create_perm_code = "request.create"
 
@@ -310,7 +349,12 @@ class RequestOfferingStepsView(CreatePermissionMixin, View):
             else None
         )
         steps = offering_steps(selected) if selected is not None else None
-        return render(request, "requests/_steps_panel.html", {"steps": steps})
+        # Also swaps the offering's questions into the form (out of band).
+        return render(
+            request,
+            "requests/_offering_selected.html",
+            {"steps": steps, "answers_form": answers_form_for(selected) if selected else None},
+        )
 
 
 class RequestDetailView(BreadcrumbsMixin, ScopedDetailView):
@@ -334,4 +378,29 @@ class RequestDetailView(BreadcrumbsMixin, ScopedDetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["comments"] = self.object.comments.select_related("author").order_by("created_at")
+        ctx["answers"] = answer_rows(self.object)
         return ctx
+
+
+class RequestAttachmentView(PermissionRequiredMixin, View):
+    """Download a request attachment — only for users who can see the request
+    (404 otherwise, without revealing that it exists)."""
+
+    platform_codes = ("request.view",)
+
+    def get(self, request, pk):
+        from django.http import FileResponse, Http404
+
+        visible = Request.objects.visible_to(request.user, "request.view")
+        attachment = (
+            RequestAttachment.objects.filter(pk=pk, request__in=visible)
+            .select_related("request")
+            .first()
+        )
+        if attachment is None or not attachment.file:
+            raise Http404
+        try:
+            handle = attachment.file.open("rb")
+        except FileNotFoundError as exc:
+            raise Http404 from exc
+        return FileResponse(handle, as_attachment=True, filename=attachment.original_name)

@@ -19,3 +19,6 @@ db.sqlite3
 .env.*
 !.env.example
 !.env.dev.example
+
+# Uploaded files
+media/

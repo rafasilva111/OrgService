@@ -1,0 +1,23 @@
+{% load i18n ui %}{# Renders a RequestAnswersForm (apps/offerings/request_form.py). #}
+{% for spec, kind, bound in answers_form.groups %}
+  {% if kind == "address" %}
+  <fieldset class="grid gap-2 rounded-lg border border-zinc-200 p-3">
+    <legend class="px-1 text-sm font-medium text-zinc-700">{{ spec.label }}{% if spec.required %} <span class="text-red-500">*</span>{% endif %}</legend>
+    {% if spec.help_text %}<p class="text-xs text-zinc-500">{{ spec.help_text }}</p>{% endif %}
+    <div class="grid gap-3 sm:grid-cols-[2fr_1fr_1.5fr]">{% for b in bound %}{% apex_field b %}{% endfor %}</div>
+  </fieldset>
+  {% elif kind == "choices" %}
+  {% with b=bound.0 %}
+  <div class="grid gap-1.5">
+    <span class="text-sm font-medium text-zinc-700">{{ b.label }}{% if b.field.required %} <span class="text-red-500">*</span>{% endif %}</span>
+    <div class="flex flex-wrap gap-2">
+      {% for opt in b %}<label class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1 text-sm text-zinc-700">{{ opt.tag }} {{ opt.choice_label }}</label>{% endfor %}
+    </div>
+    {% for e in b.errors %}<p class="text-xs text-red-600">{{ e }}</p>{% endfor %}
+    {% if b.help_text %}<p class="text-xs text-zinc-500">{{ b.help_text }}</p>{% endif %}
+  </div>
+  {% endwith %}
+  {% else %}
+  {% apex_field bound.0 %}
+  {% endif %}
+{% endfor %}

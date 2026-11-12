@@ -13,12 +13,14 @@
 
   {# Form takes the remaining width (>= 36rem); steps are a 40rem column on the right and wrap below (full width) when both no longer fit. #}
   <div class="flex flex-wrap items-start gap-6">
-  <form method="post" class="min-w-0 grow-[999] basis-[36rem] rounded-xl border border-zinc-200 bg-white p-6 shadow-sm" novalidate>
+  <form method="post" enctype="multipart/form-data" class="min-w-0 grow-[999] basis-[36rem] rounded-xl border border-zinc-200 bg-white p-6 shadow-sm" novalidate>
     {% csrf_token %}
     <div class="grid gap-4 sm:grid-cols-2">
       {% apex_field form.service %}
       {% apex_field form.offering %}
     </div>
+    {# The chosen offering's own questions (swapped in over HTMX when it changes). #}
+    <div id="offering-form-fields" class="mt-4 grid gap-4">{% if answers_form %}{% include "offerings/_request_form_fields.html" %}{% endif %}</div>
     <div class="mt-4 grid gap-4">
       {% apex_field form.title %}
       {% apex_field form.description %}

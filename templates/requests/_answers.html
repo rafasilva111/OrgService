@@ -1,0 +1,11 @@
+{% load i18n %}{% if answers %}
+<div class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
+  <h2 class="mb-3 text-sm font-semibold text-zinc-800">{% translate 'Answers' %}</h2>
+  <dl class="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[minmax(10rem,auto)_1fr]">
+    {% for row in answers %}
+    <dt class="text-zinc-500">{{ row.label }}</dt>
+    <dd class="text-zinc-800">{% if row.attachment %}<a href="{% url 'requests:attachment' row.attachment.pk %}" class="font-medium text-indigo-600 hover:text-indigo-800">📎 {{ row.attachment.original_name }}</a> <span class="text-xs text-zinc-500">({{ row.attachment.size|filesizeformat }})</span>{% else %}{{ row.text|linebreaksbr }}{% endif %}</dd>
+    {% endfor %}
+  </dl>
+</div>
+{% endif %}

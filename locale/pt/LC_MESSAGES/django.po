@@ -2121,3 +2121,145 @@ msgstr ""
 
 msgid "Message to the requester (optional — makes this step a notification)"
 msgstr "Mensagem para o requerente (opcional — torna o passo uma notificação)"
+
+msgid "%(types)s, up to %(size)s"
+msgstr "%(types)s, até %(size)s"
+
+msgid "A choice needs at least two options (one per line)."
+msgstr "Uma escolha precisa de pelo menos duas opções (uma por linha)."
+
+msgid "Accepted file types: %(types)s."
+msgstr "Tipos de ficheiro aceites: %(types)s."
+
+msgid "Add question"
+msgstr "Adicionar pergunta"
+
+msgid "Address"
+msgstr "Morada"
+
+msgid "Answers"
+msgstr "Respostas"
+
+msgid "Attachment"
+msgstr "Anexo"
+
+msgid "Choice"
+msgstr "Escolha"
+
+msgid "Date"
+msgstr "Data"
+
+msgid "Enter a valid phone number."
+msgstr "Introduza um número de telefone válido."
+
+msgid "Field type"
+msgstr "Tipo de campo"
+
+msgid "Give the question a label."
+msgstr "Dê um texto à pergunta."
+
+msgid "Help text (optional)"
+msgstr "Texto de ajuda (opcional)"
+
+msgid "Locality"
+msgstr "Localidade"
+
+msgid "Long text"
+msgstr "Texto longo"
+
+msgid "Multiple choice"
+msgstr "Escolha múltipla"
+
+msgid "No questions — the requester only gives a title and description."
+msgstr "Sem perguntas — o requerente indica apenas título e descrição."
+
+msgid "Number"
+msgstr "Número"
+
+msgid "Options (one per line)"
+msgstr "Opções (uma por linha)"
+
+msgid "Phone"
+msgstr "Telefone"
+
+msgid "Postal code"
+msgstr "Código postal"
+
+msgid "Question"
+msgstr "Pergunta"
+
+msgid ""
+"Questions the requester answers in New request, besides title and "
+"description."
+msgstr ""
+"Perguntas a que o requerente responde no Novo pedido, além do título e da "
+"descrição."
+
+msgid "Remove question"
+msgstr "Remover pergunta"
+
+msgid "Request form"
+msgstr "Formulário do pedido"
+
+msgid "Short text"
+msgstr "Texto curto"
+
+msgid "Street and number"
+msgstr "Rua e número"
+
+msgid "The file is too large (maximum %(size)s)."
+msgstr "O ficheiro é demasiado grande (máximo %(size)s)."
+
+msgid "The request form could not be read."
+msgstr "Não foi possível ler o formulário do pedido."
+
+msgid "Unknown field type."
+msgstr "Tipo de campo desconhecido."
+
+msgid "Use the format 1234-567."
+msgstr "Use o formato 1234-567."
+
+msgid "Yes / No"
+msgstr "Sim / Não"
+
+msgid "content type"
+msgstr "tipo de conteúdo"
+
+msgid "field type"
+msgstr "tipo de campo"
+
+msgid "file"
+msgstr "ficheiro"
+
+msgid "file name"
+msgstr "nome do ficheiro"
+
+msgid "form answers"
+msgstr "respostas do formulário"
+
+msgid "form field"
+msgstr "campo do formulário"
+
+msgid "help text"
+msgstr "texto de ajuda"
+
+msgid "key"
+msgstr "chave"
+
+msgid "options"
+msgstr "opções"
+
+msgid "request attachment"
+msgstr "anexo do pedido"
+
+msgid "request attachments"
+msgstr "anexos do pedido"
+
+msgid "request form field"
+msgstr "campo do formulário do pedido"
+
+msgid "request form fields"
+msgstr "campos do formulário do pedido"
+
+msgid "size (bytes)"
+msgstr "tamanho (bytes)"

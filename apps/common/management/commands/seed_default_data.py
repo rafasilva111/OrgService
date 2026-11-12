@@ -40,7 +40,9 @@ from apps.incidents.models import Impact, Incident, IncidentStatus, IncidentUpda
 from apps.metrics.models import KPI, SLA, AggregationType, Metric, MetricValue, ScopeType
 from apps.offerings.models import (
     ExecutionStatus,
+    FormFieldType,
     OfferingExecution,
+    OfferingFormField,
     OfferingStatus,
     OfferingStep,
     OfferingTask,
@@ -852,6 +854,63 @@ class Command(BaseCommand):
             "Espaço Público, Infraestruturas e Edifícios",
             "Manutenção de espaço público",
         )
+
+        # Request forms: the questions asked in Novo Pedido for each offering.
+        T = FormFieldType
+        request_forms = {
+            "Realizar um funeral": [
+                ("nome-do-falecido", "Nome completo do falecido", T.TEXT, True, "", []),
+                ("data-do-obito", "Data do óbito", T.DATE, True, "", []),
+                (
+                    "tipo-de-sepultura",
+                    "Tipo de sepultura",
+                    T.CHOICE,
+                    True,
+                    "",
+                    ["Sepultura temporária", "Sepultura perpétua", "Jazigo", "Ossário"],
+                ),
+                ("certidao-de-obito", "Certidão de óbito", T.FILE, True, "", []),
+                ("velorio", "Pretende velório na capela?", T.BOOLEAN, True, "", []),
+                ("contacto", "Contacto do requerente", T.PHONE, True, "Telemóvel ou telefone", []),
+                ("observacoes", "Observações", T.TEXTAREA, False, "", []),
+            ],
+            "Realizar transladação": [
+                ("nome-do-falecido", "Nome completo do falecido", T.TEXT, True, "", []),
+                ("cemiterio-de-destino", "Morada do cemitério de destino", T.ADDRESS, True, "", []),
+                ("autorizacao", "Autorização de transladação", T.FILE, True, "", []),
+                ("contacto", "Contacto do requerente", T.PHONE, True, "", []),
+            ],
+            "Limpar cemitério": [
+                (
+                    "zonas",
+                    "Zonas a limpar",
+                    T.MULTICHOICE,
+                    True,
+                    "",
+                    ["Arruamentos", "Zonas verdes", "Capela", "Sanitários"],
+                ),
+                ("email", "Email para resposta", T.EMAIL, False, "", []),
+            ],
+            "Road Repair Request": [
+                ("localizacao", "Localização", T.ADDRESS, True, "Onde está o problema", []),
+                ("buracos", "Número aproximado de buracos", T.NUMBER, False, "", []),
+            ],
+        }
+        for offering_name, questions in request_forms.items():
+            offering = ServiceOffering.objects.filter(name=offering_name).first()
+            if offering is None or offering.form_fields.exists():
+                continue
+            for index, (key, label, ftype, required, help_text, options) in enumerate(questions):
+                OfferingFormField.objects.create(
+                    offering=offering,
+                    key=key,
+                    label=label,
+                    field_type=ftype,
+                    required=required,
+                    help_text=help_text,
+                    options=options,
+                    order=(index + 1) * 10,
+                )
 
         # Total SLAs: responsible offerings first, then copy their totals into the
         # external steps that point at them, then the offerings using them.

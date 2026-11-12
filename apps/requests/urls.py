@@ -12,4 +12,5 @@ urlpatterns = [
     path("new/offerings/", views.RequestOfferingOptionsView.as_view(), name="offering_options"),
     path("new/steps/", views.RequestOfferingStepsView.as_view(), name="offering_steps"),
     path("<int:pk>/", views.RequestDetailView.as_view(), name="detail"),
+    path("attachments/<int:pk>/", views.RequestAttachmentView.as_view(), name="attachment"),
 ]
