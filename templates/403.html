@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% load i18n ui %}
+
+{% block title %}403 · {% translate 'Access forbidden' %} — {% translate 'OrgService Platform' %}{% endblock %}
+
+{% block body %}
+<div class="flex min-h-screen flex-col items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+  <div class="w-full max-w-md text-center">
+    <p class="text-6xl font-bold tracking-tight text-indigo-600">403</p>
+    <h1 class="mt-4 text-2xl font-semibold tracking-tight text-zinc-900">{% translate 'Access forbidden' %}</h1>
+    <p class="mt-2 text-sm text-zinc-500">{% translate "You don't have permission to view this page. If you think this is a mistake, contact your administrator." %}</p>
+    <a href="{% url 'dashboard' %}"
+       class="mt-6 inline-flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700">
+      {% translate 'Back to dashboard' %}
+    </a>
+  </div>
+</div>
+{% endblock body %}

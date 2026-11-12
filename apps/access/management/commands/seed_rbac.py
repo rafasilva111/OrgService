@@ -7,6 +7,7 @@ Idempotent: existing codes are updated, missing ones created.
 from django.core.management.base import BaseCommand
 
 from apps.access.models import Permission, Role, RolePermission
+from apps.access.scoping import ORG_WIDE_ROLE_CODES, ensure_org_wide_scopes
 
 PERMISSIONS = [
     ("service.view", "View service", "services"),
@@ -22,9 +23,9 @@ PERMISSIONS = [
     ("incident.resolve", "Resolve incident", "incidents"),
     ("problem.view", "View problem", "problems"),
     ("problem.manage", "Manage problem", "problems"),
-    ("workflow.view", "View workflow", "workflows"),
-    ("workflow.execute", "Execute workflow", "workflows"),
-    ("workflow.manage", "Manage workflow", "workflows"),
+    ("offering.view", "View offering", "offerings"),
+    ("offering.execute", "Execute offering", "offerings"),
+    ("offering.manage", "Manage offering", "offerings"),
     ("resource.view", "View resource", "resources"),
     ("resource.manage", "Manage resource", "resources"),
     ("metrics.view", "View metrics", "metrics"),
@@ -91,8 +92,8 @@ ROLES = {
         "incident.resolve",
         "problem.view",
         "problem.manage",
-        "workflow.view",
-        "workflow.manage",
+        "offering.view",
+        "offering.manage",
         "resource.view",
         "resource.manage",
         "metrics.view",
@@ -111,8 +112,8 @@ ROLES = {
         "incident.assign",
         "incident.resolve",
         "problem.manage",
-        "workflow.view",
-        "workflow.execute",
+        "offering.view",
+        "offering.execute",
         "resource.manage",
         "resource.create",
         "resource.delete",
@@ -124,8 +125,8 @@ ROLES = {
         "request.update",
         "incident.view",
         "incident.create",
-        "workflow.view",
-        "workflow.execute",
+        "offering.view",
+        "offering.execute",
         "resource.view",
     ],
     "REQUEST_MANAGER": [
@@ -134,8 +135,8 @@ ROLES = {
         "request.update",
         "request.assign",
         "request.close",
-        "workflow.view",
-        "workflow.execute",
+        "offering.view",
+        "offering.execute",
     ],
     "INCIDENT_MANAGER": [
         "incident.view",
@@ -143,8 +144,8 @@ ROLES = {
         "incident.assign",
         "incident.resolve",
         "problem.view",
-        "workflow.view",
-        "workflow.execute",
+        "offering.view",
+        "offering.execute",
     ],
     "PROBLEM_MANAGER": [
         "problem.view",
@@ -168,7 +169,7 @@ ROLES = {
         "resource.manage",
         "resource.create",
         "resource.delete",
-        "workflow.execute",
+        "offering.execute",
         "change.view",
         "change.manage",
     ],
@@ -191,9 +192,16 @@ class Command(BaseCommand):
                 code=code,
                 defaults={"name": code.replace("_", " ").title(), "is_system": True},
             )
-            role.rolepermissions.all().delete()
+            desired_permission_codes = set(perm_codes)
             for pcode in perm_codes:
-                RolePermission.objects.create(role=role, permission=perms[pcode])
+                RolePermission.objects.update_or_create(
+                    role=role,
+                    permission=perms[pcode],
+                    defaults={"active": True},
+                )
+            role.rolepermissions.exclude(permission__code__in=desired_permission_codes).delete()
+            if code in ORG_WIDE_ROLE_CODES:
+                ensure_org_wide_scopes(role)
 
         self.stdout.write(
             self.style.SUCCESS(

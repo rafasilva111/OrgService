@@ -5,8 +5,9 @@ from django.utils.translation import gettext_lazy as _
 
 from apps.common.breadcrumbs import BreadcrumbsMixin
 from apps.common.lifecycle import CatalogCreateView, LifecycleActionView
-from apps.common.mixins import PermissionRequiredMixin, ScopedDetailView
+from apps.common.mixins import PermissionRequiredMixin, ScopedDetailView, service_filter_choices
 from apps.common.tables.config import Column, Filter, FilterKind, TableConfig
+from apps.common.tables.filters import organization_column
 from apps.common.tables.views import TableView
 from apps.organizations.models import Organization
 from apps.resources.models import Resource, ResourceAssignment, ResourceType
@@ -29,14 +30,22 @@ class ResourceListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
                 template="partials/pill.html",
             ),
             Column("code", _("Code"), searchable=True),
+            organization_column(
+                key="organization.name",
+                lookups=("organization__path", "service__organization__path"),
+            ),
             Column(
-                "organization.name",
-                _("Organization"),
+                "service.name",
+                _("Service"),
                 sortable=True,
                 searchable=True,
-                filter=Filter(FilterKind.TEXT),
+                filter=Filter(
+                    FilterKind.CHOICE,
+                    param="service",
+                    lookup="service_id",
+                    choices_callable=service_filter_choices,
+                ),
             ),
-            Column("service.name", _("Service"), sortable=True, searchable=True),
             Column("active", _("Active"), sortable=True, template="partials/bool.html"),
         ],
         default_sort="name",
@@ -46,6 +55,8 @@ class ResourceListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
         row_url_name="resources:detail",
     )
     breadcrumb_title = _("Resources")
+    organization_filter_fields = ("organization", "service__organization")
+    service_filter_field = "service"
 
     def get_base_queryset(self):
         return (

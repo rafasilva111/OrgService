@@ -98,7 +98,7 @@ demo/seeded passwords to per-environment injection in real deployments.
 Several list/detail pages run the authorization scope query **per model** —
 that's fine, but watch for N+1 in the panels:
 - `ExecutiveDashboard` builds `requests`, `incidents`, `problems`, `changes`,
-  `workflows`, `resources` querysets **even when panels aren't rendered** — they
+  `offerings`, `resources` querysets **even when panels aren't rendered** — they
   are all evaluated. Consider `if`-gating or aggregating lazily.
 - The `.count()` calls on visible-query sets each run a query with the full
   membership/scope machinery. Fine at demo scale; optimize when datasets grow.

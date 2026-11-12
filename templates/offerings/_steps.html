@@ -1,0 +1,29 @@
+{% load i18n ui %}
+<div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+  <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Steps' %}</h2>
+  <ol class="divide-y divide-zinc-100">
+    {% for step in steps %}
+    <li class="flex items-center gap-3 px-4 py-3">
+      <span class="grid size-7 shrink-0 place-items-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600">{{ step.order }}</span>
+      <div class="min-w-0 flex-1">
+        <p class="truncate text-sm font-medium text-zinc-800">{{ step.name }}</p>
+        {% if step.step_type != "START" and step.step_type != "END" %}
+        {% with offering=step.effective_offering %}
+        <p class="truncate text-xs {% if step.is_delegated %}font-medium text-indigo-600{% else %}text-zinc-500{% endif %}" title="{% translate 'Responsible service' %}: {{ offering.service.name }} · {% translate 'Service Offering' %}: {{ offering.name }}">
+          {{ offering.service.name }} · {{ offering.name }}
+        </p>
+        {% endwith %}
+        {% endif %}
+        {% if step.message %}<p class="mt-0.5 line-clamp-2 text-xs italic text-zinc-500">“{{ step.message }}”</p>{% endif %}
+        {% if step.jump_to %}<p class="text-xs text-zinc-500">→ {% translate 'Next' %}: {{ step.jump_to.name }}</p>{% endif %}
+        {% if step.failure_step %}<p class="text-xs font-medium text-red-600">↳ {% translate 'On error' %}: {{ step.failure_step.name }}</p>{% endif %}
+      </div>
+      <span class="shrink-0 text-xs text-zinc-500">{% if step.is_external %}{% with otype=step.effective_offering.offering_type %}{% if otype %}{{ otype.name }}{% else %}{% translate 'To be defined' %}{% endif %}{% endwith %}{% else %}{{ step.get_step_type_display }}{% endif %}</span>
+      {% if step.sla_minutes %}<span class="shrink-0 text-xs text-zinc-500">{% blocktranslate with duration=step.sla_minutes|minutes %}SLA {{ duration }}{% endblocktranslate %}</span>{% endif %}
+      {% if step.responsible_role %}<span class="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600">{{ step.responsible_role.name }}</span>{% endif %}
+    </li>
+    {% empty %}
+    <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No steps defined.' %}</li>
+    {% endfor %}
+  </ol>
+</div>

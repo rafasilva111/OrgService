@@ -59,8 +59,8 @@ def staff_user(make_user):
         "incidents:index",
         "problems:index",
         "changes:index",
-        "workflows:index",
-        "workflows:executions",
+        "offerings:index",
+        "offerings:executions",
         "resources:index",
         "resources:assignments",
         "people:directory",
@@ -103,7 +103,7 @@ def test_login_page_renders(client):
         "incidents:index",
         "problems:index",
         "changes:index",
-        "workflows:index",
+        "offerings:index",
     ],
 )
 def test_no_permission_403(client, make_user, make_member, org_tree, url_name):
@@ -112,6 +112,15 @@ def test_no_permission_403(client, make_user, make_member, org_tree, url_name):
     client.force_login(user)
     response = client.get(reverse(url_name))
     assert response.status_code == 403
+
+
+def test_forbidden_page_uses_branded_template(client, make_user, make_member, org_tree):
+    user = make_user("nobody")
+    make_member(user, org_tree["parish_a"])  # no permissions granted
+    client.force_login(user)
+    response = client.get(reverse("organizations:index"))
+    assert response.status_code == 403
+    assert "Back to dashboard" in response.content.decode()
 
 
 # ---------------------------------------------------------------------------
@@ -127,8 +136,8 @@ VIEWS_WITH_TEMPLATES = [
     "incidents:index",
     "problems:index",
     "changes:index",
-    "workflows:index",
-    "workflows:executions",
+    "offerings:index",
+    "offerings:executions",
     "resources:index",
     "resources:assignments",
     "people:directory",
@@ -152,19 +161,17 @@ def test_superuser_renders_detail_pages(client, staff_user, org_tree, make_servi
     from apps.changes.models import Change, ChangeStatus, RiskLevel
     from apps.incidents.models import Impact, Incident, IncidentStatus, Urgency
     from apps.metrics.models import Metric
+    from apps.offerings.models import ServiceOffering
     from apps.people.models import Skill
     from apps.problems.models import Problem, ProblemStatus
-    from apps.requests.models import Priority, Request, RequestStatus, RequestType
+    from apps.requests.models import Priority, Request, RequestStatus
     from apps.resources.models import Resource, ResourceType
-    from apps.workflows.models import Workflow
 
     client.force_login(staff_user)
 
     service = make_service(org_tree["parish_a"], name="SvcDetail")
-    req_type = RequestType.objects.create(name="Standard")
     req = Request.objects.create(
         service=service,
-        request_type=req_type,
         title="Req",
         status=RequestStatus.NEW,
         priority=Priority.MEDIUM,
@@ -185,7 +192,7 @@ def test_superuser_renders_detail_pages(client, staff_user, org_tree, make_servi
         risk=RiskLevel.MEDIUM,
     )
     role = Role.objects.create(code="role", name="Role")
-    workflow = Workflow.objects.create(
+    offering = ServiceOffering.objects.create(
         service=service,
         name="WF",
         version=1,
@@ -205,7 +212,7 @@ def test_superuser_renders_detail_pages(client, staff_user, org_tree, make_servi
         ("incidents:detail", [inc.pk]),
         ("problems:detail", [problem.pk]),
         ("changes:detail", [change.pk]),
-        ("workflows:detail", [workflow.pk]),
+        ("offerings:detail", [offering.pk]),
         ("resources:detail", [resource.pk]),
         ("people:detail", [person.pk]),
         ("metrics:detail", [metric.pk]),
@@ -286,16 +293,11 @@ def test_incident_create_with_perm_renders(client, make_user, make_member, org_t
 
 
 def test_request_bulk_mark_closed(client, make_user, make_member, org_tree, make_service):
-    from apps.requests.models import Request, RequestStatus, RequestType
+    from apps.requests.models import Request, RequestStatus
 
     service = make_service(org_tree["parish_a"])
-    req_type = RequestType.objects.create(name="Standard")
-    req1 = Request.objects.create(
-        service=service, request_type=req_type, title="A", status=RequestStatus.NEW
-    )
-    req2 = Request.objects.create(
-        service=service, request_type=req_type, title="B", status=RequestStatus.NEW
-    )
+    req1 = Request.objects.create(service=service, title="A", status=RequestStatus.NEW)
+    req2 = Request.objects.create(service=service, title="B", status=RequestStatus.NEW)
 
     user = make_user("closer")
     make_member(user, org_tree["parish_a"], "request.view", "request.update")
@@ -338,21 +340,20 @@ def test_organization_dashboard_renders(client, make_user, make_member, org_tree
 
 def test_header_shows_organization_and_role(client, make_user, make_member, staff_user, org_tree):
     user = make_user("op")
-    person = make_member(user, org_tree["municipality"], "organization.view", "service.view")
+    make_member(user, org_tree["municipality"], "organization.view", "service.view")
     client.force_login(user)
     response = client.get(reverse("dashboard"))
     assert response.status_code == 200
     html = response.content.decode()
     assert org_tree["municipality"].name in html
-    assert person.memberships.get().role.name in html
 
     client.force_login(staff_user)
     response = client.get(reverse("dashboard"))
     assert response.status_code == 200
-    assert "Organization / Role" not in response.content.decode()
+    assert reverse("dashboard:set_org_context") not in response.content.decode()
 
 
-def test_sidebar_footer_shows_org_service_role(
+def test_sidebar_footer_does_not_list_memberships(
     client, make_user, make_member, org_tree, make_service
 ):
     user = make_user("sm")
@@ -365,9 +366,10 @@ def test_sidebar_footer_shows_org_service_role(
     response = client.get(reverse("dashboard"))
     html = response.content.decode()
     footer = html[html.find("border-t border-zinc-800") : html.find("</aside>")]
-    assert org_tree["municipality"].name in footer
-    assert "Waste Management" in footer
-    assert membership.memberships.get().role.name in footer
+    assert "border-t border-zinc-800" in html
+    assert org_tree["municipality"].name not in footer
+    assert "Waste Management" not in footer
+    assert membership.memberships.get().role.name not in footer
 
 
 def test_service_dashboard_renders(client, make_user, make_member, org_tree, make_service):
@@ -383,7 +385,7 @@ def test_dashboard_query_count_stable(client, make_user, make_member, org_tree, 
     """Guard against N+1 regressions on the executive dashboard.
 
     The dashboard aggregates across requests/incidents/problems/changes/
-    resources/workflows/metrics. A fixed, per-user bounded number of queries
+    resources/service-offerings/metrics. A fixed, per-user bounded number of queries
     is expected; this test fails loudly if the page starts issuing unbounded
     per-row queries.
     """

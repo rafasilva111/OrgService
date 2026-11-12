@@ -2,7 +2,8 @@
 <div id="{{ config.key }}-wrap" class="space-y-4">
   {% include "include/toasts.html" %}
 
-  <div class="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm" x-data="{ filtersOpen: false }">
+  <div class="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm"
+       x-data="{ filtersOpen: sessionStorage.getItem('table-filters-{{ config.key }}') === '1' }">
     {% if config.caption or has_search or has_filters %}
     <div class="flex flex-wrap items-center gap-2 border-b border-zinc-100 p-4">
       <div class="min-w-0 flex-1">
@@ -22,7 +23,8 @@
         </form>
         {% endif %}
         {% if has_filters %}
-        <button type="button" @click="filtersOpen = !filtersOpen"
+        <button type="button"
+                @click="filtersOpen = !filtersOpen; sessionStorage.setItem('table-filters-{{ config.key }}', filtersOpen ? '1' : '0')"
                 class="grid h-9 w-9 place-items-center rounded-lg border border-zinc-300 text-zinc-500 transition hover:bg-zinc-50"
                 aria-label="{% translate 'Show filters' %}">
           {% icon "filter" class_name="size-4" %}
@@ -74,6 +76,9 @@
       var toggle = root.querySelector('.row-select-all');
       if (toggle) toggle.addEventListener('click', function () {
         root.querySelectorAll('.row-select').forEach(function (box) { box.checked = toggle.checked; });
+      });
+      root.querySelectorAll('form[data-filter-form] select, form[data-filter-form] input[type="date"]').forEach(function (el) {
+        el.addEventListener('change', function () { if (el.form) el.form.requestSubmit(); });
       });
     })();
   </script>

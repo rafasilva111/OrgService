@@ -1,6 +1,6 @@
 # Architecture
 
-Modular monolith (Django 5.2) for an **organizational services platform** — municipalities/parishes providing operational services (waste, water, parks…), with requests, incidents, problems, changes, workflows, resources and metrics.
+Modular monolith (Django 5.2) for an **organizational services platform** — municipalities/parishes providing operational services (waste, water, parks…), with requests, incidents, problems, changes, offerings, resources and metrics.
 
 ## Stack
 
@@ -16,32 +16,36 @@ Modular monolith (Django 5.2) for an **organizational services platform** — mu
 ## Layout
 
 ```
-/home/kali/Porject
-├── config/            # startproject: settings, urls (+ $DJANGO_SETTINGS_MODULE)
+/home/kali/OrgService
+├── config/            # startproject: settings, urls, wsgi, asgi (+ $DJANGO_SETTINGS_MODULE)
 ├── apps/
-│   ├── common/        # NOT a real app — shared base classes & helpers
+│   ├── common/        # NOT a real domain app — shared base classes & helpers
 │   ├── people/        # Person, Skill, PersonSkill
 │   ├── organizations/ # Organization (ltree tree), Membership, Unit
 │   ├── access/        # Permission, Role, RolePermission, ServiceAccess + seed_rbac
-│   ├── services/      # Service, ServiceCapability(+Assignment), ServiceActor
-│   ├── workflows/     # Workflow (definitions), WorkflowExecution (instances), Tasks
-│   ├── requests/      # Request, RequestType, RequestComment
+│   ├── services/      # Service, ServiceType, ServiceCapability(+Assignment), ServiceActor
+│   ├── offerings/     # ServiceOffering (definitions), OfferingExecution (instances), Tasks
+│   ├── requests/      # Request, RequestComment
 │   ├── incidents/     # Incident, IncidentUpdate
 │   ├── problems/      # Problem, ProblemIncident
 │   ├── changes/       # Change, ChangeApproval
 │   ├── resources/     # Resource, Asset, Equipment, Material, ResourceAssignment
 │   ├── events/        # Event (immutable; generic subject)
-│   ├── audits/        # AuditLog (generic object)
-│   └── metrics/       # Metric, MetricValue, KPI(+via), SLA
+│   ├── audit/         # AuditLog (generic object)
+│   ├── metrics/       # Metric, MetricValue, KPI(+via), SLA
+│   ├── dashboard/     # views/urls only — no models.py
+│   └── profiles/      # UserProfile (OneToOne auth.User, holds `language`)
 ├── tests/             # pytest suite (fixtures + per-domain modules)
-├── docker-compose.yml # PostgreSQL 16 service
+├── templates/         # 23 template subdirectories (server-rendered)
+├── locale/pt/LC_MESSAGES/  # compiled django.po/.mo (EN default + PT)
+├── docker-compose.yml # PostgreSQL 16 + web
 ├── requirements.txt
 └── pytest.ini
 ```
 
 Why **modular monolith** instead of microservices:
 
-* a single model of the domain has strong relationships (service ↔ requests/incidents/problems/workflows/metrics), which map cleanly onto foreign keys and shared transactions;
+* a single model of the domain has strong relationships (service ↔ requests/incidents/problems/offerings/metrics), which map cleanly onto foreign keys and shared transactions;
 * centralized authorization (`can()` / `visible_to()`) is enforced in one place;
 * deployment is a single Django app/process; the app boundaries keep teams focused.
 
@@ -64,17 +68,17 @@ Indexed with **GiST** (`gist_ltree_ops`) — PostgreSQL 16 no longer ships a GIN
 
 > Django 5.2 does **not** include an `LTreeField`, hence the custom field. The `ltree` extension is created by `apps/organizations/migrations/0001_initial.py` (`CreateExtension`), which is why test DBs are built with real migrations (no `--nomigrations`).
 
-### Versioned workflow definitions
+### Versioned offering definitions
 
-`Workflow` rows are *versions* of `(service, name)`; a new revision = a new row with a higher `version` (never mutate a published version). `Workflow.current_version(service, name)` returns the newest non-draft row. `WorkflowExecution` is an *instance* and references any domain subject (request/incident/change/person) through a `GenericForeignKey` to avoid app-to-app imports.
+`ServiceOffering` rows are *versions* of `(service, name)`; a new revision = a new row with a higher `version` (never mutate a published version). `ServiceOffering.current_version(service, name)` returns the newest non-draft row. `OfferingExecution` is an *instance* and references any domain subject (request/incident/change/person) through a `GenericForeignKey` to avoid app-to-app imports.
 
 ### Generic FKs to decouple apps
 
-`WorkflowExecution.subject`, `Event.subject`, `AuditLog.object`, `ResourceAssignment.target` use `GenericForeignKey`. Denormalized `organization`/`service` columns on `Event`/`AuditLog` keep authorization queries cheap and DB-level.
+`OfferingExecution.subject`, `Event.subject`, `AuditLog.object`, `ResourceAssignment.target` use `GenericForeignKey`. Denormalized `organization`/`service` columns on `Event`/`AuditLog` keep authorization queries cheap and DB-level.
 
 ### Immutable events
 
-`Event.metadata` is `editable=False`; events are write-once records feeding audit trails, notifications, workflow triggers and metrics.
+`Event.metadata` is `editable=False`; events are write-once records feeding audit trails, notifications, offering triggers and metrics.
 
 ### Multi-table resources
 

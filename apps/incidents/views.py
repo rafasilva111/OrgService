@@ -14,6 +14,7 @@ from apps.common.mixins import (
     visible_services,
 )
 from apps.common.tables.config import Column, Filter, FilterKind, TableConfig
+from apps.common.tables.filters import organization_column
 from apps.common.tables.views import TableView
 from apps.incidents.models import Impact, Incident, IncidentStatus
 from apps.people.models import Person
@@ -41,6 +42,7 @@ class IncidentListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
         key="incidents",
         columns=[
             Column("title", _("Incident"), sortable=True, searchable=True),
+            organization_column(),
             Column(
                 "service.name",
                 _("Service"),
@@ -48,6 +50,7 @@ class IncidentListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
                 searchable=True,
                 filter=Filter(
                     FilterKind.CHOICE,
+                    param="service",
                     lookup="service_id",
                     choices_callable=service_filter_choices,
                 ),
@@ -84,6 +87,8 @@ class IncidentListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
     )
     breadcrumb_title = _("Incidents")
     service_filter_field = "service"
+    organization_filter_fields = ("service__organization",)
+    active_status_exclusions = ("RESOLVED", "CLOSED")
 
     def get_base_queryset(self):
         return Incident.objects.visible_to(self.request.user, "incident.view").select_related(

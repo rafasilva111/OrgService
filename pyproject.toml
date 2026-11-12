@@ -7,6 +7,29 @@ name = "orgplatform"
 version = "0.1.0"
 description = "Municipal service management platform (Torres Vedras)."
 requires-python = ">=3.12"
+dependencies = [
+    "Django==5.2.17",
+    "psycopg[binary]==3.3.5",
+    "gunicorn==26.2.0",
+    "django-extensions==4.1",
+    # Required by the "dev" settings configuration, which is what the
+    # container image runs by default (docker-compose ENVIRONMENT=dev).
+    "django-debug-toolbar==8.0.0",
+    # Reads .env so config.settings can resolve ENVIRONMENT.
+    "python-dotenv==1.2.4",
+    "whitenoise==6.9.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "pytest-django==4.14.0",
+    "ruff==0.16.6",
+    "pip-audit==2.10.1",
+]
+
+[tool.setuptools.packages.find]
+include = ["apps*", "config*"]
 
 [tool.ruff]
 line-length = 100

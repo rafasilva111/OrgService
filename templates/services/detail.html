@@ -30,11 +30,11 @@
   <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
     {% translate 'Open requests' as stat_open_requests %}
     {% translate 'Active incidents' as stat_active_incidents %}
-    {% translate 'Active workflows' as stat_active_workflows %}
+    {% translate 'Active offerings' as stat_active_offerings %}
     {% translate 'KPIs' as stat_kpis %}
     {% include "partials/stat_card.html" with label=stat_open_requests value=open_request_count icon="requests" %}
     {% include "partials/stat_card.html" with label=stat_active_incidents value=active_incident_count icon="incidents" %}
-    {% include "partials/stat_card.html" with label=stat_active_workflows value=active_workflow_count icon="workflows" %}
+    {% include "partials/stat_card.html" with label=stat_active_offerings value=active_offering_count icon="offerings" %}
     {% include "partials/stat_card.html" with label=stat_kpis value=kpis|length icon="kpis" %}
   </div>
 
@@ -72,7 +72,7 @@
     <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
       <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
         <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Recent requests' %}</h2>
-        <a href="{% url 'requests:index' %}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
+        <a href="{% url 'requests:index' %}?service={{ service.pk }}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
       </div>
       <ul class="divide-y divide-zinc-100">
         {% for r in requests|slice:":8" %}

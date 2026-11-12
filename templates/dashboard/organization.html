@@ -63,7 +63,7 @@
     <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
       <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Services' %}</h2>
       <ul class="divide-y divide-zinc-100">
-        {% for s in services %}
+        {% for s in org_services %}
         <li class="flex items-center gap-3 px-4 py-3">
           <a href="{% url 'dashboard:service_dashboard' s.pk %}" class="min-w-0 flex-1 truncate text-sm font-medium text-indigo-600 hover:text-indigo-800">{{ s.name }}</a>
           <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ s.status|pill_class }}">{{ s.get_status_display }}</span>
@@ -77,7 +77,7 @@
     <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
       <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
         <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Open requests' %}</h2>
-        <a href="{% url 'requests:index' %}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
+        <a href="{% url 'requests:index' %}?organization={{ organization.pk }}&status=OPEN" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
       </div>
       <ul class="divide-y divide-zinc-100">
         {% for r in open_requests %}

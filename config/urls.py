@@ -30,8 +30,8 @@ urlpatterns = [
     path("incidents/", include("apps.incidents.urls")),
     path("problems/", include("apps.problems.urls")),
     path("changes/", include("apps.changes.urls")),
-    # Workflows
-    path("workflows/", include("apps.workflows.urls")),
+    # Service Offerings
+    path("service-offerings/", include("apps.offerings.urls")),
     # Resources
     path("resources/", include("apps.resources.urls")),
     # People

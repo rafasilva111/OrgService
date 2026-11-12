@@ -1,0 +1,15 @@
+{% comment %}
+Organization type as a translated label ("País", "Distrito", …).
+
+The generic table cell resolves ``organization_type`` through the ``fieldvalue``
+filter, which returns the raw enum value — that rendered "COUNTRY"/"DISTRICT" in
+an otherwise Portuguese interface. Every other view (detail page, org tree,
+dashboards, breadcrumbs) already uses ``get_organization_type_display``; this
+brings the list column in line. Falls back to the raw value if a row somehow
+holds an unknown code.
+
+Note: this must be a {% comment %} block, not an inline {# … #} comment —
+Django's tag_re has no re.DOTALL, so inline comments cannot span lines and are
+emitted as literal text.
+{% endcomment %}
+<span class="text-zinc-500">{{ object.get_organization_type_display|default:value }}</span>

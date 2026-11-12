@@ -6,7 +6,13 @@ from django.utils.translation import gettext_lazy as _
 
 from apps.common.breadcrumbs import BreadcrumbsMixin
 from apps.common.lifecycle import CatalogCreateView, LifecycleActionView
-from apps.common.mixins import PermissionRequiredMixin, ScopedDetailView, ScopedListView
+from apps.common.mixins import (
+    PermissionRequiredMixin,
+    ScopedDetailView,
+    ScopedListView,
+    org_filter_choices,
+    visible_orgs,
+)
 from apps.common.tables.config import Column, Filter, FilterKind, TableConfig
 from apps.common.tables.views import TableView
 from apps.organizations.models import (
@@ -20,6 +26,18 @@ from apps.services.models import Service, ServiceActor
 CLOSED_STATUSES = (RequestStatus.RESOLVED, RequestStatus.CLOSED, RequestStatus.CANCELLED)
 
 
+def parent_subtree_path(view, pk: str) -> str | None:
+    """Resolve a parent organization's pk to the ltree path to match.
+
+    Scoped to what the requesting user may see, so a pk outside their
+    authorization scope resolves to ``None`` and the filter is ignored rather
+    than disclosing that the organization exists.
+    """
+    return (
+        visible_orgs(view.request.user).alive().filter(pk=pk).values_list("path", flat=True).first()
+    )
+
+
 ORG_COLUMNS = [
     Column("name", _("Organization"), sortable=True, searchable=True),
     Column("code", _("Code"), sortable=True),
@@ -27,8 +45,20 @@ ORG_COLUMNS = [
         "organization_type",
         _("Type"),
         filter=Filter(FilterKind.CHOICE, choices=OrganizationType.choices),
+        template="organizations/_org_type.html",
     ),
-    Column("path", _("Path")),
+    Column(
+        "parent.name",
+        _("Parent"),
+        filter=Filter(
+            FilterKind.SUBTREE,
+            param="parent",
+            lookup="path",
+            choices_callable=org_filter_choices,
+            subtree_resolver=parent_subtree_path,
+        ),
+    ),
+    Column("path", _("Path"), sortable=True, nulls_first=True),
 ]
 
 
@@ -39,7 +69,7 @@ class OrganizationListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView)
     table_config = TableConfig(
         key="organizations",
         columns=ORG_COLUMNS,
-        default_sort="name",
+        default_sort="path",
         caption="Organizations",
         empty_headline="No organizations in scope",
         empty_body="Organizations you can see will appear here.",
@@ -80,7 +110,7 @@ class OrganizationDetailView(BreadcrumbsMixin, ScopedDetailView):
         ctx["children"] = (
             org.get_children().filter(pk__in=subtree_visible_orgs.values("pk")).order_by("name")
         )
-        ctx["services"] = services_visible
+        ctx["org_services"] = services_visible
         ctx["visible_org_count"] = subtree_visible_orgs.count()
         ctx["members_count"] = (
             OrganizationMembership.objects.filter(organization_id__in=desc_ids, active=True)
@@ -184,6 +214,7 @@ class MembershipListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
     )
     breadcrumb_title = _("Memberships")
     breadcrumb_parent = (_("Organizations"), "organizations:index")
+    organization_filter_fields = ("organization",)
 
     def get_base_queryset(self):
         visible_orgs = Organization.objects.visible_to(self.request.user, "organization.view")

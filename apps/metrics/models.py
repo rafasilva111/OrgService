@@ -1,12 +1,13 @@
 """Metrics & KPIs: measurable values, observations, targets, SLAs.
 
 Dashboards are NOT entities here — they are views over these tables plus
-requests/incidents/workflows (see spec §21).
+requests/incidents/offerings (see spec §21).
 """
 
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from apps.common.durations import humanize_minutes
 from apps.common.models import ActiveModel, TimeStampedModel
 
 
@@ -131,6 +132,16 @@ class SLA(TimeStampedModel, ActiveModel):
     service = models.ForeignKey(
         "services.Service", on_delete=models.CASCADE, related_name="slas", null=True, blank=True
     )
+    # Set for the SLA generated from a service offering's total SLA (kept in
+    # sync by ``apps.offerings.builder.sync_offering_sla``).
+    offering = models.ForeignKey(
+        "offerings.ServiceOffering",
+        on_delete=models.CASCADE,
+        related_name="slas",
+        null=True,
+        blank=True,
+        verbose_name=_("service offering"),
+    )
     name = models.CharField(_("name"), max_length=128)
     priority = models.CharField(
         _("priority"),
@@ -149,7 +160,12 @@ class SLA(TimeStampedModel, ActiveModel):
         verbose_name_plural = _("SLAs")
         constraints = [
             models.UniqueConstraint(fields=["service", "name", "scope"], name="u_sla_name_scope"),
+            models.UniqueConstraint(
+                fields=["offering", "scope"],
+                condition=models.Q(offering__isnull=False),
+                name="u_sla_offering_scope",
+            ),
         ]
 
     def __str__(self):
-        return f"{self.service} / {self.name} ({self.target_minutes}min)"
+        return f"{self.service} / {self.name} ({humanize_minutes(self.target_minutes)})"

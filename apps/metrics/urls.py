@@ -9,5 +9,6 @@ app_name = "metrics"
 urlpatterns = [
     path("", views.MetricListView.as_view(), name="index"),
     path("kpis/", views.KpiListView.as_view(), name="kpis"),
+    path("slas/", views.SlaListView.as_view(), name="slas"),
     path("<int:pk>/", views.MetricDetailView.as_view(), name="detail"),
 ]

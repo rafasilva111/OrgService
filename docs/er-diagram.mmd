@@ -3,7 +3,7 @@ erDiagram
     %% ---------------------------------------------------------------
     %% Organizational platform — ER diagram (Mermaid)
     %% Hierarchy: Organization ├─< Service ─< {Request, Incident,
-    %%             Problem, Workflow, Change, Metric, Actor}
+    %%             Problem, Service Offering, Change, Metric, Actor}
     %% Cross-app links (execution subject, event subject, audit object,
     %% resource target) use GenericForeignKey and are drawn as notes.
     %% ---------------------------------------------------------------
@@ -23,20 +23,21 @@ erDiagram
     RolePermission }o--|| Role : "grants"
 
     Service ||--o{ Request : "receives"
-    RequestType ||--o{ Request : "classifies"
+    ServiceOffering ||--o{ Request : "requested as"
+    ServiceOfferingType ||--o{ ServiceOffering : "classifies"
     Service ||--o{ Incident : "suffers"
     Service ||--o{ Problem : "root causes"
     Problem }o--o{ Incident : "linked via"
     Service ||--o{ Change : "modifies"
     Person ||--o{ Change : "requests"
 
-    Service ||--o{ Workflow : "defines"
-    Workflow ||--o{ WorkflowStep : "composed of"
-    Workflow ||--o{ WorkflowTransition : "connects steps"
-    Workflow ||--o{ WorkflowExecution : "runs"
-    WorkflowExecution ||--o{ WorkflowTask : "produces"
-    WorkflowStep ||--o{ WorkflowTransition : "from"
-    WorkflowStep ||--o{ WorkflowTransition : "to"
+    Service ||--o{ ServiceOffering : "defines"
+    ServiceOffering ||--o{ OfferingStep : "composed of"
+    ServiceOffering ||--o{ OfferingTransition : "connects steps"
+    ServiceOffering ||--o{ OfferingExecution : "runs"
+    OfferingExecution ||--o{ OfferingTask : "produces"
+    OfferingStep ||--o{ OfferingTransition : "from"
+    OfferingStep ||--o{ OfferingTransition : "to"
 
     Service ||--o{ ServiceActor : "staffed by"
     Role ||--o{ ServiceActor : "role-based"
@@ -101,22 +102,22 @@ erDiagram
     Request {
         int id PK
         int service_id FK
-        int request_type_id FK
+        int offering_id FK
         string title
         string status
         string priority
         int requester_id FK,nullable
     }
-    Workflow {
+    ServiceOffering {
         int id PK
         int service_id FK
         string name
         int version
         string status
     }
-    WorkflowExecution {
+    OfferingExecution {
         int id PK
-        int workflow_id FK
+        int offering_id FK
         string status
         int current_step_id FK,nullable
         int subject_type_id FK,generic

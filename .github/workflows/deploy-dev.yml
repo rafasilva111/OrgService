@@ -1,0 +1,69 @@
+name: Deploy dev
+
+# Every push to `dev` (including merged pull requests) runs the full CI and, if
+# it passes, deploys to the dev server over SSH:
+#   git reset --hard origin/dev  →  docker compose -f docker-compose.prod.yml up -d --build
+# Server setup and rollback: .opencode/obsidian/Procedures/Deploying.md
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+# Never run two deploys at the same time; queue them instead of cancelling.
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    # Secrets live in Settings → Environments → dev:
+    #   DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_PATH, DEPLOY_PORT (optional)
+    environment: dev
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_SHA: ${{ github.sha }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          envs: DEPLOY_PATH,DEPLOY_SHA
+          script_stop: true
+          script: |
+            set -eu
+            cd "$DEPLOY_PATH"
+            git fetch --prune origin dev
+            git checkout -B dev "$DEPLOY_SHA"
+            docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
+            # Wait for gunicorn to answer (migrations run in the entrypoint first).
+            # Any status < 500 counts as healthy (redirects to login/HTTPS are fine);
+            # the Host header is the first DJANGO_ALLOWED_HOSTS entry.
+            for i in $(seq 1 30); do
+              if docker compose -f docker-compose.prod.yml exec -T web python -c "
+            import os, http.client
+            host = os.environ['DJANGO_ALLOWED_HOSTS'].split(',')[0].strip().lstrip('.')
+            c = http.client.HTTPConnection('127.0.0.1', 8000, timeout=5)
+            c.request('GET', '/', headers={'Host': host})
+            raise SystemExit(c.getresponse().status >= 500)
+            " >/dev/null 2>&1; then
+                echo "Deployed $DEPLOY_SHA"
+                docker image prune -f
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "web did not become healthy" >&2
+            docker compose -f docker-compose.prod.yml logs --tail=100 web
+            exit 1

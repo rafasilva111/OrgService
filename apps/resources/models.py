@@ -8,7 +8,7 @@ Class hierarchy (multi-table inheritance keeps every subtype a real
       └── Material         (consumable — bags, gloves, fuel, …)
 
 ``ResourceAssignment`` points at any assignable target (service, person,
-workflow task, organization,…) through a ``GenericForeignKey`` to avoid import
+offering task, organization,…) through a ``GenericForeignKey`` to avoid import
 cycles between apps.
 """
 
@@ -131,7 +131,7 @@ class Material(Resource):
 
 
 class ResourceAssignment(TimeStampedModel):
-    """Allocation of a resource to a service/person/workflow/task/org…"""
+    """Allocation of a resource to a service/person/offering/task/org…"""
 
     resource = models.ForeignKey(Resource, on_delete=models.CASCADE, related_name="assignments")
     # Assignable target — generic to avoid coupling resource to every domain app.

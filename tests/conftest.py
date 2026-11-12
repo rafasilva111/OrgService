@@ -83,11 +83,31 @@ def make_membership(db):
 
 
 @pytest.fixture
-def make_service(db):
-    def _make(organization, name="Waste Management"):
+def default_service_type(db):
+    """Default classification for test services.
+
+    ``Service.service_type`` is a required FK, so every service needs one. The six
+    types are created by the ``RunPython`` in
+    ``apps/services/migrations/0003_service_type_parent_consumption.py``; reuse them
+    rather than creating duplicates per test. ``processes`` is chosen deliberately:
+    it is neutral, and unlike ``management`` it does not trigger the
+    auto-created department children in ``ServiceCreateView``.
+    """
+    from apps.services.models import ServiceType
+
+    return ServiceType.objects.get(code="processes")
+
+
+@pytest.fixture
+def make_service(db, default_service_type):
+    def _make(organization, name="Waste Management", service_type=None):
         from apps.services.models import Service
 
-        return Service.objects.create(organization=organization, name=name)
+        return Service.objects.create(
+            organization=organization,
+            name=name,
+            service_type=service_type or default_service_type,
+        )
 
     return _make
 

@@ -5,7 +5,7 @@ import pytest
 from apps.access.models import ServiceAccess
 from apps.common.authorization import authorization_scope_q, can, visible
 from apps.organizations.models import Organization
-from apps.requests.models import Request, RequestType
+from apps.requests.models import Request
 
 
 @pytest.fixture
@@ -24,10 +24,9 @@ def request_graph(
 
     service_a = make_service(a, name="Waste")
     service_b = make_service(b, name="Parks")
-    rt = RequestType.objects.create(code="req", name="Request")
 
-    req_a = Request.objects.create(service=service_a, request_type=rt, title="rA")
-    req_b = Request.objects.create(service=service_b, request_type=rt, title="rB")
+    req_a = Request.objects.create(service=service_a, title="rA")
+    req_b = Request.objects.create(service=service_b, title="rB")
 
     return {
         "operator": operator,
@@ -62,7 +61,7 @@ def test_can_on_resource(request_graph):
 
 
 @pytest.mark.django_db
-def test_does_not_flow_upward_or_sibling(request_graph, org_tree):
+def test_does_not_flow_upward_or_sibling(request_graph, org_tree, default_service_type):
     g = request_graph
     op = g["operator"]
     outside = Organization.objects.create(
@@ -71,12 +70,12 @@ def test_does_not_flow_upward_or_sibling(request_graph, org_tree):
         organization_type="PARISH",
         parent=org_tree["district"],
     )
-    service_c = None
     from apps.services.models import Service
 
-    service_c = Service.objects.create(organization=outside, name="C")
-    rt = RequestType.objects.first()
-    req_c = Request.objects.create(service=service_c, request_type=rt, title="rC")
+    service_c = Service.objects.create(
+        organization=outside, name="C", service_type=default_service_type
+    )
+    req_c = Request.objects.create(service=service_c, title="rC")
 
     # Sibling under the same district, but NOT a descendant of the membership org.
     assert {r.title for r in Request.objects.visible_to(op)} == {"rA", "rB"}

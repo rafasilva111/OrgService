@@ -1,0 +1,4 @@
+{% load i18n %}<option value="">{% if has_service %}{% translate 'Select a service offering' %}{% else %}{% translate 'Select a service first' %}{% endif %}</option>
+{% for pk, label in offerings %}<option value="{{ pk }}">{{ label }}</option>
+{% endfor %}
+<aside id="offering-steps" class="min-w-0 grow basis-[40rem] lg:sticky lg:top-6" hx-swap-oob="true">{% include "requests/_steps_panel.html" with steps=None %}</aside>

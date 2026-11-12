@@ -1,0 +1,351 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n ui %}
+
+{% block title %}{% if offering %}{% translate 'Edit service offering' %}{% else %}{% translate 'New service offering' %}{% endif %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% if offering %}{% translate 'Edit service offering' %}{% else %}{% translate 'New service offering' %}{% endif %}{% endblock %}
+
+{% block content %}
+{{ editor_definition|json_script:"editor-definition" }}
+{{ editor_options|json_script:"editor-options" }}
+{{ step_errors|json_script:"editor-step-errors" }}
+{{ editor_schedule|json_script:"editor-schedule" }}
+{{ editor_units|json_script:"editor-units" }}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-xl font-semibold text-zinc-900">
+      {% if offering %}{{ offering.name }} <span class="ml-1 rounded-full bg-zinc-100 px-2.5 py-0.5 align-middle font-mono text-xs font-medium text-zinc-600">v{{ offering.version }} · {{ offering.get_status_display }}</span>{% else %}{% translate 'New service offering' %}{% endif %}
+    </h1>
+    <p class="mt-1 text-sm text-zinc-500">{% translate 'Define the work plan: the steps, who does them, and where to go when a step fails. Drafts can be changed freely; publishing makes the offering available for new requests.' %}</p>
+  </div>
+
+  {% if plan_errors or form.non_field_errors %}
+  <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+    {% for e in form.non_field_errors %}<p>{{ e }}</p>{% endfor %}
+    {% for e in plan_errors %}<p>{{ e }}</p>{% endfor %}
+  </div>
+  {% endif %}
+
+  {# Form takes the remaining width (>= 36rem); the preview is a 40rem column that wraps below when both no longer fit. #}
+  <div class="flex flex-wrap items-start gap-6">
+    <form method="post" id="offering-form" novalidate
+          class="min-w-0 grow-[999] basis-[36rem] space-y-6 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm"
+          x-data="offeringBuilder()" @submit="sync()" @change="changed()">
+      {% csrf_token %}
+      <input type="hidden" name="definition" id="id_definition" value="{{ editor_definition_json }}">
+      <div class="grid gap-4 sm:grid-cols-2">
+        {% apex_field form.service %}
+        {% apex_field form.offering_type %}
+      </div>
+      {% apex_field form.name %}
+      {% apex_field form.description %}
+
+      <fieldset class="space-y-3 rounded-lg border border-zinc-200 p-4">
+        <legend class="px-1 text-sm font-semibold text-zinc-800">{% translate 'How it starts' %}</legend>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label class="flex items-start gap-2 rounded-lg border border-zinc-200 p-3 text-sm">
+            {{ form.on_request }}
+            <span><span class="font-medium text-zinc-800">{{ form.on_request.label }}</span><br><span class="text-xs text-zinc-500">{{ form.on_request.help_text }}</span></span>
+          </label>
+          <label class="flex items-start gap-2 rounded-lg border border-zinc-200 p-3 text-sm">
+            {{ form.on_schedule }}
+            <span><span class="font-medium text-zinc-800">{{ form.on_schedule.label }}</span><br><span class="text-xs text-zinc-500">{{ form.on_schedule.help_text }}</span></span>
+          </label>
+        </div>
+        {% for e in form.on_request.errors %}<p class="text-xs text-red-600">{{ e }}</p>{% endfor %}
+
+        <div x-show="onSchedule" x-cloak class="space-y-3 border-t border-zinc-100 pt-3">
+          {# Reads as a sentence: "Repete [Mensalmente] a cada [3] meses". #}
+          <div class="grid gap-1.5">
+            <label for="id_recurrence_frequency" class="text-sm font-medium text-zinc-700">{% translate 'Repeats' %}</label>
+            <div class="flex flex-wrap items-center gap-2 text-sm text-zinc-700">
+              {{ form.recurrence_frequency }}
+              <label for="id_recurrence_interval">{% translate 'every' %}</label>
+              {{ form.recurrence_interval }}
+              <span x-text="unit()"></span>
+            </div>
+            {% for e in form.recurrence_frequency.errors %}<p class="text-xs text-red-600">{{ e }}</p>{% endfor %}
+            {% for e in form.recurrence_interval.errors %}<p class="text-xs text-red-600">{{ e }}</p>{% endfor %}
+          </div>
+          <div x-show="frequency === 'WEEKLY'" class="grid gap-1.5">
+            <span class="text-sm font-medium text-zinc-700">{{ form.recurrence_weekdays.label }}</span>
+            <div class="flex flex-wrap gap-2">
+              {% for cb in form.recurrence_weekdays %}
+              <label class="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-2.5 py-1 text-sm text-zinc-700">{{ cb.tag }} {{ cb.choice_label }}</label>
+              {% endfor %}
+            </div>
+            {% for e in form.recurrence_weekdays.errors %}<p class="text-xs text-red-600">{{ e }}</p>{% endfor %}
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div x-show="frequency === 'MONTHLY' || frequency === 'YEARLY'">{% apex_field form.recurrence_month_day %}</div>
+            <div x-show="frequency === 'YEARLY'">{% apex_field form.recurrence_month %}</div>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            {% apex_field form.recurrence_start %}
+            {% apex_field form.recurrence_end %}
+          </div>
+          <p id="schedule-summary" class="text-sm font-medium text-indigo-700"></p>
+          <p class="text-xs text-zinc-500">{% translate 'The schedule is recorded with the offering; runs are not started automatically yet.' %}</p>
+        </div>
+      </fieldset>
+
+      <div class="space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Steps' %}</h2>
+          <span class="text-xs text-zinc-500">{% translate 'Start and End are added automatically.' %}</span>
+        </div>
+
+        <template x-for="(step, i) in steps" :key="step.key">
+          <div class="space-y-3 rounded-lg border p-3"
+               :class="errors[i] ? 'border-red-300 bg-red-50/40' : 'border-zinc-200 bg-zinc-50/40'">
+            <div class="flex items-center gap-2">
+              <span class="grid size-7 shrink-0 place-items-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600" x-text="(i + 2) * 10"></span>
+              <input type="text" x-model="step.name" placeholder="{% translate 'Step name' %}"
+                     class="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-indigo-500">
+              <button type="button" @click="move(i, -1)" :disabled="i === 0" class="grid size-8 place-items-center rounded-lg border border-zinc-300 text-zinc-500 hover:bg-zinc-100 disabled:opacity-40" aria-label="{% translate 'Move up' %}">↑</button>
+              <button type="button" @click="move(i, 1)" :disabled="i === steps.length - 1" class="grid size-8 place-items-center rounded-lg border border-zinc-300 text-zinc-500 hover:bg-zinc-100 disabled:opacity-40" aria-label="{% translate 'Move down' %}">↓</button>
+              <button type="button" @click="remove(i)" class="grid size-8 place-items-center rounded-lg border border-red-200 text-red-500 hover:bg-red-50" aria-label="{% translate 'Remove step' %}">✕</button>
+            </div>
+
+            <fieldset class="space-y-2 rounded-lg border border-zinc-200 bg-white p-3">
+              <legend class="px-1 text-xs font-medium text-zinc-600">{% translate 'Responsible service offering' %}</legend>
+              <div class="grid gap-2 sm:grid-cols-3">
+                <select x-model="loc(step).district" @change="pickLevel(step, 'district')" aria-label="{% translate 'District' %}"
+                        class="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm">
+                  <option value="">{% translate 'District' %}…</option>
+                  <template x-for="o in districts()" :key="o.id"><option :value="String(o.id)" x-text="o.name" :selected="String(o.id) === loc(step).district"></option></template>
+                </select>
+                <select x-model="loc(step).municipality" @change="pickLevel(step, 'municipality')" :disabled="!loc(step).district" aria-label="{% translate 'Municipality' %}"
+                        class="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm disabled:bg-zinc-100 disabled:text-zinc-400">
+                  <option value="">{% translate 'All municipalities' %}</option>
+                  <template x-for="o in municipalities(step)" :key="o.id"><option :value="String(o.id)" x-text="o.name" :selected="String(o.id) === loc(step).municipality"></option></template>
+                </select>
+                <select x-model="loc(step).parish" @change="pickLevel(step, 'parish')" :disabled="!loc(step).municipality" aria-label="{% translate 'Parish' %}"
+                        class="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm disabled:bg-zinc-100 disabled:text-zinc-400">
+                  <option value="">{% translate 'All parishes' %}</option>
+                  <template x-for="o in parishes(step)" :key="o.id"><option :value="String(o.id)" x-text="o.name" :selected="String(o.id) === loc(step).parish"></option></template>
+                </select>
+              </div>
+              <select x-model="step.service_offering" aria-label="{% translate 'Responsible service offering' %}"
+                      class="w-full rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm">
+                <option value="">{% translate 'This offering' %}</option>
+                <template x-for="o in offeringsFor(step)" :key="o[0]"><option :value="String(o[0])" x-text="o[1]" :selected="String(o[0]) === step.service_offering"></option></template>
+              </select>
+              <p x-show="!loc(step).district" class="text-xs text-zinc-500">{% translate 'Choose a district to list the offerings of other services.' %}</p>
+              <p x-show="external(step) && offeringRow(step)?.[6]" x-text="offeringRow(step)?.[6]"
+                 class="rounded-md bg-zinc-50 px-2 py-1.5 text-xs text-zinc-600"></p>
+              <label class="grid gap-1 text-xs font-medium text-zinc-600 sm:max-w-xs">{% translate 'SLA' %}
+                <input x-show="!external(step)" type="text" x-model="step.sla" placeholder="{% translate 'e.g. 1d 4h 30m' %}" class="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm">
+                <span x-show="external(step)" x-text="offeringRow(step)?.[4] || '—'" title="{% translate 'Total SLA of the responsible service offering' %}"
+                      class="rounded-lg border border-zinc-200 bg-zinc-100 px-2 py-1.5 text-sm text-zinc-600"></span>
+              </label>
+            </fieldset>
+
+
+
+            <label x-show="!external(step)" class="grid gap-1 text-xs font-medium text-zinc-600">{% translate 'Message to the requester (optional — makes this step a notification)' %}
+              <textarea x-model="step.message" rows="2" class="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm"></textarea>
+            </label>
+
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label class="grid gap-1 text-xs font-medium text-zinc-600">{% translate 'Next' %}
+                <select x-model="step.next" class="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm">
+                  <option value="">{% translate 'Following step (default)' %}</option>
+                  <template x-for="t in targets(i)" :key="t.key"><option :value="t.key" x-text="t.label" :selected="t.key === step.next"></option></template>
+                  <option value="end" :selected="step.next === 'end'">{% translate 'End' %}</option>
+                </select>
+              </label>
+              <label class="grid gap-1 text-xs font-medium text-red-700">{% translate 'On error' %}
+                <select x-model="step.on_error" class="rounded-lg border border-red-200 bg-white px-2 py-1.5 text-sm">
+                  <option value="">{% translate 'No error branch' %}</option>
+                  <template x-for="t in targets(i)" :key="t.key"><option :value="t.key" x-text="t.label" :selected="t.key === step.on_error"></option></template>
+                  <option value="end" :selected="step.on_error === 'end'">{% translate 'End' %}</option>
+                </select>
+              </label>
+            </div>
+
+            <template x-if="errors[i]">
+              <ul class="space-y-0.5 text-xs text-red-600"><template x-for="e in errors[i]"><li x-text="e"></li></template></ul>
+            </template>
+          </div>
+        </template>
+
+        <button type="button" @click="add()"
+                class="w-full rounded-lg border border-dashed border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-600 transition hover:border-indigo-400 hover:text-indigo-700">
+          + {% translate 'Add step' %}
+        </button>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 border-t border-zinc-100 pt-4">
+        <button type="submit" name="action" value="save" class="rounded-lg border border-indigo-300 bg-white px-5 py-2.5 text-sm font-semibold text-indigo-700 transition hover:bg-indigo-50">{% translate 'Save draft' %}</button>
+        <button type="submit" name="action" value="publish" class="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700">{% translate 'Publish' %}</button>
+        <a href="{% if offering %}{% url 'offerings:detail' offering.pk %}{% else %}{% url 'offerings:index' %}{% endif %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50">{% translate 'Cancel' %}</a>
+      </div>
+    </form>
+
+    <aside id="offering-preview" class="min-w-0 grow basis-[40rem] lg:sticky lg:top-6"
+           hx-post="{% url 'offerings:preview' %}" hx-trigger="load, refresh-preview delay:300ms"
+           hx-include="#offering-form" hx-target="this" hx-swap="innerHTML">
+      <div class="rounded-xl border border-dashed border-zinc-300 bg-zinc-50/60 px-4 py-8 text-center text-sm text-zinc-500">{% translate 'Preview' %}…</div>
+    </aside>
+  </div>
+</div>
+
+<script>
+  function offeringBuilder() {
+    const read = (id) => JSON.parse(document.getElementById(id).textContent);
+    const str = (v) => (v === null || v === undefined ? "" : String(v));
+    let seq = 0;
+    const newKey = () => `n${Date.now().toString(36)}${++seq}`;
+    const normalize = (s) => ({
+      key: str(s.key) || newKey(),
+      name: str(s.name),
+      step_type: str(s.step_type) || "TASK",
+      role: str(s.role),
+      sla: str(s.sla),
+      inputs: Array.isArray(s.inputs) ? s.inputs.join(", ") : str(s.inputs),
+      service_offering: str(s.service_offering),
+      message: str(s.message),
+      next: str(s.next),
+      on_error: str(s.on_error),
+    });
+    return {
+      steps: read("editor-definition").map(normalize),
+      // "How it starts" state (bound to the checkboxes / frequency select).
+      onRequest: read("editor-schedule").onRequest,
+      onSchedule: read("editor-schedule").onSchedule,
+      frequency: read("editor-schedule").frequency,
+      service: read("editor-schedule").service,
+      interval: read("editor-schedule").interval,
+      units: read("editor-units"),
+      unit() {
+        // Singular/plural unit after "a cada N" (dia/dias, semana/semanas, …).
+        const forms = this.units[this.frequency];
+        if (!forms) return "";
+        return Number(this.interval) === 1 ? forms[0] : forms[1];
+      },
+      options: read("editor-options"),
+      errors: read("editor-step-errors"),
+      // Location cascade state per step (not posted): {district, municipality, parish}.
+      locs: {},
+      init() {
+        this.steps.forEach((s) => this.initLoc(s));
+        // ``service`` is bound to the Service select (x-model): everything that
+        // depends on it (external steps, cascade pre-fill) re-evaluates on change.
+        this.$watch("service", () => this.followService());
+        this.$watch("steps", () => this.changed(), { deep: true });
+        this.sync();
+      },
+      org(id) {
+        return this.options.organizations.find((o) => String(o.id) === String(id));
+      },
+      orgsOfType(type, parentId) {
+        return this.options.organizations.filter(
+          (o) => o.type === type && (!parentId || o.ancestors.includes(Number(parentId))),
+        );
+      },
+      ownChain() {
+        // Location chain of the service chosen at the top of the form.
+        return this.options.serviceChains[this.service] || [];
+      },
+      applyChain(loc, chain) {
+        loc.district = loc.municipality = loc.parish = "";
+        chain.forEach((id) => {
+          const o = this.org(id);
+          if (o && o.type === "DISTRICT") loc.district = String(id);
+          if (o && o.type === "MUNICIPALITY") loc.municipality = String(id);
+          if (o && o.type === "PARISH") loc.parish = String(id);
+        });
+      },
+      initLoc(step) {
+        const loc = { district: "", municipality: "", parish: "" };
+        const row = this.options.offerings.find((o) => String(o[0]) === step.service_offering);
+        // The chosen offering's location, else the offering's own service location.
+        this.applyChain(loc, row ? row[2] : this.ownChain());
+        if (!loc.district) {
+          const districts = this.districts();
+          if (districts.length === 1) loc.district = String(districts[0].id);
+        }
+        this.locs[step.key] = loc;
+      },
+      followService() {
+        this.steps.forEach((step) => {
+          if (!step.service_offering) this.initLoc(step);
+        });
+      },
+      loc(step) {
+        if (!this.locs[step.key]) this.initLoc(step);
+        return this.locs[step.key];
+      },
+      districts() {
+        return this.orgsOfType("DISTRICT");
+      },
+      municipalities(step) {
+        const loc = this.loc(step);
+        return loc.district ? this.orgsOfType("MUNICIPALITY", loc.district) : [];
+      },
+      parishes(step) {
+        const loc = this.loc(step);
+        return loc.municipality ? this.orgsOfType("PARISH", loc.municipality) : [];
+      },
+      offeringsFor(step) {
+        const loc = this.loc(step);
+        const selected = loc.parish || loc.municipality || loc.district;
+        if (!selected) return [];
+        return this.options.offerings.filter((o) => o[2].includes(Number(selected)));
+      },
+      pickLevel(step, level) {
+        const loc = this.loc(step);
+        if (level === "district") { loc.municipality = ""; loc.parish = ""; }
+        if (level === "municipality") loc.parish = "";
+        const allowed = this.offeringsFor(step).map((o) => String(o[0]));
+        if (step.service_offering && !allowed.includes(step.service_offering)) {
+          step.service_offering = "";
+        }
+      },
+      add() {
+        const step = normalize({ step_type: "TASK" });
+        this.initLoc(step);
+        this.steps.push(step);
+      },
+      remove(i) {
+        const key = this.steps[i].key;
+        this.steps.splice(i, 1);
+        this.steps.forEach((s) => {
+          if (s.next === key) s.next = "";
+          if (s.on_error === key) s.on_error = "";
+        });
+        this.errors = {};
+      },
+      move(i, delta) {
+        const j = i + delta;
+        if (j < 0 || j >= this.steps.length) return;
+        const [step] = this.steps.splice(i, 1);
+        this.steps.splice(j, 0, step);
+        this.errors = {};
+      },
+      offeringRow(step) {
+        return this.options.offerings.find((o) => String(o[0]) === step.service_offering);
+      },
+      external(step) {
+        // Any responsible offering other than "this offering": SLA (and type)
+        // come from it, shown read-only, with its description.
+        const isExternal = Boolean(this.offeringRow(step));
+        if (isExternal && step.role) step.role = "";
+        return isExternal;
+      },
+      targets(i) {
+        return this.steps
+          .filter((_, j) => j !== i)
+          .map((s) => ({ key: s.key, label: s.name || "{% translate 'Unnamed step' %}" }));
+      },
+      sync() {
+        document.getElementById("id_definition").value = JSON.stringify(this.steps);
+      },
+      changed() {
+        this.sync();
+        if (window.htmx) htmx.trigger("#offering-preview", "refresh-preview");
+      },
+    };
+  }
+</script>
+{% endblock content %}

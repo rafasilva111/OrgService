@@ -41,7 +41,7 @@
     <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
       <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
         <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Open requests' %}</h2>
-        <a href="{% url 'requests:index' %}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
+        <a href="{% url 'requests:index' %}?service={{ service.pk }}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
       </div>
       <ul class="divide-y divide-zinc-100">
         {% for r in open_requests %}
@@ -58,7 +58,7 @@
     <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
       <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
         <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Active incidents' %}</h2>
-        <a href="{% url 'incidents:index' %}?status=OPEN" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
+        <a href="{% url 'incidents:index' %}?service={{ service.pk }}&status=ACTIVE" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
       </div>
       <ul class="divide-y divide-zinc-100">
         {% for i in active_incidents %}

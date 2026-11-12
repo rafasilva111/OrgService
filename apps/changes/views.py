@@ -4,8 +4,9 @@ from django.utils.translation import gettext_lazy as _
 
 from apps.changes.models import Change, ChangeStatus, RiskLevel
 from apps.common.breadcrumbs import BreadcrumbsMixin
-from apps.common.mixins import PermissionRequiredMixin, ScopedDetailView
+from apps.common.mixins import PermissionRequiredMixin, ScopedDetailView, service_filter_choices
 from apps.common.tables.config import Column, Filter, FilterKind, TableConfig
+from apps.common.tables.filters import organization_column
 from apps.common.tables.views import TableView
 
 
@@ -17,14 +18,22 @@ class ChangeListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
         key="changes",
         columns=[
             Column("title", _("Change"), sortable=True, searchable=True),
+            organization_column(
+                key="organization.name",
+                lookups=("service__organization__path", "organization__path"),
+            ),
             Column(
                 "service.name",
                 _("Service"),
                 sortable=True,
                 searchable=True,
-                filter=Filter(FilterKind.TEXT),
+                filter=Filter(
+                    FilterKind.CHOICE,
+                    param="service",
+                    lookup="service_id",
+                    choices_callable=service_filter_choices,
+                ),
             ),
-            Column("organization.name", _("Organization"), sortable=True, searchable=True),
             Column(
                 "status",
                 _("Status"),
@@ -54,6 +63,14 @@ class ChangeListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
         row_url_name="changes:detail",
     )
     breadcrumb_title = _("Changes")
+    organization_filter_fields = ("service__organization", "organization")
+    service_filter_field = "service"
+    active_status_exclusions = (
+        "IMPLEMENTED",
+        "VERIFIED",
+        "REJECTED",
+        "ROLLED_BACK",
+    )
 
     def get_base_queryset(self):
         return Change.objects.visible_to(self.request.user, "change.view").select_related(

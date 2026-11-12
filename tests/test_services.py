@@ -15,7 +15,7 @@ from apps.services.models import (
 def test_service_name_unique_within_organization(org_tree, make_service):
     make_service(org_tree["parish_a"], name="Waste")
     with pytest.raises(IntegrityError), transaction.atomic():
-        Service.objects.create(organization=org_tree["parish_a"], name="Waste")
+        make_service(org_tree["parish_a"], name="Waste")
 
 
 @pytest.mark.django_db

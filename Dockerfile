@@ -1,15 +1,29 @@
 FROM python:3.12-slim
 
+# uv is installed from PyPI so the build does not depend on ghcr.io access.
+ARG UV_VERSION=0.12.5
+RUN pip install --no-cache-dir "uv==${UV_VERSION}"
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/app/.venv \
+    PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install -r requirements.txt
+# Runtime dependencies only, resolved from uv.lock. The Django project itself is
+# not installed into the image (--no-install-project); it runs from /app.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project
 
 COPY . .
+
+# Collect static files into STATIC_ROOT for WhiteNoise (prod settings). The
+# secret/hosts below are throwaway build-time values; collectstatic needs no DB.
+RUN ENVIRONMENT=prod DJANGO_SECRET_KEY=build-only-collectstatic DJANGO_ALLOWED_HOSTS=localhost \
+    python manage.py collectstatic --noinput
 
 # Run as a non-privileged user (defense in depth).
 RUN useradd --create-home --shell /bin/bash appuser \

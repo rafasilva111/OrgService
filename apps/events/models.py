@@ -2,7 +2,7 @@
 
 Immutability: ``occurred_at`` and ``metadata`` are ``editable=False`` and there
 is deliberately no ``save`` shortcut here — write once, read many. Events feed
-audit trails, notifications, automation, workflow triggers and metrics later.
+audit trails, notifications, automation, offering triggers and metrics later.
 
 The subject is generic (``GenericForeignKey``) so any domain entity can emit
 events without app-to-app imports.

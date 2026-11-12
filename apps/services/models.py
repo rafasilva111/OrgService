@@ -1,13 +1,27 @@
 """Services: the operational "micro-organisms" each organization provides.
 
-A service is the anchor for actors, capabilities, resources, workflows,
+A service is the anchor for actors, capabilities, resources, offerings,
 requests, incidents, problems, events and metrics (see section 2 of the spec).
+
+Each service is classified by a ``ServiceType`` (Finance, HR, Supplies, IT,
+Processes, Management) that maps to one of the four ITIL dimensions:
+
+    Organizations and People  — Finance, HR, Management
+    Information and Technology — IT
+    Partners and Suppliers     — Supplies
+    Value Streams and Processes — Processes
+
+A service may also sit under a ``parent`` service (department hierarchy) and
+list other services it consumes via ``consumed_services`` (M2M through
+``ServiceConsumption``).
 """
 
+from django.contrib.postgres.indexes import GistIndex
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 
+from apps.common.fields import LTreeField
 from apps.common.models import ActiveModel, SoftDeleteModel, TimeStampedModel
 
 SERVICE_MANAGER_ROLE = "SERVICE_MANAGER"
@@ -19,6 +33,29 @@ class ServiceStatus(models.TextChoices):
     DISRUPTED = "DISRUPTED", _("Disrupted")
     PAUSED = "PAUSED", _("Paused")
     RETIRED = "RETIRED", _("Retired")
+
+
+class ServiceTypeDimension(models.TextChoices):
+    ORGANIZATIONS_AND_PEOPLE = "ORGANIZATIONS_AND_PEOPLE", _("Organizations and People")
+    INFORMATION_AND_TECHNOLOGY = "INFORMATION_AND_TECHNOLOGY", _("Information and Technology")
+    PARTNERS_AND_SUPPLIERS = "PARTNERS_AND_SUPPLIERS", _("Partners and Suppliers")
+    VALUE_STREAMS_AND_PROCESSES = "VALUE_STREAMS_AND_PROCESSES", _("Value Streams and Processes")
+
+
+class ServiceTypeCode(models.TextChoices):
+    """Canonical ``ServiceType.code`` values.
+
+    The values are the lowercase slugs actually stored in the database (see the
+    ``RunPython`` in ``migrations/0003_service_type_parent_consumption.py``), so a
+    member compares directly against ``ServiceType.code``.
+    """
+
+    FINANCE = "finance", _("Finance")
+    HR = "hr", _("Human Resources")
+    SUPPLIES = "supplies", _("Supplies")
+    IT = "it", _("IT")
+    PROCESSES = "processes", _("Processes")
+    MANAGEMENT = "management", _("Management")
 
 
 class Service(SoftDeleteModel, ActiveModel):
@@ -42,6 +79,23 @@ class Service(SoftDeleteModel, ActiveModel):
         default=ServiceStatus.OPERATIONAL,
         db_index=True,
     )
+    service_type = models.ForeignKey(
+        "ServiceType",
+        on_delete=models.PROTECT,
+        related_name="services",
+        verbose_name=_("service type"),
+        help_text=_("Classification of this service (maps to an ITIL dimension)."),
+    )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="children",
+        db_index=True,
+        help_text=_("Parent service if this is a department/child service."),
+    )
+    path = LTreeField(_("path"), null=True, blank=True, editable=False)
 
     class Meta:
         verbose_name = _("service")
@@ -52,10 +106,33 @@ class Service(SoftDeleteModel, ActiveModel):
         indexes = [
             models.Index(fields=["organization", "active"]),
             models.Index(fields=["status", "active"]),
+            models.Index(fields=["service_type"]),
+            GistIndex(name="service_path_gin_idx", fields=["path"], opclasses=["gist_ltree_ops"]),
         ]
 
     def __str__(self):
         return f"{self.organization} / {self.name}"
+
+    def save(self, *args, **kwargs):
+        # Build the ltree path after the pk exists (labels are ``s<pk>``).
+        super().save(*args, **kwargs)
+        label = f"s{self.pk}"
+        parent_path = None
+        if self.parent_id is not None:
+            parent_path = (
+                Service.objects.filter(pk=self.parent_id).values_list("path", flat=True).first()
+            )
+        path = f"{parent_path}.{label}" if parent_path else label
+        if self.path != path:
+            Service.objects.filter(pk=self.pk).update(path=path)
+            self.path = path
+
+    def get_descendants(self, include_self=False):
+        """Descendant services of this node (optionally including itself)."""
+        qs = Service.objects.filter(path__descendants=self.path)
+        if not include_self:
+            qs = qs.exclude(pk=self.pk)
+        return qs
 
     # ------------------------------------------------------------------ manager
     def manager(self):
@@ -75,6 +152,30 @@ class Service(SoftDeleteModel, ActiveModel):
         super().clean()
         if self.pk is not None and not self.has_manager:
             raise ValidationError("A service must have an active Service Manager actor.")
+
+    @property
+    def dimension(self):
+        """The ITIL dimension this service belongs to, via its service type."""
+        return self.service_type.dimension
+
+
+class ServiceType(models.Model):
+    """Classifies a service into one of the four ITIL dimensions."""
+
+    code = models.SlugField(_("code"), unique=True, max_length=64, choices=ServiceTypeCode.choices)
+    name = models.CharField(_("name"), max_length=128)
+    dimension = models.CharField(
+        _("dimension"),
+        max_length=64,
+        choices=ServiceTypeDimension.choices,
+    )
+
+    class Meta:
+        verbose_name = _("service type")
+        verbose_name_plural = _("service types")
+
+    def __str__(self):
+        return self.name
 
 
 class ServiceCapability(TimeStampedModel):
@@ -115,6 +216,34 @@ class ServiceCapabilityAssignment(TimeStampedModel):
         return f"{self.service} – {self.capability}"
 
 
+class ServiceConsumption(TimeStampedModel):
+    """A service that another service consumes (Value Streams and Processes).
+
+    Tracks *which* services a given service depends on, with optional
+    ``reason`` and ``since`` metadata.
+    """
+
+    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="consumed_through")
+    consumed = models.ForeignKey(
+        Service,
+        on_delete=models.CASCADE,
+        related_name="consumed_by",
+        help_text=_("The service being consumed."),
+    )
+    reason = models.TextField(_("reason"), blank=True, default="")
+    since = models.DateField(_("since"), null=True, blank=True)
+
+    class Meta:
+        verbose_name = _("service consumption")
+        verbose_name_plural = _("service consumptions")
+        constraints = [
+            models.UniqueConstraint(fields=["service", "consumed"], name="u_service_consumption"),
+        ]
+
+    def __str__(self):
+        return f"{self.service} ← {self.consumed}"
+
+
 class ActorType(models.TextChoices):
     INTERNAL = "INTERNAL", _("Internal")
     EXTERNAL = "EXTERNAL", _("External")
@@ -147,13 +276,11 @@ class ServiceActor(TimeStampedModel, ActiveModel):
         verbose_name = _("service actor")
         verbose_name_plural = _("service actors")
         constraints = [
-            # A named person can only be linked once per service+role.
             models.UniqueConstraint(
                 fields=["service", "role", "person"],
                 condition=models.Q(person__isnull=False),
                 name="u_service_actor_person",
             ),
-            # A role placeholder can only exist once per service.
             models.UniqueConstraint(
                 fields=["service", "role"],
                 condition=models.Q(person__isnull=True),

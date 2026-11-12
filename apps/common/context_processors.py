@@ -17,6 +17,8 @@ def navigation(request):
 
     ``requires_staff`` items are hidden for non-staff users (apex semantics);
     platform sections use required-staff=False and enforce permissions in views.
+    The Overview item is context-aware: it targets the selected service or
+    organization dashboard when a session pick exists.
     """
     is_staff = getattr(request.user, "is_staff", False)
     path = request.path
@@ -30,6 +32,8 @@ def navigation(request):
             if item.requires_staff and not is_staff:
                 continue
             url = _resolve(item.url_name)
+            if item.url_name == "dashboard":
+                url = _overview_url(request) or url
             items.append(
                 {
                     "label": item.label,
@@ -41,6 +45,17 @@ def navigation(request):
         if items:
             groups.append({"label": group_label, "items": items})
     return {"nav_groups": groups}
+
+
+def _overview_url(request):
+    """Context-aware Overview target: service dashboard, org dashboard, or ``/``."""
+    active_service = getattr(request, "active_service", None)
+    if active_service is not None and active_service.get("url"):
+        return active_service["url"]
+    active_organization = getattr(request, "active_organization", None)
+    if active_organization is not None and active_organization.get("url"):
+        return active_organization["url"]
+    return _resolve("dashboard")
 
 
 def user_context(request):
@@ -56,30 +71,18 @@ def user_context(request):
         )
         if rows:
             from apps.organizations.models import Organization
-            from apps.services.models import ServiceActor
 
             visible_ids = set(
                 Organization.objects.visible_to(user, "organization.view").values_list(
                     "pk", flat=True
                 )
             )
-            actors = ServiceActor.objects.filter(person=person).select_related("service")
             for m in rows:
                 org = m.organization
-                service = next(
-                    (
-                        a.service.name
-                        for a in actors
-                        if a.service.organization_id
-                        in set(org.get_descendants(include_self=True).values_list("pk", flat=True))
-                    ),
-                    None,
-                )
                 memberships.append(
                     {
                         "pk": org.pk,
                         "organization": org.name,
-                        "service": service,
                         "organization_type": org.get_organization_type_display(),
                         "role": m.role.name,
                         "url": f"/organization/{org.pk}/" if org.pk in visible_ids else None,
@@ -87,10 +90,16 @@ def user_context(request):
                 )
     organizations = _distinct_organizations(memberships)
     active_organization = _active_organization_for_request(request, organizations)
-    services = _visible_services_list(
-        user, org_pk=active_organization["pk"] if active_organization else None
+    services = (
+        _visible_services_list(user, org_pk=active_organization["pk"])
+        if active_organization
+        else []
     )
     active_service = _active_service_for_request(request, services)
+    # ``navigation`` runs after this processor and reuses the same selection to
+    # point the Overview item at the active service/organization dashboard.
+    request.active_organization = active_organization
+    request.active_service = active_service
     return {
         "memberships": memberships,
         "organizations": organizations,
@@ -128,13 +137,19 @@ def _distinct_organizations(memberships):
         for entry in out:
             org = by_pk.get(entry["pk"])
             if org is not None:
-                ancestors = org.get_ancestors(include_self=True).order_by("path")
+                ancestors = list(org.get_ancestors(include_self=True).order_by("path"))
                 entry["path"] = " / ".join(a.name for a in ancestors)
+                entry["parent_path"] = " / ".join(a.name for a in ancestors[:-1])
+                entry["depth"] = len(ancestors) - 1
     return out
 
 
 def _active_organization_for_request(request, organizations):
-    """Session-selected organization (single-select, header org tab)."""
+    """Explicitly selected organization (single-select, header org tab).
+
+    There is no default pick: until the user chooses one, the platform stays in
+    its global scope and the header highlights no organization.
+    """
     context = request.session.get("org_context") or {}
     pk = context.get("pk")
     if pk is None:
@@ -153,9 +168,7 @@ def user_organization_pks(user):
     person = getattr(user, "person", None)
     if person is None:
         return set()
-    return set(
-        person.memberships.filter(active=True).values_list("organization_id", flat=True)
-    )
+    return set(person.memberships.filter(active=True).values_list("organization_id", flat=True))
 
 
 def _active_service_pk(path: str) -> int | None:
@@ -182,7 +195,11 @@ def _active_service_for_request(request, services):
     context = request.session.get("service_context") or {}
     if context.get("pk") is not None:
         selected = next(
-            (s for s in services if s["pk"] == context["pk"] and s["role_code"] == context.get("role")),
+            (
+                s
+                for s in services
+                if s["pk"] == context["pk"] and s["role_code"] == context.get("role")
+            ),
             None,
         )
         if selected is not None:

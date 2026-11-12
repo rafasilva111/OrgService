@@ -8,10 +8,50 @@
       {% icon "dashboard" class_name="size-5" %}
     </div>
     <div class="min-w-0">
-      <p class="truncate text-sm font-semibold text-white">{% translate 'OrgService Platform' %}</p>
-      <p class="truncate text-xs text-zinc-400">{% translate 'Municipal operations' %}</p>
+      <p class="truncate text-sm font-semibold text-white" title="{% translate 'OrgService Platform' %}">{% translate 'OrgService Platform' %}</p>
+      <p class="truncate text-xs text-zinc-400" title="{% translate 'Municipal operations' %}">{% translate 'Municipal operations' %}</p>
     </div>
   </div>
+
+  {% if active_service %}
+  <div class="px-3 pb-2">
+    {% if active_service.url %}
+    <a href="{{ active_service.url }}" aria-current="true"
+       class="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 hover:bg-zinc-800">
+    {% else %}
+    <div class="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5" aria-current="true">
+    {% endif %}
+      <span class="flex min-w-0 flex-col">
+        <span class="truncate text-sm font-medium text-zinc-100" title="{{ active_service.name }}">{{ active_service.name }}</span>
+        <span class="truncate text-xs text-zinc-400" title="{{ active_service.role_name }}{% if active_service.organization %} · {{ active_service.organization }}{% endif %}">{{ active_service.role_name }}{% if active_service.organization %} · {{ active_service.organization }}{% endif %}</span>
+      </span>
+    {% if active_service.url %}</a>{% else %}</div>{% endif %}
+  </div>
+  {% elif active_organization %}
+  <div class="px-3 pb-2">
+    {% if active_organization.url %}
+    <a href="{{ active_organization.url }}" aria-current="true"
+       class="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 hover:bg-zinc-800">
+    {% else %}
+    <div class="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5" aria-current="true">
+    {% endif %}
+      <span class="flex min-w-0 flex-col">
+        <span class="truncate text-sm font-medium text-zinc-100" title="{{ active_organization.organization }}">{{ active_organization.organization }}</span>
+        <span class="truncate text-xs text-zinc-400" title="{{ active_organization.organization_type }}{% if active_organization.parent_path %} · {{ active_organization.parent_path }}{% endif %}">{{ active_organization.organization_type }}{% if active_organization.parent_path %} · {{ active_organization.parent_path }}{% endif %}</span>
+      </span>
+    {% if active_organization.url %}</a>{% else %}</div>{% endif %}
+  </div>
+  {% else %}
+  <div class="px-3 pb-2">
+    <a href="{% url 'dashboard' %}" aria-current="true"
+       class="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 hover:bg-zinc-800">
+      <span class="flex min-w-0 flex-col">
+        <span class="truncate text-sm font-medium text-zinc-100" title="{% translate 'Global' %}">{% translate 'Global' %}</span>
+        <span class="truncate text-xs text-zinc-400" title="{% translate 'All organizations' %}">{% translate 'All organizations' %}</span>
+      </span>
+    </a>
+  </div>
+  {% endif %}
 
   <nav class="flex-1 space-y-6 px-3 pb-8 pt-2">
     {% for group in nav_groups %}
@@ -27,7 +67,7 @@
             <span class="{% if item.current %}text-white{% else %}text-zinc-500 group-hover:text-zinc-300{% endif %}">
               {% icon item.icon class_name="size-5" %}
             </span>
-            <span class="truncate">{{ item.label }}</span>
+            <span class="truncate" title="{{ item.label }}">{{ item.label }}</span>
           </a>
         </li>
         {% endfor %}
@@ -37,17 +77,6 @@
   </nav>
 
   <div class="border-t border-zinc-800 px-5 py-4 text-xs">
-    {% if memberships %}
-    <div class="grid gap-2">
-      {% for m in memberships %}
-      <div class="grid gap-0.5">
-        <span class="font-medium text-zinc-300">{{ m.organization }}</span>
-        <span class="text-zinc-500">{% if m.service %}{{ m.service }} · {% endif %}{{ m.role }}</span>
-      </div>
-      {% endfor %}
-    </div>
-    {% else %}
     <p class="text-zinc-500">{% translate 'OrgService Platform — apex-guided UI' %}</p>
-    {% endif %}
   </div>
 </aside>
