@@ -37,23 +37,23 @@ from apps.changes.models import Change, ChangeApproval
 from apps.events.models import Event
 from apps.incidents.models import Impact, Incident, IncidentStatus, IncidentUpdate, Urgency
 from apps.metrics.models import KPI, SLA, AggregationType, Metric, MetricValue, ScopeType
+from apps.offerings.models import (
+    ExecutionStatus,
+    OfferingExecution,
+    OfferingStatus,
+    OfferingStep,
+    OfferingTask,
+    OfferingTransition,
+    OfferingTrigger,
+    ServiceOffering,
+    StepType,
+)
 from apps.organizations.models import Organization, OrganizationMembership
 from apps.people.models import Person, PersonType, Skill
 from apps.problems.models import Problem
 from apps.requests.models import Priority, Request, RequestComment, RequestStatus, RequestType
 from apps.resources.models import Equipment, Resource, ResourceAssignment, ResourceType
 from apps.services.models import ActorType, Service, ServiceActor, ServiceStatus, ServiceType
-from apps.workflows.models import (
-    ExecutionStatus,
-    StepType,
-    Workflow,
-    WorkflowExecution,
-    WorkflowStatus,
-    WorkflowStep,
-    WorkflowTask,
-    WorkflowTransition,
-    WorkflowTrigger,
-)
 
 NOW = timezone.now()
 
@@ -61,7 +61,7 @@ NOW = timezone.now()
 _RESET_PREFIXES = (
     "organizations_",
     "services_",
-    "workflows_",
+    "offerings_",
     "requests_",
     "incidents_",
     "problems_",
@@ -119,7 +119,7 @@ class Command(BaseCommand):
         people = self._seed_people(orgs, services)
         self._seed_request_types(services)
         self._seed_skills()
-        self._seed_workflows(services, people)
+        self._seed_offerings(services, people)
         self._seed_requests(services, people)
         self._seed_incidents(services, people)
         self._seed_problems(services, people)
@@ -513,27 +513,27 @@ class Command(BaseCommand):
         ]:
             Skill.objects.get_or_create(code=code, defaults={"name": name})
 
-    # ---------------------------------------------------------------- workflows
-    def _seed_workflows(self, services, people):
+    # ---------------------------------------------------------------- offerings
+    def _seed_offerings(self, services, people):
         role_op = Role.objects.get(code="OPERATOR")
         role_sm = Role.objects.get(code="SERVICE_MANAGER")
 
         def build(name, service, description, steps):
-            wf, _created = Workflow.objects.get_or_create(
+            wf, _created = ServiceOffering.objects.get_or_create(
                 service=service,
                 name=name,
                 defaults={
                     "description": description,
                     "version": 1,
-                    "status": WorkflowStatus.ACTIVE,
-                    "trigger": WorkflowTrigger.REQUEST,
+                    "status": OfferingStatus.ACTIVE,
+                    "trigger": OfferingTrigger.REQUEST,
                     "created_by": people.get("a.duarte"),
                 },
             )
             created = {}
             for code, sname, step_type, order, role, inputs, sla in steps:
-                step, _created = WorkflowStep.objects.get_or_create(
-                    workflow=wf,
+                step, _created = OfferingStep.objects.get_or_create(
+                    offering=wf,
                     code=code,
                     defaults={
                         "name": sname,
@@ -554,8 +554,8 @@ class Command(BaseCommand):
             for to_code, from_code, order in transitions:
                 if to_code not in created or from_code not in created:
                     continue
-                WorkflowTransition.objects.get_or_create(
-                    workflow=wf,
+                OfferingTransition.objects.get_or_create(
+                    offering=wf,
                     from_step=created[from_code],
                     order=order,
                     defaults={"to_step": created[to_code]},
@@ -589,8 +589,8 @@ class Command(BaseCommand):
 
     # ---------------------------------------------------------------- requests
     def _seed_requests(self, services, people):
-        wf_waste = Workflow.objects.filter(name="Waste Collection Request").first()
-        wf_water = Workflow.objects.filter(name="Water Maintenance Request").first()
+        wf_waste = ServiceOffering.objects.filter(name="Waste Collection Request").first()
+        wf_water = ServiceOffering.objects.filter(name="Water Maintenance Request").first()
         # (service, type_code, title, desc, status, priority, assigned_key, wf)
         samples = [
             # --- Waste Management
@@ -843,7 +843,7 @@ class Command(BaseCommand):
                 None,
             ),
         ]
-        for service, rtype_code, title, desc, status, priority, assigned_key, workflow in samples:
+        for service, rtype_code, title, desc, status, priority, assigned_key, offering in samples:
             req, _created = Request.objects.get_or_create(
                 service=service,
                 title=title,
@@ -855,7 +855,7 @@ class Command(BaseCommand):
                     "status": status,
                     "priority": priority,
                     "assigned_to": people.get(assigned_key) if assigned_key else None,
-                    "workflow": workflow,
+                    "offering": offering,
                 },
             )
             if not RequestComment.objects.filter(request=req).exists():
@@ -1243,8 +1243,8 @@ class Command(BaseCommand):
             if not wf:
                 return
             steps = {s.code: s for s in wf.steps.all()}
-            execn, _created = WorkflowExecution.objects.get_or_create(
-                workflow=wf,
+            execn, _created = OfferingExecution.objects.get_or_create(
+                offering=wf,
                 started_at=started,
                 defaults={
                     "status": status,
@@ -1255,15 +1255,15 @@ class Command(BaseCommand):
             )
             return execn, steps
 
-        wf_waste = Workflow.objects.filter(name="Waste Collection Request").first()
+        wf_waste = ServiceOffering.objects.filter(name="Waste Collection Request").first()
         exec1, steps = add_execution(
             wf_waste,
             "collect",
             ExecutionStatus.RUNNING,
             NOW - timedelta(hours=3),
         )
-        if exec1 and not WorkflowTask.objects.filter(execution=exec1).exists():
-            WorkflowTask.objects.create(
+        if exec1 and not OfferingTask.objects.filter(execution=exec1).exists():
+            OfferingTask.objects.create(
                 execution=exec1,
                 step=steps.get("collect"),
                 title="Collect market bins",
@@ -1280,8 +1280,8 @@ class Command(BaseCommand):
             NOW - timedelta(days=5),
             NOW - timedelta(days=4),
         )
-        if exec2 and not WorkflowTask.objects.filter(execution=exec2).exists():
-            WorkflowTask.objects.create(
+        if exec2 and not OfferingTask.objects.filter(execution=exec2).exists():
+            OfferingTask.objects.create(
                 execution=exec2,
                 step=steps.get("collect"),
                 title="Collect street bins",
@@ -1293,15 +1293,15 @@ class Command(BaseCommand):
                 completed_at=NOW - timedelta(days=4, hours=2),
             )
 
-        wf_water = Workflow.objects.filter(name="Water Maintenance Request").first()
+        wf_water = ServiceOffering.objects.filter(name="Water Maintenance Request").first()
         exec3, wsteps = add_execution(
             wf_water,
             "repair",
             ExecutionStatus.RUNNING,
             NOW - timedelta(days=1),
         )
-        if exec3 and not WorkflowTask.objects.filter(execution=exec3).exists():
-            WorkflowTask.objects.create(
+        if exec3 and not OfferingTask.objects.filter(execution=exec3).exists():
+            OfferingTask.objects.create(
                 execution=exec3,
                 step=wsteps.get("repair"),
                 title="Repair the school leak",
@@ -1318,8 +1318,8 @@ class Command(BaseCommand):
             NOW - timedelta(days=12),
             NOW - timedelta(days=11),
         )
-        if exec4 and not WorkflowTask.objects.filter(execution=exec4).exists():
-            WorkflowTask.objects.create(
+        if exec4 and not OfferingTask.objects.filter(execution=exec4).exists():
+            OfferingTask.objects.create(
                 execution=exec4,
                 step=wsteps.get("repair"),
                 title="Hydrant replacement",

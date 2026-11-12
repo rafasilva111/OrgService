@@ -18,9 +18,9 @@ from apps.common.mixins import (
 from apps.common.tables.config import BulkAction, Column, Filter, FilterKind, TableConfig
 from apps.common.tables.filters import organization_column
 from apps.common.tables.views import TableView
+from apps.offerings.models import ServiceOffering
 from apps.people.models import Person
 from apps.requests.models import Priority, Request, RequestStatus, RequestType
-from apps.workflows.models import Workflow
 
 CLOSED_STATUSES = (RequestStatus.RESOLVED, RequestStatus.CLOSED, RequestStatus.CANCELLED)
 
@@ -35,7 +35,7 @@ class RequestCreateForm(forms.ModelForm):
             "description",
             "priority",
             "requester",
-            "workflow",
+            "offering",
         )
 
     def __init__(self, *args, user=None, **kwargs):
@@ -44,7 +44,7 @@ class RequestCreateForm(forms.ModelForm):
         self.fields["service"].queryset = services
         self.fields["request_type"].queryset = RequestType.objects.order_by("name")
         self.fields["requester"].queryset = Person.objects.filter(active=True).order_by("full_name")
-        self.fields["workflow"].queryset = Workflow.objects.filter(
+        self.fields["offering"].queryset = ServiceOffering.objects.filter(
             service__in=services, status="ACTIVE"
         ).order_by("-version")
 

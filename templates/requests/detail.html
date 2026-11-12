@@ -19,7 +19,7 @@
         <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Requester' %}</dt><dd class="font-medium text-zinc-800">{{ req.requester|default:"—" }}</dd></div>
         <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Assigned' %}</dt><dd class="font-medium text-zinc-800">{% if req.assigned_to %}{{ req.assigned_to }}{% else %}{% translate 'Unassigned' %}{% endif %}</dd></div>
         <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Created' %}</dt><dd class="text-zinc-700">{{ req.created_at|date:"M j, Y H:i" }}</dd></div>
-        {% if req.workflow %}<div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Workflow' %}</dt><dd class="font-medium text-zinc-800">{{ req.workflow.name }}</dd></div>{% endif %}
+        {% if req.offering %}<div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Service Offering' %}</dt><dd class="font-medium text-zinc-800">{{ req.offering.name }}</dd></div>{% endif %}
       </dl>
     </div>
     <div class="flex items-center gap-2">

@@ -30,11 +30,11 @@
   <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
     {% translate 'Open requests' as stat_open_requests %}
     {% translate 'Active incidents' as stat_active_incidents %}
-    {% translate 'Active workflows' as stat_active_workflows %}
+    {% translate 'Active offerings' as stat_active_offerings %}
     {% translate 'KPIs' as stat_kpis %}
     {% include "partials/stat_card.html" with label=stat_open_requests value=open_request_count icon="requests" %}
     {% include "partials/stat_card.html" with label=stat_active_incidents value=active_incident_count icon="incidents" %}
-    {% include "partials/stat_card.html" with label=stat_active_workflows value=active_workflow_count icon="workflows" %}
+    {% include "partials/stat_card.html" with label=stat_active_offerings value=active_offering_count icon="offerings" %}
     {% include "partials/stat_card.html" with label=stat_kpis value=kpis|length icon="kpis" %}
   </div>
 

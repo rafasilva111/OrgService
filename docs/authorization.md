@@ -87,11 +87,11 @@ Idempotent; upserts **41 permissions** and 9 roles:
 | Role | Highlights |
 |---|---|
 | `EXECUTIVE` | organization.view, metrics.view/export, change.approve, audit.view |
-| `SERVICE_MANAGER` | broad service/request/incident/problem/workflow/resource/change/event access |
-| `OPERATIONS_MANAGER` | request/incident/problem/workflow/resource/change/metrics management |
-| `OPERATOR` | request.view/update, incident.view/create, workflow.execute, resource.view |
-| `REQUEST_MANAGER` | full request lifecycle + workflow.execute |
-| `INCIDENT_MANAGER` | full incident lifecycle + problem.view + workflow |
+| `SERVICE_MANAGER` | broad service/request/incident/problem/offering/resource/change/event access |
+| `OPERATIONS_MANAGER` | request/incident/problem/offering/resource/change/metrics management |
+| `OPERATOR` | request.view/update, incident.view/create, offering.execute, resource.view |
+| `REQUEST_MANAGER` | full request lifecycle + offering.execute |
+| `INCIDENT_MANAGER` | full incident lifecycle + problem.view + offering |
 | `PROBLEM_MANAGER` | problems, incidents, change.approve, metrics |
 | `ANALYST` | read-mostly view across requests/incidents/problems/metrics |
 | `SUPPLIES_MANAGER` | resources + change management |

@@ -1,8 +1,8 @@
 """Requests: demands entering an organization/service.
 
-A request is independent from any workflow definition. It may *trigger* a
-workflow (which then produces a ``WorkflowExecution``); the linkage is by the
-generic ``subject`` on ``WorkflowExecution``.
+A request is independent from any offering definition. It may *trigger* a
+offering (which then produces a ``OfferingExecution``); the linkage is by the
+generic ``subject`` on ``OfferingExecution``.
 """
 
 from django.db import models
@@ -70,9 +70,9 @@ class Request(TimeStampedModel):
         blank=True,
         related_name="requests_assigned",
     )
-    # The workflow definition this request may trigger (optional at create time).
-    workflow = models.ForeignKey(
-        "workflows.Workflow",
+    # The offering definition this request may trigger (optional at create time).
+    offering = models.ForeignKey(
+        "offerings.ServiceOffering",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

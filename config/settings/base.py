@@ -47,7 +47,7 @@ INSTALLED_APPS = [
     "apps.requests",
     "apps.resources",
     "apps.services",
-    "apps.workflows",
+    "apps.offerings",
 ]
 
 MIDDLEWARE = [

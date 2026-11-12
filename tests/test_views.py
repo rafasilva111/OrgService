@@ -59,8 +59,8 @@ def staff_user(make_user):
         "incidents:index",
         "problems:index",
         "changes:index",
-        "workflows:index",
-        "workflows:executions",
+        "offerings:index",
+        "offerings:executions",
         "resources:index",
         "resources:assignments",
         "people:directory",
@@ -103,7 +103,7 @@ def test_login_page_renders(client):
         "incidents:index",
         "problems:index",
         "changes:index",
-        "workflows:index",
+        "offerings:index",
     ],
 )
 def test_no_permission_403(client, make_user, make_member, org_tree, url_name):
@@ -136,8 +136,8 @@ VIEWS_WITH_TEMPLATES = [
     "incidents:index",
     "problems:index",
     "changes:index",
-    "workflows:index",
-    "workflows:executions",
+    "offerings:index",
+    "offerings:executions",
     "resources:index",
     "resources:assignments",
     "people:directory",
@@ -161,11 +161,11 @@ def test_superuser_renders_detail_pages(client, staff_user, org_tree, make_servi
     from apps.changes.models import Change, ChangeStatus, RiskLevel
     from apps.incidents.models import Impact, Incident, IncidentStatus, Urgency
     from apps.metrics.models import Metric
+    from apps.offerings.models import ServiceOffering
     from apps.people.models import Skill
     from apps.problems.models import Problem, ProblemStatus
     from apps.requests.models import Priority, Request, RequestStatus, RequestType
     from apps.resources.models import Resource, ResourceType
-    from apps.workflows.models import Workflow
 
     client.force_login(staff_user)
 
@@ -194,7 +194,7 @@ def test_superuser_renders_detail_pages(client, staff_user, org_tree, make_servi
         risk=RiskLevel.MEDIUM,
     )
     role = Role.objects.create(code="role", name="Role")
-    workflow = Workflow.objects.create(
+    offering = ServiceOffering.objects.create(
         service=service,
         name="WF",
         version=1,
@@ -214,7 +214,7 @@ def test_superuser_renders_detail_pages(client, staff_user, org_tree, make_servi
         ("incidents:detail", [inc.pk]),
         ("problems:detail", [problem.pk]),
         ("changes:detail", [change.pk]),
-        ("workflows:detail", [workflow.pk]),
+        ("offerings:detail", [offering.pk]),
         ("resources:detail", [resource.pk]),
         ("people:detail", [person.pk]),
         ("metrics:detail", [metric.pk]),
@@ -392,7 +392,7 @@ def test_dashboard_query_count_stable(client, make_user, make_member, org_tree, 
     """Guard against N+1 regressions on the executive dashboard.
 
     The dashboard aggregates across requests/incidents/problems/changes/
-    resources/workflows/metrics. A fixed, per-user bounded number of queries
+    resources/service-offerings/metrics. A fixed, per-user bounded number of queries
     is expected; this test fails loudly if the page starts issuing unbounded
     per-row queries.
     """

@@ -1,6 +1,6 @@
 from django.apps import AppConfig
 
 
-class WorkflowsConfig(AppConfig):
+class OfferingsConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "apps.workflows"
+    name = "apps.offerings"

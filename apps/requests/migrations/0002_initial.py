@@ -11,19 +11,19 @@ class Migration(migrations.Migration):
         ("people", "0001_initial"),
         ("requests", "0001_initial"),
         ("services", "0001_initial"),
-        ("workflows", "0001_initial"),
+        ("offerings", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
             model_name="request",
-            name="workflow",
+            name="offering",
             field=models.ForeignKey(
                 blank=True,
                 null=True,
                 on_delete=django.db.models.deletion.SET_NULL,
                 related_name="pending_requests",
-                to="workflows.workflow",
+                to="offerings.serviceoffering",
             ),
         ),
         migrations.AddField(

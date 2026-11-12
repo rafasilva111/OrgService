@@ -1,7 +1,7 @@
-"""Workflows: definitions (blueprint) vs executions (instances).
+"""Service Offerings: definitions (blueprint) vs executions (instances).
 
-Versioning: a ``Workflow`` row is a *version* of a workflow; the logical
-workflow is ``(service, name)`` and ``version`` is a positive integer. New
+Versioning: a ``ServiceOffering`` row is a *version* of an offering; the logical
+offering is ``(service, name)`` and ``version`` is a positive integer. New
 definitions are added as new rows, never by mutating a released version.
 
 The subject that starts an execution is intentionally generic
@@ -17,50 +17,50 @@ from django.utils.translation import gettext_lazy as _
 from apps.common.models import TimeStampedModel
 
 
-class WorkflowStatus(models.TextChoices):
+class OfferingStatus(models.TextChoices):
     DRAFT = "DRAFT", _("Draft")
     ACTIVE = "ACTIVE", _("Active")
     DEPRECATED = "DEPRECATED", _("Deprecated")
 
 
-class WorkflowTrigger(models.TextChoices):
+class OfferingTrigger(models.TextChoices):
     MANUAL = "MANUAL", _("Manual")
     REQUEST = "REQUEST", _("Request")
     EVENT = "EVENT", _("Event")
 
 
-class Workflow(TimeStampedModel):
+class ServiceOffering(TimeStampedModel):
     """A versioned definition of how work is performed for a service."""
 
     _AUTH_ORG_FIELD = "service__organization"
     _AUTH_SERVICE_FIELD = "service"
 
     service = models.ForeignKey(
-        "services.Service", on_delete=models.CASCADE, related_name="workflows"
+        "services.Service", on_delete=models.CASCADE, related_name="offerings"
     )
     name = models.CharField(_("name"), max_length=255)
     description = models.TextField(_("description"), blank=True, default="")
     version = models.PositiveIntegerField(_("version"), default=1)
     status = models.CharField(
-        _("status"), max_length=32, choices=WorkflowStatus.choices, default=WorkflowStatus.DRAFT
+        _("status"), max_length=32, choices=OfferingStatus.choices, default=OfferingStatus.DRAFT
     )
     trigger = models.CharField(
-        _("trigger"), max_length=32, choices=WorkflowTrigger.choices, default=WorkflowTrigger.MANUAL
+        _("trigger"), max_length=32, choices=OfferingTrigger.choices, default=OfferingTrigger.MANUAL
     )
     created_by = models.ForeignKey(
         "people.Person",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="created_workflows",
+        related_name="created_offerings",
     )
 
     class Meta:
-        verbose_name = _("workflow")
-        verbose_name_plural = _("workflows")
+        verbose_name = _("service offering")
+        verbose_name_plural = _("service offerings")
         constraints = [
             models.UniqueConstraint(
-                fields=["service", "name", "version"], name="u_workflow_version"
+                fields=["service", "name", "version"], name="u_offering_version"
             ),
         ]
         indexes = [
@@ -73,10 +73,10 @@ class Workflow(TimeStampedModel):
 
     @classmethod
     def current_version(cls, service, name):
-        """Highest published version of a logical workflow."""
+        """Highest published version of a logical offering."""
         return (
             cls.objects.filter(service=service, name=name)
-            .exclude(status=WorkflowStatus.DRAFT)
+            .exclude(status=OfferingStatus.DRAFT)
             .order_by("-version")
             .first()
         )
@@ -90,10 +90,10 @@ class StepType(models.TextChoices):
     END = "END", _("End")
 
 
-class WorkflowStep(TimeStampedModel):
-    """An activity/decision point inside a workflow definition."""
+class OfferingStep(TimeStampedModel):
+    """An activity/decision point inside an offering definition."""
 
-    workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="steps")
+    offering = models.ForeignKey(ServiceOffering, on_delete=models.CASCADE, related_name="steps")
     code = models.SlugField(_("code"), max_length=64)
     name = models.CharField(_("name"), max_length=255)
     step_type = models.CharField(
@@ -105,7 +105,7 @@ class WorkflowStep(TimeStampedModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="workflow_steps",
+        related_name="offering_steps",
         help_text=_("Role that performs this step."),
     )
     sla_minutes = models.PositiveIntegerField(
@@ -115,34 +115,36 @@ class WorkflowStep(TimeStampedModel):
     outputs = models.JSONField(_("outputs"), default=list, blank=True)
 
     class Meta:
-        verbose_name = _("workflow step")
-        verbose_name_plural = _("workflow steps")
+        verbose_name = _("offering step")
+        verbose_name_plural = _("offering steps")
         constraints = [
-            models.UniqueConstraint(fields=["workflow", "code"], name="u_workflow_step_code"),
-            models.UniqueConstraint(fields=["workflow", "order"], name="u_workflow_step_order"),
+            models.UniqueConstraint(fields=["offering", "code"], name="u_offering_step_code"),
+            models.UniqueConstraint(fields=["offering", "order"], name="u_offering_step_order"),
         ]
 
     def __str__(self):
-        return f"{self.workflow} · {self.order}: {self.name}"
+        return f"{self.offering} · {self.order}: {self.name}"
 
 
-class WorkflowTransition(TimeStampedModel):
+class OfferingTransition(TimeStampedModel):
     """Directed movement between steps, supporting branching via conditions."""
 
-    workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="transitions")
-    from_step = models.ForeignKey(WorkflowStep, on_delete=models.CASCADE, related_name="outgoing")
-    to_step = models.ForeignKey(WorkflowStep, on_delete=models.CASCADE, related_name="incoming")
+    offering = models.ForeignKey(
+        ServiceOffering, on_delete=models.CASCADE, related_name="transitions"
+    )
+    from_step = models.ForeignKey(OfferingStep, on_delete=models.CASCADE, related_name="outgoing")
+    to_step = models.ForeignKey(OfferingStep, on_delete=models.CASCADE, related_name="incoming")
     name = models.CharField(_("name"), max_length=255, blank=True, default="")
     order = models.PositiveIntegerField(_("order"), default=0)
     # "condition A" / "condition B" — JSON expression interpreted later.
     condition = models.JSONField(_("condition"), null=True, blank=True)
 
     class Meta:
-        verbose_name = _("workflow transition")
-        verbose_name_plural = _("workflow transitions")
+        verbose_name = _("offering transition")
+        verbose_name_plural = _("offering transitions")
         constraints = [
             models.UniqueConstraint(
-                fields=["workflow", "from_step", "order"], name="u_transition_order"
+                fields=["offering", "from_step", "order"], name="u_transition_order"
             ),
         ]
 
@@ -159,18 +161,20 @@ class ExecutionStatus(models.TextChoices):
     CANCELLED = "CANCELLED", _("Cancelled")
 
 
-class WorkflowExecution(TimeStampedModel):
-    """An actual run of a workflow definition."""
+class OfferingExecution(TimeStampedModel):
+    """An actual run of an offering definition."""
 
     _AUTH_ORG_FIELD = None
-    _AUTH_SERVICE_FIELD = "workflow__service"
+    _AUTH_SERVICE_FIELD = "offering__service"
 
-    workflow = models.ForeignKey(Workflow, on_delete=models.PROTECT, related_name="executions")
+    offering = models.ForeignKey(
+        ServiceOffering, on_delete=models.PROTECT, related_name="executions"
+    )
     status = models.CharField(
         _("status"), max_length=16, choices=ExecutionStatus.choices, default=ExecutionStatus.PENDING
     )
     current_step = models.ForeignKey(
-        WorkflowStep,
+        OfferingStep,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -188,19 +192,19 @@ class WorkflowExecution(TimeStampedModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="workflow_executions_created",
+        related_name="offering_executions_created",
     )
 
     class Meta:
-        verbose_name = _("workflow execution")
-        verbose_name_plural = _("workflow executions")
+        verbose_name = _("offering execution")
+        verbose_name_plural = _("offering executions")
         indexes = [
-            models.Index(fields=["workflow", "status"]),
+            models.Index(fields=["offering", "status"]),
             models.Index(fields=["status", "started_at"]),
         ]
 
     def __str__(self):
-        return f"Execution #{self.pk} ({self.workflow} – {self.status})"
+        return f"Execution #{self.pk} ({self.offering} – {self.status})"
 
 
 class TaskStatus(models.TextChoices):
@@ -212,11 +216,11 @@ class TaskStatus(models.TextChoices):
     CANCELLED = "CANCELLED", _("Cancelled")
 
 
-class WorkflowTask(TimeStampedModel):
-    """Executable work item generated by a workflow execution."""
+class OfferingTask(TimeStampedModel):
+    """Executable work item generated by an offering execution."""
 
-    execution = models.ForeignKey(WorkflowExecution, on_delete=models.CASCADE, related_name="tasks")
-    step = models.ForeignKey(WorkflowStep, on_delete=models.PROTECT, related_name="execution_tasks")
+    execution = models.ForeignKey(OfferingExecution, on_delete=models.CASCADE, related_name="tasks")
+    step = models.ForeignKey(OfferingStep, on_delete=models.PROTECT, related_name="execution_tasks")
     title = models.CharField(_("title"), max_length=255)
     description = models.TextField(_("description"), blank=True, default="")
     assigned_to = models.ForeignKey(
@@ -224,7 +228,7 @@ class WorkflowTask(TimeStampedModel):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="workflow_tasks",
+        related_name="offering_tasks",
     )
     status = models.CharField(
         _("status"), max_length=16, choices=TaskStatus.choices, default=TaskStatus.PENDING
@@ -235,8 +239,8 @@ class WorkflowTask(TimeStampedModel):
     completed_at = models.DateTimeField(_("completed at"), null=True, blank=True)
 
     class Meta:
-        verbose_name = _("workflow task")
-        verbose_name_plural = _("workflow tasks")
+        verbose_name = _("offering task")
+        verbose_name_plural = _("offering tasks")
         indexes = [
             models.Index(fields=["assigned_to", "status"]),
             models.Index(fields=["execution", "status"]),

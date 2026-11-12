@@ -1,7 +1,7 @@
 """Metrics & KPIs: measurable values, observations, targets, SLAs.
 
 Dashboards are NOT entities here — they are views over these tables plus
-requests/incidents/workflows (see spec §21).
+requests/incidents/offerings (see spec §21).
 """
 
 from django.db import models

@@ -530,7 +530,7 @@ def test_organization_dashboard_links_use_org_subtree_filter(
     assert f"/incidents/?organization={municipality.pk}&amp;status=ACTIVE" in body
     assert f"/problems/?organization={municipality.pk}" in body
     assert f"/changes/?organization={municipality.pk}" in body
-    assert f"/workflows/executions/?organization={municipality.pk}" in body
+    assert f"/service-offerings/executions/?organization={municipality.pk}" in body
     assert f"/organizations/?parent={municipality.pk}" in body
     assert f"/people/?organization={municipality.pk}" in body
 
@@ -768,14 +768,18 @@ def test_changes_organization_filter_covers_service_and_direct_org(
 def test_executions_organization_filter_matches_subtree(
     client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
-    from apps.workflows.models import Workflow, WorkflowExecution
+    from apps.offerings.models import OfferingExecution, ServiceOffering
 
     service_a = make_service(org_tree["parish_a"], "Exec Svc A")
     service_b = make_service(org_tree["parish_b"], "Exec Svc B")
-    workflow_a = Workflow.objects.create(service=service_a, name="WF A", version=1, status="ACTIVE")
-    workflow_b = Workflow.objects.create(service=service_b, name="WF B", version=1, status="ACTIVE")
-    WorkflowExecution.objects.create(workflow=workflow_a)
-    WorkflowExecution.objects.create(workflow=workflow_b)
+    offering_a = ServiceOffering.objects.create(
+        service=service_a, name="WF A", version=1, status="ACTIVE"
+    )
+    offering_b = ServiceOffering.objects.create(
+        service=service_b, name="WF B", version=1, status="ACTIVE"
+    )
+    OfferingExecution.objects.create(offering=offering_a)
+    OfferingExecution.objects.create(offering=offering_b)
 
     user = _filter_member(
         make_user,
@@ -783,24 +787,24 @@ def test_executions_organization_filter_matches_subtree(
         make_role,
         make_membership,
         org_tree["municipality"],
-        ["workflow.view", "service.view", "organization.view"],
+        ["offering.view", "service.view", "organization.view"],
         "execorg",
     )
     assert client.login(username=user.username, password="x")
 
-    body = client.get(reverse("workflows:executions")).content.decode()
+    body = client.get(reverse("offerings:executions")).content.decode()
     assert '<select name="organization"' in body
     assert '<select name="service"' in body
     assert body.index('name="organization"') < body.index('name="service"')
 
     body = client.get(
-        reverse("workflows:executions"), {"organization": org_tree["municipality"].pk}
+        reverse("offerings:executions"), {"organization": org_tree["municipality"].pk}
     ).content.decode()
     assert "WF A" in body
     assert "WF B" in body
 
     body = client.get(
-        reverse("workflows:executions"), {"organization": org_tree["parish_a"].pk}
+        reverse("offerings:executions"), {"organization": org_tree["parish_a"].pk}
     ).content.decode()
     assert "WF A" in body
     assert "WF B" not in body
@@ -980,16 +984,18 @@ def test_requests_list_follows_header_organization_scope(
 def test_executions_list_follows_header_service_scope(
     client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
-    from apps.workflows.models import Workflow, WorkflowExecution
+    from apps.offerings.models import OfferingExecution, ServiceOffering
 
     target = make_service(org_tree["municipality"], "Exec Target")
     other = make_service(org_tree["municipality"], "Exec Other")
-    wf_target = Workflow.objects.create(
+    wf_target = ServiceOffering.objects.create(
         service=target, name="WF Target", version=1, status="ACTIVE"
     )
-    wf_other = Workflow.objects.create(service=other, name="WF Other", version=1, status="ACTIVE")
-    WorkflowExecution.objects.create(workflow=wf_target)
-    WorkflowExecution.objects.create(workflow=wf_other)
+    wf_other = ServiceOffering.objects.create(
+        service=other, name="WF Other", version=1, status="ACTIVE"
+    )
+    OfferingExecution.objects.create(offering=wf_target)
+    OfferingExecution.objects.create(offering=wf_other)
 
     user = _filter_member(
         make_user,
@@ -997,27 +1003,31 @@ def test_executions_list_follows_header_service_scope(
         make_role,
         make_membership,
         org_tree["municipality"],
-        ["workflow.view", "service.view", "organization.view"],
+        ["offering.view", "service.view", "organization.view"],
         "ctxexec",
     )
     assert client.login(username=user.username, password="x")
     _set_header_scope(client, org_tree["municipality"], target)
 
-    body = client.get(reverse("workflows:executions")).content.decode()
+    body = client.get(reverse("offerings:executions")).content.decode()
     assert "WF Target" in body
     assert "WF Other" not in body
     assert f'<option value="{target.pk}" selected>' in body
 
 
-def test_workflows_list_follows_header_service_scope(
+def test_offerings_list_follows_header_service_scope(
     client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
-    from apps.workflows.models import Workflow
+    from apps.offerings.models import ServiceOffering
 
     target = make_service(org_tree["municipality"], "Flow Svc Target")
     other = make_service(org_tree["municipality"], "Flow Svc Other")
-    Workflow.objects.create(service=target, name="Target Workflow", version=1, status="ACTIVE")
-    Workflow.objects.create(service=other, name="Other Workflow", version=1, status="ACTIVE")
+    ServiceOffering.objects.create(
+        service=target, name="Target Service Offering", version=1, status="ACTIVE"
+    )
+    ServiceOffering.objects.create(
+        service=other, name="Other Service Offering", version=1, status="ACTIVE"
+    )
 
     user = _filter_member(
         make_user,
@@ -1025,16 +1035,16 @@ def test_workflows_list_follows_header_service_scope(
         make_role,
         make_membership,
         org_tree["municipality"],
-        ["workflow.view", "service.view", "organization.view"],
+        ["offering.view", "service.view", "organization.view"],
         "ctxflow",
     )
     assert client.login(username=user.username, password="x")
     _set_header_scope(client, org_tree["municipality"], target)
 
-    body = client.get(reverse("workflows:index")).content.decode()
+    body = client.get(reverse("offerings:index")).content.decode()
     assert '<select name="service"' in body
-    assert "Target Workflow" in body
-    assert "Other Workflow" not in body
+    assert "Target Service Offering" in body
+    assert "Other Service Offering" not in body
     assert f'<option value="{target.pk}" selected>' in body
 
 

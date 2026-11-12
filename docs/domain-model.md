@@ -2,7 +2,7 @@
 
 The platform models an organization (e.g. a municipality) that provides operational **services**
 to citizens. Around each service orbit the operational entities: requests, incidents, problems,
-changes, workflows, resources, people and metrics — all anchored to organizations/services so a
+changes, offerings, resources, people and metrics — all anchored to organizations/services so a
 single authorization model can govern every one of them.
 
 ## organizations
@@ -39,23 +39,23 @@ single authorization model can govern every one of them.
 | `ServiceCapabilityAssignment` | Link capability ↔ service | `required` flag. Unique `(service, capability)`. |
 | `ServiceActor` | Who acts for a service | FK `service`, FK `role`, optional FK `person`, `actor_type` (INTERNAL/EXTERNAL). Unique constraints keep a person linked once per (service, role) and a role placeholder once per service. |
 
-## workflows
+## offerings
 
 | Model | Purpose | Key fields |
 |---|---|---|
-| `Workflow` | Versioned *definition* of work for a service | FK service, `name`, `version` (default 1), `status` (DRAFT/ACTIVE/DEPRECATED), `trigger`, `created_by`. Unique `(service, name, version)`. `current_version()` = newest non-draft. |
-| `WorkflowStep` | Activity/decision in a definition | FK workflow, `code`, `step_type` (START/TASK/GATEWAY/APPROVAL/END), `order`, `responsible_role`, `sla_minutes`, `required_inputs`/`outputs` (JSON). Unique `(workflow, code)` and `(workflow, order)`. |
-| `WorkflowTransition` | Directed move between steps (branching) | FK workflow, `from_step`, `to_step`, `condition` (JSON). Unique `(workflow, from_step, order)`. |
-| `WorkflowExecution` | An *instance* (run) of a definition | FK workflow (PROTECT), `status` (PENDING/…), `current_step`, generic `subject`, timestamps, `created_by`. |
-| `WorkflowTask` | Executable work item of an execution | FK execution, FK step, `title`, `assigned_to` (person), `status`, `deadline`, `result` (JSON). |
+| `ServiceOffering` | Versioned *definition* of work for a service | FK service, `name`, `version` (default 1), `status` (DRAFT/ACTIVE/DEPRECATED), `trigger`, `created_by`. Unique `(service, name, version)`. `current_version()` = newest non-draft. |
+| `OfferingStep` | Activity/decision in a definition | FK offering, `code`, `step_type` (START/TASK/GATEWAY/APPROVAL/END), `order`, `responsible_role`, `sla_minutes`, `required_inputs`/`outputs` (JSON). Unique `(offering, code)` and `(offering, order)`. |
+| `OfferingTransition` | Directed move between steps (branching) | FK offering, `from_step`, `to_step`, `condition` (JSON). Unique `(offering, from_step, order)`. |
+| `OfferingExecution` | An *instance* (run) of a definition | FK offering (PROTECT), `status` (PENDING/…), `current_step`, generic `subject`, timestamps, `created_by`. |
+| `OfferingTask` | Executable work item of an execution | FK execution, FK step, `title`, `assigned_to` (person), `status`, `deadline`, `result` (JSON). |
 
-A request triggers a workflow; the linkage is the generic `subject` on `WorkflowExecution`.
+A request triggers an offering; the linkage is the generic `subject` on `OfferingExecution`.
 
 ## requests
 
 | Model | Purpose | Key fields |
 |---|---|---|
-| `Request` | A demand entering the service | FK service, FK `request_type`, `title`, `status` (NEW…CLOSED/CANCELLED), `priority`, `requester`/`created_by`/`assigned_to` (people), optional FK `workflow` to trigger. |
+| `Request` | A demand entering the service | FK service, FK `request_type`, `title`, `status` (NEW…CLOSED/CANCELLED), `priority`, `requester`/`created_by`/`assigned_to` (people), optional FK `offering` to trigger. |
 | `RequestType` | Reusable category | `code` unique; optional per-service scoping. |
 | `RequestComment` | Communication on a request | FK request, FK `author` (person), `body`. |
 
@@ -105,9 +105,9 @@ A request triggers a workflow; the linkage is the generic `subject` on `Workflow
 ## Relationship map (summary)
 
 ```
-Organization ──< Service ──< Request / Incident / Problem / Change / Workflow / Metric / Actor
+Organization ──< Service ──< Request / Incident / Problem / Change / ServiceOffering / Metric / Actor
      │            │
-     ├─< Membership >─ Person      Workflow ──< Execution ─< (any subject: Request, Incident, Change)
+     ├─< Membership >─ Person      ServiceOffering ──< Execution ─< (any subject: Request, Incident, Change)
      └─< Unit       └─< ServiceAccess (restricts membership to services)
 ```
 

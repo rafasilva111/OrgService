@@ -38,7 +38,7 @@ class TableView(ListView):
     # distinct from the free-text ``service.name`` column filter, this is an
     # exact-match link used by dashboard "drill down" stat cards. Subclasses
     # set this to the ORM lookup path to the service FK (e.g. ``"service"``
-    # or ``"workflow__service"``) to enable it.
+    # or ``"offering__service"``) to enable it.
     service_filter_field: str | None = None
 
     # ``?organization=<pk>`` restricts rows to an organization subtree — the

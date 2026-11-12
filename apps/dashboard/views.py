@@ -28,13 +28,13 @@ from apps.changes.models import Change
 from apps.common.breadcrumbs import BreadcrumbsMixin
 from apps.common.mixins import PermissionRequiredMixin, visible_services
 from apps.incidents.models import Incident, IncidentStatus
+from apps.offerings.models import OfferingExecution, ServiceOffering
 from apps.organizations.models import Organization
 from apps.people.models import Person
 from apps.problems.models import Problem
 from apps.requests.models import Request, RequestStatus
 from apps.resources.models import Resource
 from apps.services.models import ServiceStatus
-from apps.workflows.models import Workflow, WorkflowExecution
 
 CLOSED_STATUSES = (
     RequestStatus.RESOLVED,
@@ -312,9 +312,9 @@ class ExecutiveDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView
         incidents = Incident.objects.visible_to(user, "incident.view")
         problems = Problem.objects.visible_to(user, "problem.view")
         changes = Change.objects.visible_to(user, "change.view")
-        workflows = Workflow.objects.visible_to(user, "workflow.view")
+        offerings = ServiceOffering.objects.visible_to(user, "offering.view")
         resources = Resource.objects.visible_to(user, "resource.view")
-        executions = WorkflowExecution.objects.filter(workflow__service__in=services)
+        executions = OfferingExecution.objects.filter(offering__service__in=services)
 
         ctx["stats"] = [
             {
@@ -398,9 +398,9 @@ class ExecutiveDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView
             .order_by("-created_at")[:8]
         )
         ctx["recent_executions"] = executions.select_related(
-            "workflow", "workflow__service"
+            "offering", "offering__service"
         ).order_by("-created_at")[:8]
-        ctx["active_workflows"] = workflows.exclude(status="DEPRECATED").count()
+        ctx["active_offerings"] = offerings.exclude(status="DEPRECATED").count()
         ctx["running_executions"] = executions.filter(status="RUNNING").count()
         return ctx
 
@@ -444,7 +444,7 @@ class OrganizationDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateV
         changes = Change.objects.visible_to(user, "change.view").filter(
             Q(service__organization_id__in=desc_ids) | Q(organization_id__in=desc_ids)
         )
-        executions = WorkflowExecution.objects.filter(workflow__service_id__in=service_ids)
+        executions = OfferingExecution.objects.filter(offering__service_id__in=service_ids)
         people = (
             _visible_people(user)
             .filter(memberships__organization_id__in=desc_ids, memberships__active=True)
@@ -502,7 +502,7 @@ class OrganizationDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateV
                 "label": _("Executions"),
                 "value": executions.count(),
                 "icon": "executions",
-                "url": _list_url("workflows:executions", organization=org.pk),
+                "url": _list_url("offerings:executions", organization=org.pk),
             },
         ]
         ctx["requests_chart"] = json.dumps(_requests_by_status_chart(requests, RequestStatus))
@@ -538,8 +538,10 @@ class ServiceDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView):
         requests = Request.objects.visible_to(user, "request.view").filter(service=service)
         incidents = Incident.objects.visible_to(user, "incident.view").filter(service=service)
         problems = Problem.objects.visible_to(user, "problem.view").filter(service=service)
-        workflows = Workflow.objects.visible_to(user, "workflow.view").filter(service=service)
-        executions = WorkflowExecution.objects.filter(workflow__in=workflows)
+        offerings = ServiceOffering.objects.visible_to(user, "offering.view").filter(
+            service=service
+        )
+        executions = OfferingExecution.objects.filter(offering__in=offerings)
         tasks = list(executions.filter(status="RUNNING").values_list("pk", flat=True))
 
         ctx["service"] = service
@@ -563,10 +565,10 @@ class ServiceDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView):
                 "url": _list_url("problems:index", service=service.pk, status="ACTIVE"),
             },
             {
-                "label": _("Workflows"),
-                "value": workflows.filter(status="ACTIVE").count(),
-                "icon": "workflows",
-                "url": _list_url("workflows:index", service=service.pk, status="ACTIVE"),
+                "label": _("Service Offerings"),
+                "value": offerings.filter(status="ACTIVE").count(),
+                "icon": "offerings",
+                "url": _list_url("offerings:index", service=service.pk, status="ACTIVE"),
             },
         ]
         ctx["health"] = [
@@ -580,7 +582,7 @@ class ServiceDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView):
                 "label": _("Incident Executions"),
                 "value": len(tasks),
                 "icon": "executions",
-                "url": _list_url("workflows:executions", service=service.pk, status="RUNNING"),
+                "url": _list_url("offerings:executions", service=service.pk, status="RUNNING"),
             },
         ]
         ctx["requests_chart"] = json.dumps(_requests_by_status_chart(requests, RequestStatus))

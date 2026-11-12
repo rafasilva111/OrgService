@@ -1,6 +1,6 @@
 """Services: the operational "micro-organisms" each organization provides.
 
-A service is the anchor for actors, capabilities, resources, workflows,
+A service is the anchor for actors, capabilities, resources, offerings,
 requests, incidents, problems, events and metrics (see section 2 of the spec).
 
 Each service is classified by a ``ServiceType`` (Finance, HR, Supplies, IT,

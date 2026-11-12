@@ -1,8 +1,8 @@
 # orgplatform — Organizational Service Platform
 
-A Django **monolithic** service-management platform for a (demo) **Portuguese municipality**: `Torres Vedras, Lisboa`. It models the organisation tree, the municipal services it delivers, the people and roles who run them, and the operational day-to-day: service requests, incidents, problems, changes, workflow executions, resources, KPIs/metrics and audit events.
+A Django **monolithic** service-management platform for a (demo) **Portuguese municipality**: `Torres Vedras, Lisboa`. It models the organisation tree, the municipal services it delivers, the people and roles who run them, and the operational day-to-day: service requests, incidents, problems, changes, offering executions, resources, KPIs/metrics and audit events.
 
-The default dataset makes the app immediately explorable — 9 municipal services, 15 demo accounts, ~24 requests, incidents, problems, changes, workflow runs and metric time-series, all under a realistic `Portugal → Lisboa → Torres Vedras` hierarchy.
+The default dataset makes the app immediately explorable — 9 municipal services, 15 demo accounts, ~24 requests, incidents, problems, changes, offering runs and metric time-series, all under a realistic `Portugal → Lisboa → Torres Vedras` hierarchy.
 
 ---
 
@@ -26,7 +26,7 @@ The default dataset makes the app immediately explorable — 9 municipal service
 | `incidents` | Incident, IncidentUpdate | disruptions & outages (+ Impact/Urgency) |
 | `problems` | Problem, ProblemIncident | root-cause management |
 | `changes` | Change, ChangeApproval | planned changes + approval chain |
-| `workflows` | Workflow, WorkflowStep, WorkflowTransition, WorkflowExecution, WorkflowTask | definition ≠ instance |
+| `offerings` | ServiceOffering, OfferingStep, OfferingTransition, OfferingExecution, OfferingTask | definition ≠ instance |
 | `resources` | Resource, Asset, Equipment, Material, ResourceAssignment | vehicles/equipment |
 | `metrics` | Metric, MetricValue, KPI/KpiMetric, SLA | dashboard data |
 | `events` | Event | immutable, generic-FK |
@@ -34,7 +34,7 @@ The default dataset makes the app immediately explorable — 9 municipal service
 | `dashboard` | views only | executive/org/service dashboards (charts) |
 | `profiles` | profile settings | header dropdown |
 
-> `events`/`audit` and generic links (`Problem→Incident`, workflow `subject`) use Django **GenericForeignKey** to avoid circular dependencies between apps.
+> `events`/`audit` and generic links (`Problem→Incident`, offering `subject`) use Django **GenericForeignKey** to avoid circular dependencies between apps.
 
 ---
 
@@ -74,11 +74,11 @@ Portugal            (COUNTRY)
 
 ### Operational samples
 
-- **Requests** (24) spread across all 9 services — NEW / IN_PROGRESS / WAITING / RESOLVED, various priorities; waste & water requests are linked to their workflow.
+- **Requests** (24) spread across all 9 services — NEW / IN_PROGRESS / WAITING / RESOLVED, various priorities; waste & water requests are linked to their offering.
 - **Incidents** (8): `Burst main on Rua do Espírito Santo` (INVESTIGATING), `Substation fault…` (OPEN), `Collection vehicle breakdown` (RESOLVED), etc.
 - **Problems** (3): `Recurring water main failures`, `Failing lighting control gear`, `Sewer blockages in the old town` (linked to incidents).
 - **Changes** (4): `Replace aging trunk main section` (PROPOSED), `Smart bins pilot rollout` (SCHEDULED), with EXECUTIVE approval rows.
-- **Workflows** (2): `Waste Collection Request` and `Water Maintenance Request` — each a `start → assign → work → verify → end` definition with transitions, plus 4 executions/tasks (running + completed).
+- **Service Offerings** (2): `Waste Collection Request` and `Water Maintenance Request` — each a `start → assign → work → verify → end` definition with transitions, plus 4 executions/tasks (running + completed).
 - **Resources**: skip truck `TV-103`, bulk water tanker, road compactor — each assigned to field operator `p.nunes`.
 - **Metrics**: `requests_created`/`requests_resolved` with 6 months of monthly values (a "waste service health" story), plus KPI `waste_service_health` and two SLAs (240 min / 1440 min response and resolution targets on Waste Management).
 - **Events/audit**: a `request.created` Event and a `seed.default_dataset` AuditLog.
@@ -100,9 +100,9 @@ Roles are permission bundles; every seeded person gets an `OrganizationMembershi
 | Role | Focus | Key permissions |
 |---|---|---|
 | `EXECUTIVE` | Platform leadership | org view/manage/delete, people manage, metrics, **change.approve**, audit, role.* |
-| `SERVICE_MANAGER` | Own a service | service.manage, request/incident manage, problem.manage, workflow.manage, resource.manage, change.manage |
-| `OPERATIONS_MANAGER` | Field operations | request assign/close, incident assign/resolve, workflow.execute, resource.manage |
-| `OPERATOR` | Field staff | request.view/update, incident.create, workflow.execute, resource.view |
+| `SERVICE_MANAGER` | Own a service | service.manage, request/incident manage, problem.manage, offering.manage, resource.manage, change.manage |
+| `OPERATIONS_MANAGER` | Field operations | request assign/close, incident assign/resolve, offering.execute, resource.manage |
+| `OPERATOR` | Field staff | request.view/update, incident.create, offering.execute, resource.view |
 | `REQUEST_MANAGER` | Demand workflow | request create/update/assign/close, workflow.execute |
 | `INCIDENT_MANAGER` | Incident response | incident create/assign/resolve, problem.view |
 | `PROBLEM_MANAGER` | Root-cause | problem.manage, change.approve/manage, metrics.view |
@@ -115,14 +115,14 @@ A Service is created with a **Service Manager** (`ServiceCreateForm`/`ServiceCre
 2. On save the service is created, the `SERVICE_MANAGER` role is `get_or_create`d, and a `ServiceActor(actor_type=INTERNAL, active=True)` is linked to the chosen person.
 3. `Service.clean()` raises `ValidationError` if an updated service would be left without an active manager; the seed stderr-fails if any service has none.
 
-### Workflows (definition vs instance)
-`Workflow` = immutable definition (service, name, version, status ACTIVE, trigger REQUEST) with ordered `WorkflowStep`s (START / TASK / APPROVAL / END, `responsible_role`, `required_inputs`, SLA minutes) and `WorkflowTransition`s. `WorkflowExecution` = a run of a definition: `status` (RUNNING/COMPLETED/…), `current_step`, `completed_at`, plus `WorkflowTask`s (assigned to a person, PENDING/IN_PROGRESS/DONE, deadline).
+### Service Offerings (definition vs instance)
+`ServiceOffering` = immutable definition (service, name, version, status ACTIVE, trigger REQUEST) with ordered `OfferingStep`s (START / TASK / APPROVAL / END, `responsible_role`, `required_inputs`, SLA minutes) and `OfferingTransition`s. `OfferingExecution` = a run of a definition: `status` (RUNNING/COMPLETED/…), `current_step`, `completed_at`, plus `OfferingTask`s (assigned to a person, PENDING/IN_PROGRESS/DONE, deadline).
 
 ### Catalog lifecycle (soft-delete)
 Organization / Service / Person / Resource / Role support **create / activate / deactivate / soft-delete** via generic lifecycle views (`apps/common/lifecycle.py`): POST-only, gated by `*.create` / `*.manage` / `*.delete`, scoped (404 outside scope). `soft_delete()` fills `deleted_at`; lists hide deleted rows via `.alive()` (seeds keep working because `get_or_create` still sees them).
 
 ### Data flow for a request
-`Request` (`requester`, `service`, `request_type`, `status`, `priority`, `assigned_to`, `workflow`) → optional `WorkflowExecution`/`WorkflowTask` → comments, linked incidents → problems/changes for root cause → metrics/KPI rolled up → `Event`/`AuditLog` recorded → dashboards aggregate counts.
+`Request` (`requester`, `service`, `request_type`, `status`, `priority`, `assigned_to`, `offering`) → optional `OfferingExecution`/`OfferingTask` → comments, linked incidents → problems/changes for root cause → metrics/KPI rolled up → `Event`/`AuditLog` recorded → dashboards aggregate counts.
 
 ---
 
@@ -171,7 +171,7 @@ python manage.py seed_default_data
 python manage.py runserver        # or: pytest
 ```
 
-Main surfaces: `/` (context-aware overview), `/organizations/tree/` (org tree with services & managers), `/services/`, `/requests/`, `/incidents/`, `/workflows/`, `/metrics/`, `/admin/`.
+Main surfaces: `/` (context-aware overview), `/organizations/tree/` (org tree with services & managers), `/services/`, `/requests/`, `/incidents/`, `/service-offerings/`, `/metrics/`, `/admin/`.
 
 The header profile menu selects the working **organization** and then an optional **service/role**. The Overview link follows that selection: service → `/service/<pk>/`, organization → `/organization/<pk>/`, neither → the global executive overview. Clicking the active service clears it; clicking the active organization clears both. Services stay hidden until an organization is selected. List views follow the same scope automatically: a selected service scopes lists to it, and a selected organization scopes them to its subtree when no service is picked. An explicit `?organization=<pk>` (subtree scope) or `?service=<pk>` drill-down filter overrides the header scope for that request; an empty value (`?service=`) means “All”.
 
@@ -179,7 +179,7 @@ The header profile menu selects the working **organization** and then an optiona
 
 ## 6. Test status & known issues
 
-- Test suite: **182 passed, 0 failed** (`.venv/bin/python -m pytest -q`).
+- Test suite: **211 passed, 0 failed** (`.venv/bin/python -m pytest -q`).
 - Lint and formatting are clean (`.venv/bin/ruff check .`, `.venv/bin/ruff format --check .`).
 - Model state is in sync with migrations (`.venv/bin/python manage.py makemigrations --check --dry-run`).
 - Run pytest **sequentially** — concurrent runs race on the shared `test_orgplatform` database.

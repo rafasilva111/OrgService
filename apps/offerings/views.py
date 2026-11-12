@@ -1,4 +1,4 @@
-"""Workflows: definitions, details and executions."""
+"""Service Offerings: definitions, details and executions."""
 
 from django.utils.translation import gettext_lazy as _
 
@@ -12,21 +12,26 @@ from apps.common.mixins import (
 from apps.common.tables.config import Column, Filter, FilterKind, TableConfig
 from apps.common.tables.filters import organization_column
 from apps.common.tables.views import TableView
-from apps.workflows.models import ExecutionStatus, Workflow, WorkflowExecution, WorkflowStatus
+from apps.offerings.models import (
+    ExecutionStatus,
+    OfferingExecution,
+    OfferingStatus,
+    ServiceOffering,
+)
 
 ACTIVE_STATUS_CHOICES = tuple(
-    c for c in WorkflowStatus.choices if c[0] != WorkflowStatus.DEPRECATED
+    c for c in OfferingStatus.choices if c[0] != OfferingStatus.DEPRECATED
 )
 
 
-class WorkflowListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
-    model = Workflow
-    template_name = "workflows/index.html"
-    platform_codes = ("workflow.view",)
+class ServiceOfferingListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
+    model = ServiceOffering
+    template_name = "offerings/index.html"
+    platform_codes = ("offering.view",)
     table_config = TableConfig(
-        key="workflows",
+        key="offerings",
         columns=[
-            Column("name", _("Workflow"), sortable=True, searchable=True),
+            Column("name", _("Service Offering"), sortable=True, searchable=True),
             Column(
                 "service.name",
                 _("Service"),
@@ -50,25 +55,26 @@ class WorkflowListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
             Column("updated_at", _("Updated"), sortable=True, filter=Filter(FilterKind.DATERANGE)),
         ],
         default_sort="-version",
-        caption="Workflows",
-        empty_headline="No workflows in scope",
-        empty_body="Workflow definitions for services you can see will appear here.",
-        row_url_name="workflows:detail",
+        caption="Service Offerings",
+        empty_headline="No offerings in scope",
+        empty_body="Service Offering definitions for services you can see will appear here.",
+        row_url_name="offerings:detail",
     )
-    breadcrumb_title = _("Workflows")
+    breadcrumb_title = _("Service Offerings")
     service_filter_field = "service"
     organization_filter_fields = ("service__organization",)
 
     def get_base_queryset(self):
-        return Workflow.objects.visible_to(self.request.user, "workflow.view").select_related(
-            "service"
-        )
+        return ServiceOffering.objects.visible_to(
+            self.request.user, "offering.view"
+        ).select_related("service")
 
 
-class WorkflowDetailView(BreadcrumbsMixin, ScopedDetailView):
-    model = Workflow
-    template_name = "workflows/detail.html"
-    scope_action = "workflow.view"
+class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
+    model = ServiceOffering
+    template_name = "offerings/detail.html"
+    context_object_name = "offering"
+    scope_action = "offering.view"
 
     def get_breadcrumb_title(self) -> str:
         return f"{self.object.name} v{self.object.version}"
@@ -80,7 +86,7 @@ class WorkflowDetailView(BreadcrumbsMixin, ScopedDetailView):
         ctx = super().get_context_data(**kwargs)
         ctx["steps"] = self.object.steps.select_related("responsible_role").order_by("order")
         ctx["versions"] = (
-            Workflow.objects.visible_to(self.request.user, "workflow.view")
+            ServiceOffering.objects.visible_to(self.request.user, "offering.view")
             .filter(service=self.object.service, name=self.object.name)
             .order_by("-version")
         )
@@ -90,27 +96,27 @@ class WorkflowDetailView(BreadcrumbsMixin, ScopedDetailView):
         return ctx
 
 
-class WorkflowExecutionListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
-    model = WorkflowExecution
-    template_name = "workflows/executions.html"
-    platform_codes = ("workflow.view",)
+class OfferingExecutionListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
+    model = OfferingExecution
+    template_name = "offerings/executions.html"
+    platform_codes = ("offering.view",)
     table_config = TableConfig(
-        key="workflows_executions",
+        key="offerings_executions",
         columns=[
-            Column("workflow.name", _("Workflow"), sortable=True, searchable=True),
+            Column("offering.name", _("Service Offering"), sortable=True, searchable=True),
             organization_column(
-                key="workflow.service.organization.name",
-                lookups=("workflow__service__organization__path",),
+                key="offering.service.organization.name",
+                lookups=("offering__service__organization__path",),
             ),
             Column(
-                "workflow.service.name",
+                "offering.service.name",
                 _("Service"),
                 sortable=True,
                 searchable=True,
                 filter=Filter(
                     FilterKind.CHOICE,
                     param="service",
-                    lookup="workflow__service_id",
+                    lookup="offering__service_id",
                     choices_callable=service_filter_choices,
                 ),
             ),
@@ -119,25 +125,25 @@ class WorkflowExecutionListView(BreadcrumbsMixin, PermissionRequiredMixin, Table
                 _("Status"),
                 sortable=True,
                 filter=Filter(FilterKind.CHOICE, choices=ExecutionStatus.choices),
-                template="workflows/exec_state.html",
+                template="offerings/exec_state.html",
             ),
             Column("current_step.name", _("Step"), sortable=True),
             Column("created_by.full_name", _("Started by"), sortable=True, searchable=True),
             Column("started_at", _("Started"), sortable=True, filter=Filter(FilterKind.DATERANGE)),
-            Column("started_at", _("Duration"), template="workflows/exec_duration.html"),
+            Column("started_at", _("Duration"), template="offerings/exec_duration.html"),
         ],
         default_sort="-started_at",
         caption="Executions",
         empty_headline="No executions yet",
-        empty_body="Runs of the workflows you can see will appear here.",
+        empty_body="Runs of the offerings you can see will appear here.",
     )
     breadcrumb_title = _("Executions")
-    breadcrumb_parent = (_("Workflows"), "workflows:index")
-    service_filter_field = "workflow__service"
-    organization_filter_fields = ("workflow__service__organization",)
+    breadcrumb_parent = (_("Service Offerings"), "offerings:index")
+    service_filter_field = "offering__service"
+    organization_filter_fields = ("offering__service__organization",)
 
     def get_base_queryset(self):
         service_ids = list(visible_services(self.request.user).values_list("id", flat=True))
-        return WorkflowExecution.objects.filter(
-            workflow__service_id__in=service_ids
-        ).select_related("workflow", "workflow__service", "created_by", "current_step")
+        return OfferingExecution.objects.filter(
+            offering__service_id__in=service_ids
+        ).select_related("offering", "offering__service", "created_by", "current_step")

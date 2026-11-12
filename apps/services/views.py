@@ -12,6 +12,7 @@ from apps.common.tables.config import Column, Filter, FilterKind, TableConfig
 from apps.common.tables.views import TableView
 from apps.incidents.models import Incident, IncidentStatus
 from apps.metrics.models import KPI, Metric
+from apps.offerings.models import OfferingExecution, ServiceOffering
 from apps.organizations.models import Organization
 from apps.people.models import Person
 from apps.requests.models import Request, RequestStatus
@@ -25,7 +26,6 @@ from apps.services.models import (
     ServiceType,
     ServiceTypeCode,
 )
-from apps.workflows.models import Workflow, WorkflowExecution
 
 CLOSED_STATUSES = (RequestStatus.RESOLVED, RequestStatus.CLOSED, RequestStatus.CANCELLED)
 
@@ -233,10 +233,10 @@ class ServiceDetailView(BreadcrumbsMixin, ScopedDetailView):
         ctx["incidents"] = Incident.objects.visible_to(user, "incident.view").filter(
             service=service
         )
-        ctx["workflows"] = Workflow.objects.visible_to(user, "workflow.view").filter(
+        ctx["offerings"] = ServiceOffering.objects.visible_to(user, "offering.view").filter(
             service=service
         )
-        ctx["executions"] = WorkflowExecution.objects.filter(workflow__service=service)
+        ctx["executions"] = OfferingExecution.objects.filter(offering__service=service)
         ctx["metrics"] = Metric.objects.filter(service=service)
         ctx["kpis"] = KPI.objects.filter(service=service).prefetch_related("metrics")
         ctx["capabilities"] = service.capability_links.select_related("capability").order_by(
@@ -249,7 +249,7 @@ class ServiceDetailView(BreadcrumbsMixin, ScopedDetailView):
             .exclude(status__in=(IncidentStatus.RESOLVED, IncidentStatus.CLOSED))
             .count()
         )
-        ctx["active_workflow_count"] = ctx["workflows"].filter(status="ACTIVE").count()
+        ctx["active_offering_count"] = ctx["offerings"].filter(status="ACTIVE").count()
         ctx["children"] = service.children.alive().select_related("service_type")
         ctx["consumed"] = service.consumed_through.select_related("consumed").order_by(
             "-created_at"

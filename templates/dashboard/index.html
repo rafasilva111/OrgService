@@ -89,13 +89,13 @@
     <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
       <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
         <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Recent executions' %}</h2>
-        <a href="{% url 'workflows:executions' %}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
+        <a href="{% url 'offerings:executions' %}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
       </div>
       <ul class="divide-y divide-zinc-100">
         {% for e in recent_executions %}
         <li class="flex items-center gap-3 px-4 py-3">
-          <a href="{% url 'workflows:detail' e.workflow.pk %}" class="min-w-[3.5rem] truncate text-sm font-medium text-indigo-600 hover:text-indigo-800">{{ e.workflow.service.name|truncatechars:20 }}</a>
-          <a href="{% url 'workflows:detail' e.workflow.pk %}" class="min-w-0 flex-1 truncate text-sm text-zinc-700 hover:text-indigo-700">{{ e.workflow.name|truncatechars:32 }}</a>
+          <a href="{% url 'offerings:detail' e.offering.pk %}" class="min-w-[3.5rem] truncate text-sm font-medium text-indigo-600 hover:text-indigo-800">{{ e.offering.service.name|truncatechars:20 }}</a>
+          <a href="{% url 'offerings:detail' e.offering.pk %}" class="min-w-0 flex-1 truncate text-sm text-zinc-700 hover:text-indigo-700">{{ e.offering.name|truncatechars:32 }}</a>
           <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ e.status|pill_class }}">{{ e.get_status_display }}</span>
         </li>
         {% empty %}
