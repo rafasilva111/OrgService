@@ -28,8 +28,33 @@ class IncidentCreateForm(forms.ModelForm):
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["service"].queryset = visible_services(user)
-        self.fields["assigned_to"].queryset = Person.objects.filter(active=True).order_by(
+        from apps.services.models import Service
+
+        self.fields["service"].queryset = visible_services(user).filter(
+            pk__in=Service.objects.visible_to(user, "incident.create")
+        )
+        assignable_services = self.fields["service"].queryset.filter(
+            pk__in=Service.objects.visible_to(user, "incident.assign")
+        )
+        selected = self.data.get("service") if self.is_bound else self.initial.get("service")
+        if selected:
+            try:
+                assignable_services = assignable_services.filter(pk=int(selected))
+            except (TypeError, ValueError):
+                assignable_services = assignable_services.none()
+        elif self.is_bound:
+            assignable_services = assignable_services.none()
+        candidates = Person.objects.filter(
+            active=True, deleted_at__isnull=True, user__is_active=True
+        ).select_related("user")
+        eligible = [
+            person.pk
+            for person in candidates
+            if Service.objects.visible_to(person.user, "incident.view")
+            .filter(pk__in=assignable_services)
+            .exists()
+        ]
+        self.fields["assigned_to"].queryset = Person.objects.filter(pk__in=eligible).order_by(
             "full_name"
         )
 

@@ -16,6 +16,7 @@
       <dl class="grid gap-x-8 gap-y-1.5 text-sm sm:grid-cols-2">
         <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Service' %}</dt><dd class="font-medium text-zinc-800">{{ req.service.name }}</dd></div>
         <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Service Offering' %}</dt><dd class="font-medium text-zinc-800">{% if req.offering %}<a href="{% url 'offerings:detail' req.offering.pk %}" class="text-indigo-600 hover:text-indigo-800">{{ req.offering.name }}</a>{% else %}—{% endif %}</dd></div>
+        {% if execution %}<div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Execution' %}</dt><dd><a href="{% url 'offerings:execution_detail' execution.pk %}" class="font-medium text-indigo-600 hover:text-indigo-800">#{{ execution.pk }} · {{ execution.get_status_display }}</a></dd></div>{% endif %}
         <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Type' %}</dt><dd class="font-medium text-zinc-800">{{ req.offering.offering_type.name|default:"—" }}</dd></div>
         <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Requester' %}</dt><dd class="font-medium text-zinc-800">{{ req.requester|default:"—" }}</dd></div>
         <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Assigned' %}</dt><dd class="font-medium text-zinc-800">{% if req.assigned_to %}{{ req.assigned_to }}{% else %}{% translate 'Unassigned' %}{% endif %}</dd></div>

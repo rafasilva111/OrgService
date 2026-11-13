@@ -23,12 +23,12 @@ catalogue by delegating to ``seed_rbac``.
 """
 
 import os
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
-from django.db import connection
+from django.db import connection, transaction
 from django.utils import timezone
 
 from apps.access.models import Role
@@ -51,10 +51,12 @@ from apps.offerings.models import (
     ServiceOffering,
     ServiceOfferingType,
     StepType,
+    TaskActivity,
+    TaskStatus,
     TransitionOutcome,
 )
 from apps.organizations.models import Organization, OrganizationMembership
-from apps.people.models import Person, PersonType, Skill
+from apps.people.models import Person, PersonType, Skill, get_system_person
 from apps.problems.models import Problem
 from apps.requests.models import Priority, Request, RequestComment, RequestStatus
 from apps.resources.models import Equipment, Resource, ResourceAssignment, ResourceType
@@ -125,13 +127,16 @@ class Command(BaseCommand):
         self._seed_offering_types()
         self._seed_skills()
         self._seed_offerings(services, people)
-        self._seed_requests(services, people)
         self._seed_incidents(services, people)
         self._seed_problems(services, people)
         self._seed_changes(services, people)
         self._seed_resources(orgs, services, people)
         self._seed_metrics(services)
         self._seed_wf_executions(people)
+        self._seed_cemetery_executions(services["Cemitérios"], people["p.lopes"])
+        from apps.offerings.request_link import attach_missing_requests
+
+        attach_missing_requests()
         self._seed_events(services, people)
         self._seed_audit(services, people)
 
@@ -370,6 +375,8 @@ class Command(BaseCommand):
                 "OPERATIONS_MANAGER",
             ),
             ("p.nunes", "Pedro Nunes", "pedro.nunes@torres-vedras.local", "OPERATOR"),
+            ("a.santos", "André Santos", "andre.santos@torres-vedras.local", "OPERATOR"),
+            ("c.oliveira", "Carla Oliveira", "carla.oliveira@torres-vedras.local", "OPERATOR"),
             ("b.lopes", "Beatriz Lopes", "beatriz.lopes@torres-vedras.local", "INCIDENT_MANAGER"),
             ("h.ferreira", "Hugo Ferreira", "hugo.ferreira@torres-vedras.local", "PROBLEM_MANAGER"),
             ("i.cardoso", "Inês Cardoso", "ines.cardoso@torres-vedras.local", "ANALYST"),
@@ -417,6 +424,8 @@ class Command(BaseCommand):
             ("h.ferreira", tv, role_pm),
             ("i.cardoso", tv, role_an),
             ("p.nunes", orgs["santa-maria-sao-pedro-matacaes"], role_op),
+            ("a.santos", orgs["santa-maria-sao-pedro-matacaes"], role_op),
+            ("c.oliveira", orgs["santa-maria-sao-pedro-matacaes"], role_op),
         ]
         for username, org, role in memberships:
             OrganizationMembership.objects.get_or_create(
@@ -477,6 +486,9 @@ class Command(BaseCommand):
             ("Supplies", "n.barreto", role_sm),
             ("HR", "m.silva", role_sm),
             ("Serviços Educativos", "m.mendes", role_rm),
+            ("Cemitérios", "p.nunes", role_op),
+            ("Cemitérios", "a.santos", role_op),
+            ("Cemitérios", "c.oliveira", role_op),
         ]
         for svc_name, username, role in extra_actors:
             ServiceActor.objects.get_or_create(
@@ -558,9 +570,9 @@ class Command(BaseCommand):
             wf, _created = ServiceOffering.objects.get_or_create(
                 service=service,
                 name=name,
+                version=1,
                 defaults={
                     "description": description,
-                    "version": 1,
                     "status": OfferingStatus.ACTIVE,
                     "on_request": on_request,
                     "created_by": people.get(created_by),
@@ -832,11 +844,14 @@ class Command(BaseCommand):
         # Steps handed to another service's offering (blank = the step's own offering).
         def delegate(offering_name, step_code, service_name, responsible_offering_name):
             step = OfferingStep.objects.get(
-                offering__service=cemiterios, offering__name=offering_name, code=step_code
+                offering__service=cemiterios,
+                offering__name=offering_name,
+                offering__version=1,
+                code=step_code,
             )
             if step.service_offering_id is None:
                 step.service_offering = ServiceOffering.objects.get(
-                    service=services[service_name], name=responsible_offering_name
+                    service=services[service_name], name=responsible_offering_name, version=1
                 )
                 # External step: no role of its own (type/SLA come from the offering).
                 step.responsible_role = None
@@ -1562,11 +1577,224 @@ class Command(BaseCommand):
             )
 
     # -------------------------------------------------------------- executions
+    def _seed_cemetery_executions(self, service, manager):
+        system_person = get_system_person()
+        samples = [
+            (
+                "Limpar cemitério",
+                "clean",
+                ExecutionStatus.RUNNING,
+                TaskStatus.IN_PROGRESS,
+                "Limpeza das zonas comuns",
+                datetime(2026, 11, 9, 9, tzinfo=UTC),
+                None,
+            ),
+            (
+                "Limpar cemitério",
+                "end",
+                ExecutionStatus.COMPLETED,
+                TaskStatus.DONE,
+                "Limpeza mensal do cemitério",
+                datetime(2026, 10, 1, 9, tzinfo=UTC),
+                datetime(2026, 10, 2, 15, tzinfo=UTC),
+            ),
+            (
+                "Realizar um funeral",
+                "assign_grave",
+                ExecutionStatus.RUNNING,
+                TaskStatus.IN_PROGRESS,
+                "Atribuir sepultura para inumação",
+                datetime(2026, 11, 10, 10, tzinfo=UTC),
+                None,
+            ),
+            (
+                "Realizar um funeral",
+                "end",
+                ExecutionStatus.COMPLETED,
+                TaskStatus.DONE,
+                "Registar inumação concluída",
+                datetime(2026, 10, 21, 9, tzinfo=UTC),
+                datetime(2026, 10, 23, 16, tzinfo=UTC),
+            ),
+            (
+                "Realizar transladação",
+                "approve",
+                ExecutionStatus.WAITING,
+                TaskStatus.BLOCKED,
+                "Aprovar pedido de transladação",
+                datetime(2026, 11, 6, 11, tzinfo=UTC),
+                None,
+            ),
+            (
+                "Realizar transladação",
+                "end",
+                ExecutionStatus.COMPLETED,
+                TaskStatus.DONE,
+                "Registar transladação concluída",
+                datetime(2026, 10, 12, 9, tzinfo=UTC),
+                datetime(2026, 10, 16, 15, tzinfo=UTC),
+            ),
+        ]
+        completed_steps = {
+            "Limpar cemitério": ("plan", "clean", "verify"),
+            "Realizar um funeral": (
+                "validate",
+                "assign_grave",
+                "prepare",
+                "burial",
+                "register",
+            ),
+            "Realizar transladação": (
+                "validate",
+                "approve",
+                "schedule",
+                "exhume",
+                "transport",
+                "register",
+            ),
+        }
+        preceding_steps = {
+            ("Limpar cemitério", "clean"): ("plan",),
+            ("Realizar um funeral", "assign_grave"): ("validate",),
+            ("Realizar transladação", "approve"): ("validate",),
+        }
+        for name, current_code, status, task_status, title, started, completed in samples:
+            offering = ServiceOffering.objects.get(service=service, name=name, version=1)
+            steps = {step.code: step for step in offering.steps.all()}
+            with transaction.atomic():
+                execution, _created = OfferingExecution.objects.get_or_create(
+                    offering=offering,
+                    started_at=started,
+                    defaults={
+                        "status": status,
+                        "current_step": steps[current_code],
+                        "completed_at": completed,
+                        "created_by": manager,
+                    },
+                )
+                if not completed and execution.current_step_id != steps[current_code].pk:
+                    continue
+                if completed:
+                    task_codes = completed_steps[name]
+                    duration_seconds = int((completed - started).total_seconds())
+                    for index, code in enumerate(task_codes):
+                        task_started = started + timedelta(
+                            seconds=duration_seconds * index // len(task_codes)
+                        )
+                        task_completed = started + timedelta(
+                            seconds=duration_seconds * (index + 1) // len(task_codes)
+                        )
+                        step = steps[code]
+                        task = execution.tasks.filter(step=step).order_by("pk").first()
+                        if task is None:
+                            task = OfferingTask.objects.create(
+                                execution=execution,
+                                step=step,
+                                title=title if index == len(task_codes) - 1 else step.name,
+                                assigned_to=manager,
+                                status=TaskStatus.DONE,
+                                started_at=task_started,
+                                completed_at=task_completed,
+                            )
+                        elif (
+                            task.title == title
+                            and task.assigned_to_id == manager.pk
+                            and not task.activities.exists()
+                        ):
+                            task.started_at = task_started
+                            task.completed_at = task_completed
+                            task.save(update_fields=["started_at", "completed_at", "updated_at"])
+                        self._seed_completed_task_history(task, manager, system_person)
+                else:
+                    prior_codes = preceding_steps.get((name, current_code), ())
+                    for index, code in enumerate(prior_codes):
+                        task_started = started + timedelta(hours=index)
+                        task_completed = task_started + timedelta(hours=1)
+                        step = steps[code]
+                        task = execution.tasks.filter(step=step).order_by("pk").first()
+                        if task is None:
+                            task = OfferingTask.objects.create(
+                                execution=execution,
+                                step=step,
+                                title=step.name,
+                                assigned_to=manager,
+                                status=TaskStatus.DONE,
+                                started_at=task_started,
+                                completed_at=task_completed,
+                            )
+                        self._seed_completed_task_history(task, manager, system_person)
+
+                    current_task = execution.tasks.filter(step=steps[current_code]).first()
+                    if current_task is None:
+                        current_task = OfferingTask.objects.create(
+                            execution=execution,
+                            step=steps[current_code],
+                            title=title,
+                            assigned_to=manager,
+                            status=task_status,
+                            started_at=started + timedelta(hours=len(prior_codes)),
+                        )
+                    elif (
+                        current_task
+                        and prior_codes
+                        and current_task.title == title
+                        and current_task.assigned_to_id == manager.pk
+                        and current_task.started_at == started
+                        and not current_task.activities.exists()
+                    ):
+                        current_task.started_at = started + timedelta(hours=len(prior_codes))
+                        current_task.save(update_fields=["started_at", "updated_at"])
+                    if current_task:
+                        self._seed_active_task_history(current_task, manager, system_person)
+
+    @staticmethod
+    def _seed_completed_task_history(task, manager, system_person):
+        created_at = task.started_at - timedelta(minutes=5)
+        history = (
+            ("created", system_person, "", created_at),
+            ("assigned", manager, manager.full_name, task.started_at - timedelta(minutes=1)),
+            ("started", manager, "", task.started_at),
+            ("completed", manager, "", task.completed_at),
+        )
+        for action, actor, detail, timestamp in history:
+            Command._ensure_seeded_task_activity(task, action, actor, detail, timestamp)
+
+    @staticmethod
+    def _seed_active_task_history(task, manager, system_person):
+        created_at = task.started_at - timedelta(minutes=5)
+        history = (
+            ("created", system_person, "", created_at),
+            ("assigned", manager, manager.full_name, task.started_at - timedelta(minutes=1)),
+            ("started", manager, "", task.started_at),
+        )
+        for action, actor, detail, timestamp in history:
+            Command._ensure_seeded_task_activity(task, action, actor, detail, timestamp)
+
+    @staticmethod
+    def _ensure_seeded_task_activity(task, action, actor, detail, timestamp):
+        activity = task.activities.filter(action=action).order_by("pk").first()
+        if activity is None:
+            activity = TaskActivity.objects.create(
+                task=task,
+                actor=actor,
+                action=action,
+                detail=detail,
+            )
+            TaskActivity.objects.filter(pk=activity.pk).update(created_at=timestamp)
+        elif action == "created" and activity.actor_id != actor.pk:
+            activity.actor = actor
+            activity.save(update_fields=["actor", "updated_at"])
+
     def _seed_wf_executions(self, people):
-        def add_execution(wf, current_code, status, started, completed=None):
+        def add_execution(wf, current_code, status, started, completed=None, task_title=""):
             if not wf:
                 return
             steps = {s.code: s for s in wf.steps.all()}
+            existing = OfferingExecution.objects.filter(
+                offering=wf, tasks__title=task_title
+            ).order_by("pk").first()
+            if existing is not None:
+                return existing, steps
             execn, _created = OfferingExecution.objects.get_or_create(
                 offering=wf,
                 started_at=started,
@@ -1585,6 +1813,7 @@ class Command(BaseCommand):
             "collect",
             ExecutionStatus.RUNNING,
             NOW - timedelta(hours=3),
+            task_title="Collect market bins",
         )
         if exec1 and not OfferingTask.objects.filter(execution=exec1).exists():
             OfferingTask.objects.create(
@@ -1603,6 +1832,7 @@ class Command(BaseCommand):
             ExecutionStatus.COMPLETED,
             NOW - timedelta(days=5),
             NOW - timedelta(days=4),
+            task_title="Collect street bins",
         )
         if exec2 and not OfferingTask.objects.filter(execution=exec2).exists():
             OfferingTask.objects.create(
@@ -1623,6 +1853,7 @@ class Command(BaseCommand):
             "repair",
             ExecutionStatus.RUNNING,
             NOW - timedelta(days=1),
+            task_title="Repair the school leak",
         )
         if exec3 and not OfferingTask.objects.filter(execution=exec3).exists():
             OfferingTask.objects.create(
@@ -1641,6 +1872,7 @@ class Command(BaseCommand):
             ExecutionStatus.COMPLETED,
             NOW - timedelta(days=12),
             NOW - timedelta(days=11),
+            task_title="Hydrant replacement",
         )
         if exec4 and not OfferingTask.objects.filter(execution=exec4).exists():
             OfferingTask.objects.create(

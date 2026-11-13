@@ -10,6 +10,11 @@
     <div>
       <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Roles' %}</h1>
       <p class="mt-1 text-sm text-zinc-500">{% translate 'Reusable role definitions and their permission grants.' %}</p>
+      <p class="mt-1 text-sm text-zinc-500">
+        {% if role_scope == "service" %}{% translate 'Service' %}: {{ role_scope_name }}
+        {% elif role_scope == "organization" %}{% translate 'Organization' %}: {{ role_scope_name }}
+        {% else %}{% translate 'All' %}{% endif %}
+      </p>
     </div>
     {% if request.user|has_perm:"role.create" %}
     <a href="{% url 'access:role_create' %}"

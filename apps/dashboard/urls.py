@@ -15,6 +15,7 @@ app_name = "dashboard"
 urlpatterns = [
     path("login/", views.PlatformLoginView.as_view(), name="login"),
     path("logout/", LogoutView.as_view(next_page="/"), name="logout"),
+    path("protected-overview/", views.ProtectedOverview.as_view(), name="protected_overview"),
     path(
         "organization/<int:pk>/",
         views.OrganizationDashboard.as_view(),

@@ -35,6 +35,28 @@ def test_seed_is_idempotent(seeded):
     assert OrganizationMembership.objects.count() == before
 
 
+def test_seed_does_not_duplicate_executions_after_time_changes(seeded, monkeypatch):
+    from datetime import timedelta
+
+    from apps.common.management.commands import seed_default_data
+    from apps.offerings.models import OfferingExecution
+
+    before = OfferingExecution.objects.count(), Request.objects.count()
+    monkeypatch.setattr(seed_default_data, "NOW", seed_default_data.NOW + timedelta(days=1))
+    call_command("seed_default_data", verbosity=0)
+    assert (OfferingExecution.objects.count(), Request.objects.count()) == before
+
+
+def test_seed_with_versioned_offering_preserves_draft(seeded):
+    from apps.offerings.models import ServiceOffering
+
+    offering = ServiceOffering.objects.get(name="Limpar cemitério", version=1)
+    draft = offering.new_version()
+    before = list(draft.steps.values_list("pk", "name", "service_offering_id"))
+    call_command("seed_default_data", verbosity=0)
+    assert list(draft.steps.values_list("pk", "name", "service_offering_id")) == before
+
+
 def test_every_service_manager_has_a_scoped_membership(seeded):
     from apps.services.models import ServiceActor
 
@@ -55,6 +77,171 @@ def test_p_lopes_manages_matacaes_cemeteries(seeded):
     )
     assert membership.organization.name == "Santa Maria, São Pedro e Matacães"
     assert "Cemitérios" in _visible_service_names("p.lopes")
+
+
+def test_cemeteries_has_active_operators_with_execution_access(seeded):
+    from apps.access.models import Role
+    from apps.offerings.execution import eligible_people
+    from apps.offerings.models import OfferingStep, StepType
+    from apps.services.models import Service, ServiceActor
+
+    cemetery = Service.objects.get(
+        name="Cemitérios", organization__name="Santa Maria, São Pedro e Matacães"
+    )
+    operator_role = Role.objects.get(code="OPERATOR")
+    operator_usernames = {"p.nunes", "a.santos", "c.oliveira"}
+
+    actors = ServiceActor.objects.filter(
+        service=cemetery, role=operator_role, active=True, person__user__is_active=True
+    ).select_related("person__user")
+    assert {actor.person.user.username for actor in actors} == operator_usernames
+
+    memberships = OrganizationMembership.objects.filter(
+        person__user__username__in=operator_usernames,
+        organization=cemetery.organization,
+        role=operator_role,
+        active=True,
+    )
+    assert {membership.person.user.username for membership in memberships} == operator_usernames
+
+    task_step = OfferingStep.objects.filter(
+        offering__service=cemetery,
+        responsible_role=operator_role,
+        step_type=StepType.TASK,
+    ).first()
+    assert task_step is not None
+    assert operator_usernames <= {
+        person.user.username for person in eligible_people(task_step)
+    }
+
+
+def test_seeded_cemetery_executions_are_visible_consistent_and_idempotent(seeded, client):
+    from apps.offerings.models import (
+        ExecutionStatus,
+        OfferingExecution,
+        TaskActivity,
+        TaskStatus,
+    )
+    from apps.people.models import PersonType
+
+    executions = OfferingExecution.objects.filter(
+        offering__service__name="Cemitérios",
+        offering__service__organization__name="Santa Maria, São Pedro e Matacães",
+    ).select_related("offering", "current_step", "created_by")
+    assert executions.count() == 6
+    assert set(executions.values_list("offering__name", flat=True)) == {
+        "Limpar cemitério",
+        "Realizar um funeral",
+        "Realizar transladação",
+    }
+    assert set(executions.values_list("status", flat=True)) == {
+        ExecutionStatus.RUNNING,
+        ExecutionStatus.WAITING,
+        ExecutionStatus.COMPLETED,
+    }
+    ids = set(executions.values_list("pk", flat=True))
+    completed_steps = {
+        "Limpar cemitério": ["plan", "clean", "verify"],
+        "Realizar um funeral": ["validate", "assign_grave", "prepare", "burial", "register"],
+        "Realizar transladação": [
+            "validate",
+            "approve",
+            "schedule",
+            "exhume",
+            "transport",
+            "register",
+        ],
+    }
+    for execution in executions:
+        assert execution.created_by.user.username == "p.lopes"
+        assert (execution.completed_at is not None) == (
+            execution.status == ExecutionStatus.COMPLETED
+        )
+        tasks = list(execution.tasks.select_related("step", "assigned_to").order_by("step__order"))
+        assert tasks
+        for task in tasks:
+            assert task.assigned_to == execution.created_by
+            assert task.step.offering == execution.offering
+            assert (task.completed_at is not None) == (task.status == TaskStatus.DONE)
+            activities = list(task.activities.select_related("actor").order_by("created_at", "pk"))
+            assert activities[0].action == "created"
+            assert activities[0].actor.full_name == "Sistema"
+            assert activities[0].actor.person_type == PersonType.SYSTEM
+            assert activities[0].actor.user is None
+            assert all(activity.actor == execution.created_by for activity in activities[1:])
+        if execution.status == ExecutionStatus.COMPLETED:
+            assert all(task.status == TaskStatus.DONE for task in tasks)
+            assert [task.step.code for task in tasks] == completed_steps[execution.offering.name]
+            assert all(
+                list(task.activities.values_list("action", flat=True))
+                == ["created", "assigned", "started", "completed"]
+                for task in tasks
+            )
+        else:
+            current_task = next(task for task in tasks if task.step == execution.current_step)
+            assert current_task.status in (TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED)
+            assert list(current_task.activities.values_list("action", flat=True)) == [
+                "created",
+                "assigned",
+                "started",
+            ]
+            assert [task.step.code for task in tasks if task.status == TaskStatus.DONE] == {
+                "Limpar cemitério": ["plan"],
+                "Realizar um funeral": ["validate"],
+                "Realizar transladação": ["validate"],
+            }[execution.offering.name]
+
+    client.force_login(_user("p.lopes"))
+    body = client.get("/service-offerings/executions/").content.decode()
+    assert all(
+        name in body
+        for name in ("Limpar cemitério", "Realizar um funeral", "Realizar transladação")
+    )
+    detail = client.get(
+        f"/service-offerings/executions/{executions.filter(status=ExecutionStatus.COMPLETED).first().pk}/"
+    ).content.decode()
+    assert "Sistema" in detail
+
+    first = executions.filter(status=ExecutionStatus.RUNNING).first()
+    created_activity = first.tasks.get(step=first.current_step).activities.get(action="created")
+    created_activity.actor = first.created_by
+    created_activity.save(update_fields=["actor"])
+    first.status = ExecutionStatus.WAITING
+    first.save(update_fields=["status"])
+    call_command("seed_default_data", verbosity=0)
+    assert set(executions.values_list("pk", flat=True)) == ids
+    first.refresh_from_db()
+    assert first.status == ExecutionStatus.WAITING
+    created_activity.refresh_from_db()
+    assert created_activity.actor.full_name == "Sistema"
+    assert sum(execution.tasks.count() for execution in executions) == 20
+    assert TaskActivity.objects.filter(task__execution__in=executions).count() == 77
+
+
+def test_seed_does_not_restore_tasks_after_execution_moves_to_another_step(seeded):
+    from apps.offerings.execution import _enter
+    from apps.offerings.models import ExecutionStatus, OfferingExecution, TaskStatus
+
+    execution = OfferingExecution.objects.get(
+        offering__service__name="Cemitérios",
+        offering__name="Realizar transladação",
+        status=ExecutionStatus.WAITING,
+    )
+    step = execution.offering.steps.get(code="validate")
+    execution.tasks.all().delete()
+    _enter(execution, step, execution.created_by)
+    task = execution.tasks.get()
+    assert task.status == TaskStatus.PENDING
+
+    call_command("seed_default_data", verbosity=0)
+
+    execution.refresh_from_db()
+    assert execution.current_step == step
+    assert execution.status == ExecutionStatus.RUNNING
+    assert list(execution.tasks.values_list("pk", flat=True)) == [task.pk]
+    task.refresh_from_db()
+    assert task.status == TaskStatus.PENDING
+    assert list(task.activities.values_list("action", flat=True)) == ["created"]
 
 
 def test_service_manager_reach_is_limited_to_managed_services(seeded):
@@ -158,12 +345,19 @@ def test_every_seeded_offering_is_publishable(seeded):
 
 
 def test_every_seeded_request_has_a_typed_offering_of_its_service(seeded):
-    from apps.offerings.models import ServiceOffering
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.offerings.models import OfferingExecution, ServiceOffering
 
     assert not ServiceOffering.objects.filter(offering_type__isnull=True).exists()
+    request_type = ContentType.objects.get_for_model(Request)
+    executions = OfferingExecution.objects.filter(subject_type=request_type)
+    assert executions.count() == Request.objects.count()
+    assert not OfferingExecution.objects.filter(subject_type__isnull=True).exists()
     for req in Request.objects.select_related("offering"):
         assert req.offering is not None, req.title
         assert req.offering.service_id == req.service_id, req.title
+        assert executions.filter(subject_id=req.pk, offering=req.offering).count() == 1
 
 
 def test_cemetery_steps_handed_to_other_parish_services(seeded):

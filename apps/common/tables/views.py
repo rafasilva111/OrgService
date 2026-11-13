@@ -33,6 +33,8 @@ def db_key(key: str) -> str:
 class TableView(ListView):
     table_config: TableConfig | None = None
     partial_template_name = "core/tables/_table.html"
+    use_header_scope = True
+    use_both_header_scopes = False
 
     # ``?service=<pk>`` (repeatable) restricts rows to specific service(s) —
     # distinct from the free-text ``service.name`` column filter, this is an
@@ -155,7 +157,13 @@ class TableView(ListView):
                     # Handled once after the loop (exclude terminal states).
                     continue
                 if value:
-                    qs = qs.filter(**{lookup: value})
+                    if filt.lookups:
+                        query = Q()
+                        for lookup_path in filt.lookups:
+                            query |= Q(**{lookup_path: value})
+                        qs = qs.filter(query).distinct()
+                    else:
+                        qs = qs.filter(**{lookup: value})
                     active[param] = value
             elif filt.kind == FilterKind.DATERANGE:
                 d_from = self.request.GET.get(f"{param}__from", "").strip()
@@ -193,6 +201,8 @@ class TableView(ListView):
         if pseudo_active:
             qs = qs.exclude(status__in=self.active_status_exclusions)
             active["status"] = "ACTIVE"
+        if self.context_organization_pk is not None:
+            active.setdefault("organization", str(self.context_organization_pk))
         if self.context_service_pk is not None:
             # Reflect the header's service scope in the drawer's Service select,
             # and its owning organization in the Organization select. Display
@@ -251,12 +261,17 @@ class TableView(ListView):
         organization_explicit = "organization" in self.request.GET
         self.context_service_pk = (
             None
-            if service_explicit or organization_explicit
+            if not self.use_header_scope or service_explicit or organization_explicit
             else selected_service_pk(self.request.user, self.request.session)
         )
         self.context_organization_pk = (
             None
-            if service_explicit or organization_explicit or self.context_service_pk is not None
+            if (
+                not self.use_header_scope
+                or service_explicit
+                or organization_explicit
+                or (self.context_service_pk is not None and not self.use_both_header_scopes)
+            )
             else selected_organization_pk(self.request.user, self.request.session)
         )
         qs = self.get_base_queryset()
@@ -349,7 +364,7 @@ class TableView(ListView):
         ctx = super().get_context_data(**kwargs)
         config = self.get_table_config()
         ctx["config"] = config
-        ctx["visible_columns"] = config.columns
+        ctx["visible_columns"] = [column for column in config.columns if column.visible]
         ctx["active_q"] = getattr(self, "active_q", "")
         ctx["active_filters"] = getattr(self, "active_filters", {})
         ctx["sort_key"] = getattr(self, "sort_key", config.default_sort or "")

@@ -16,12 +16,14 @@ class RequestStatus(models.TextChoices):
     ASSESSING = "ASSESSING", _("Assessing")
     IN_PROGRESS = "IN_PROGRESS", _("In Progress")
     WAITING = "WAITING", _("Waiting")
+    FAILED = "FAILED", _("Failed")
     RESOLVED = "RESOLVED", _("Resolved")
     CLOSED = "CLOSED", _("Closed")
     CANCELLED = "CANCELLED", _("Cancelled")
 
 
 class Priority(models.TextChoices):
+    VERY_LOW = "VERY_LOW", _("Very low")
     LOW = "LOW", _("Low")
     MEDIUM = "MEDIUM", _("Medium")
     HIGH = "HIGH", _("High")

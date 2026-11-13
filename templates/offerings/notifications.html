@@ -1,0 +1,23 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n %}
+{% block title %}{% translate 'Notifications' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block content %}
+<div class="max-w-3xl space-y-4">
+  <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Notifications' %}</h1>
+  <ul class="divide-y divide-zinc-100 rounded-xl border border-zinc-200 bg-white">
+    {% for notification in notifications %}
+    <li class="space-y-2 px-4 py-4">
+      <p class="whitespace-pre-wrap text-sm text-zinc-800">{{ notification.message }}</p>
+      <p class="text-xs text-zinc-500">{{ notification.created_at|date:"SHORT_DATETIME_FORMAT" }}</p>
+      {% if not notification.read_at %}
+      <form method="post" action="{% url 'offerings:notification_read' notification.pk %}">{% csrf_token %}
+        <button class="text-sm font-medium text-indigo-600 hover:text-indigo-800">{% translate 'Mark as read' %}</button>
+      </form>
+      {% endif %}
+    </li>
+    {% empty %}
+    <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No notifications yet.' %}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock content %}

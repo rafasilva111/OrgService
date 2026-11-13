@@ -41,6 +41,7 @@
       </div>
       {% apex_field form.name %}
       {% apex_field form.description %}
+      {% apex_field form.default_priority %}
 
       <fieldset class="space-y-3 rounded-lg border border-zinc-200 p-4">
         <legend class="px-1 text-sm font-semibold text-zinc-800">{% translate 'How it starts' %}</legend>
@@ -167,11 +168,22 @@
                 <template x-for="o in offeringsFor(step)" :key="o[0]"><option :value="String(o[0])" x-text="o[1]" :selected="String(o[0]) === step.service_offering"></option></template>
               </select>
               <p x-show="!loc(step).district" class="text-xs text-zinc-500">{% translate 'Choose a district to list the offerings of other services.' %}</p>
-              <label class="grid gap-1 text-xs font-medium text-zinc-600 sm:max-w-xs">{% translate 'SLA' %}
-                <input x-show="!external(step)" type="text" x-model="step.sla" placeholder="{% translate 'e.g. 1d 4h 30m' %}" class="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm">
-                <span x-show="external(step)" x-text="offeringRow(step)?.[4] || '—'" title="{% translate 'Total SLA of the responsible service offering' %}"
-                      class="rounded-lg border border-zinc-200 bg-zinc-100 px-2 py-1.5 text-sm text-zinc-600"></span>
-              </label>
+              <div class="grid gap-2 sm:grid-cols-2">
+                <label class="grid gap-1 text-xs font-medium text-zinc-600">{% translate 'SLA' %}
+                  <input x-show="!external(step)" type="text" x-model="step.sla" placeholder="{% translate 'e.g. 1d 4h 30m' %}" class="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm">
+                  <span x-show="external(step)" x-text="offeringRow(step)?.[4] || '—'" title="{% translate 'Total SLA of the responsible service offering' %}"
+                        class="rounded-lg border border-zinc-200 bg-zinc-100 px-2 py-1.5 text-sm text-zinc-600"></span>
+                </label>
+                <label class="grid gap-1 text-xs font-medium text-zinc-600">{% translate 'Responsible role' %}
+                  <select x-model="step.role" class="rounded-lg border border-zinc-300 bg-white px-2 py-1.5 text-sm">
+                    <option value="">{% translate 'No role' %}</option>
+                    <template x-if="step.role && !rolesFor(step).some((r) => String(r[0]) === step.role)">
+                      <option :value="step.role" x-text="unavailableRole(step.role)"></option>
+                    </template>
+                    <template x-for="r in rolesFor(step)" :key="r[0]"><option :value="String(r[0])" x-text="r[1]" :selected="String(r[0]) === step.role"></option></template>
+                  </select>
+                </label>
+              </div>
               <p x-show="external(step) && offeringRow(step)?.[6]" x-text="offeringRow(step)?.[6]"
                  class="rounded-md bg-zinc-50 px-2 py-1.5 text-xs text-zinc-600"></p>
             </fieldset>
@@ -363,12 +375,18 @@
       offeringRow(step) {
         return this.options.offerings.find((o) => String(o[0]) === step.service_offering);
       },
+      rolesFor(step) {
+        const row = this.offeringRow(step);
+        return this.options.serviceRoles[String(row ? row[3] : this.service)] || [];
+      },
+      unavailableRole(id) {
+        const role = this.options.roles.find((r) => String(r[0]) === id);
+        return (role ? role[1] : id) + " — {% translate 'not available for this service' %}";
+      },
       external(step) {
         // Any responsible offering other than "this offering": SLA (and type)
         // come from it, shown read-only, with its description.
-        const isExternal = Boolean(this.offeringRow(step));
-        if (isExternal && step.role) step.role = "";
-        return isExternal;
+        return Boolean(this.offeringRow(step));
       },
       targets(i) {
         return this.steps

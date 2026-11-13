@@ -2,7 +2,7 @@
 
 A Django **monolithic** service-management platform for a (demo) **Portuguese municipality**: `Torres Vedras, Lisboa`. It models the organisation tree, the municipal services it delivers, the people and roles who run them, and the operational day-to-day: service requests, incidents, problems, changes, offering executions, resources, KPIs/metrics and audit events.
 
-The default dataset makes the app immediately explorable — 9 municipal services, 15 demo accounts, ~24 requests, incidents, problems, changes, offering runs and metric time-series, all under a realistic `Portugal → Lisboa → Torres Vedras` hierarchy.
+The default dataset makes the app immediately explorable — 9 municipal services, 17 demo accounts, ~24 requests, incidents, problems, changes, offering runs and metric time-series, all under a realistic `Portugal → Lisboa → Torres Vedras` hierarchy.
 
 ---
 
@@ -11,7 +11,7 @@ The default dataset makes the app immediately explorable — 9 municipal service
 - **Stack**: Python 3.12 / Django 5.2 / PostgreSQL 16 / pytest. Runs locally or via Docker Compose.
 - **Shape**: a single `config/` project + 16 app packages under `apps/` — 13 domain apps plus `common` (shared helpers), `dashboard` (views only) and `profiles` (profile/settings). Listed below.
 - **Postgres is mandatory** — the org hierarchy uses the `ltree` extension (`apps/common/fields.py`), indexed with a GiST index.
-- **Authorization is centralized** — `apps/common/authorization.py` provides `can()` and `.visible_to()` queryset managers; every list/detail/create view is gated by RBAC permissions scoped to the user's organization.
+- **Authorization is centralized** — `apps/common/authorization.py` provides `can()` and `.visible_to()` queryset managers; operational data is scoped by RBAC, while every authenticated user can read the people directory globally. People write actions remain permission-gated.
 - **Docs in Portuguese**: `docs/architecture.md`, `docs/domain-model.md`, `docs/authorization.md`, `docs/er-diagram.mmd`; outstanding issues in `ISSUES.md`.
 
 ### Apps (14 domain apps + `common` + `dashboard`)
@@ -70,7 +70,7 @@ Portugal            (COUNTRY)
 | Cemitérios | Santa Maria, São Pedro e Matacães | OPERATIONAL | `p.lopes` |
 | Limpeza Urbana e Espaços Verdes | Santa Maria, São Pedro e Matacães | OPERATIONAL | `p.lopes` |
 
-> Extra service actors: `l.rodrigues` (Operations Manager) on Water Supply; `p.nunes` (Operator) on Waste Management and Road Maintenance.
+> Extra service actors: `l.rodrigues` (Operations Manager) on Water Supply; `p.nunes` (Operator) on Waste Management, Road Maintenance and Cemitérios; `a.santos` and `c.oliveira` (Operators) on Cemitérios.
 
 ### Operational samples
 
@@ -80,6 +80,15 @@ Portugal            (COUNTRY)
 - **Changes** (4): `Replace aging trunk main section` (PROPOSED), `Smart bins pilot rollout` (SCHEDULED), with EXECUTIVE approval rows.
 - **Service Offerings** (5): `Waste Collection Request` and `Water Maintenance Request` — each a `start → assign → work → verify → end` definition with transitions, plus 4 executions/tasks (running + completed).
   Cemitérios (Matacães) adds three Portuguese offerings owned by `p.lopes`: `Limpar cemitério` (on request + monthly on day 1), `Realizar um funeral` and `Realizar transladação`. Every offering's steps are chained linearly by `order`. A step can name a responsible offering of another service (`OfferingStep.service_offering`; its service is `service_offering.service`).
+- Cemitérios includes six sample executions across its three offerings, in running, waiting and completed states; completed runs include task records and action history for every manual step. Re-seeding fills missing task history without resetting executions.
+- New requests start an execution and create tasks as steps are reached. Execution details show assignees, timings and recorded action history; notifications appear in the header bell.
+- Requests linked to executions follow their execution state: pending → new, running → in progress, waiting → waiting (or failed when the current task is blocked), completed → resolved, failed → failed and cancelled → cancelled. Such requests cannot be closed independently.
+- Demo seeding creates a request for each otherwise-unassociated execution, using its creator as requester when available, and preserves existing links and execution history. `python manage.py rebuild_execution_requests --confirm-delete-all-requests` explicitly deletes all existing requests and their related records before rebuilding these links; it does not delete incidents.
+- Offering steps can specify a responsible role from the service's configured actors (or the delegated service's actors). Eligible members with scoped execution permission can claim group tasks; managers may assign or reassign them.
+- The role catalogue follows the header context: a selected service shows its active configured roles; a selected organization shows active membership roles and roles configured on visible services in its subtree. With no organization selected, it shows the global catalogue. Role definitions and their permissions remain shared.
+- Managers can edit a service offering from its detail page. Editing a published offering creates a draft version; existing executions continue to use their original version.
+- Each offering version has a configurable default request priority, initially **Very low**. New requests inherit it and display it as read-only; existing requests retain their recorded priority.
+- New requests use the signed-in user's linked person as requester and creator; an account without a linked person cannot create a request.
 - **Resources**: skip truck `TV-103`, bulk water tanker, road compactor — each assigned to field operator `p.nunes`.
 - **Metrics**: `requests_created`/`requests_resolved` with 6 months of monthly values (a "waste service health" story), plus KPI `waste_service_health` and two SLAs (240 min / 1440 min response and resolution targets on Waste Management).
 - **Events/audit**: a `request.created` Event and a `seed.default_dataset` AuditLog.
@@ -123,13 +132,19 @@ A Service is created with a **Service Manager** (`ServiceCreateForm`/`ServiceCre
 `/requests/new/` asks for a **Service** first — pre-selected from the header's service (or `?service=<pk>`) — and then one of **that service's active offerings** (required). Changing the service reloads the offering list over HTMX (`/requests/new/offerings/?service=<pk>`). There is no separate request type: the type is the offering's `ServiceOfferingType` (e.g. Manutenção, Limpeza, Serviço funerário).
 
 ### Building service offerings
-Managers with `offering.manage` create offerings at `/service-offerings/new/` (button on the list): offering fields (the offering type can be left "to be defined") plus an editable list of steps (responsible offering picked by district → municipality → parish, then step type and SLA), each with a *next* step and an optional *on error* branch; **Notification** steps hold a message for the requester. An offering starts **on request** (listed in New request) and/or **on a recurring schedule** (daily/weekly/monthly/yearly, with start/end dates). Each offering stores a **total SLA**, mirrored as a resolution SLA record listed under Analytics › SLAs (`/metrics/slas/`) (sum of the step SLAs on the normal path; a step handed to another service counts that offering's total, and its type/role come from it). SLAs are typed as durations such as `1d 4h 30m`. Each offering can also define a **request form** (text, number, date, yes/no, email, phone, choice, multiple choice, attachment, address) whose questions appear in New request when it is chosen; answers are stored on the request and attachments (≤ 10 MB) are kept under `MEDIA_ROOT` and only downloadable by users who can see the request. Offerings start as **drafts**, **Publish** makes them available to new requests (the previous active version is deprecated), and a published offering is changed through **New version**. Branches/notifications are declarative for now — there is no execution engine.
+Managers with `offering.manage` create offerings at `/service-offerings/new/` (button on the list): offering fields (the offering type can be left "to be defined") plus an editable list of steps (responsible offering picked by district → municipality → parish, then step type and SLA), each with a *next* step and an optional *on error* branch; **Notification** steps hold a message for the requester. An offering starts **on request** (listed in New request) and/or **on a recurring schedule** (daily/weekly/monthly/yearly, with start/end dates). Each offering stores a **total SLA**, mirrored as a resolution SLA record listed under Analytics › SLAs (`/metrics/slas/`) (sum of the step SLAs on the normal path; a step handed to another service counts that offering's total, and its type/role come from it). SLAs are typed as durations such as `1d 4h 30m`. Each offering can also define a **request form** (text, number, date, yes/no, email, phone, choice, multiple choice, attachment, address) whose questions appear in New request when it is chosen; answers are stored on the request and attachments (≤ 10 MB) are kept under `MEDIA_ROOT` and only downloadable by users who can see the request. Offerings start as **drafts**, **Publish** makes them available for new requests (the previous active version is deprecated), and a published offering is changed through **New version**.
+
+On request creation an execution starts on the published offering. Authorized workers start and complete tasks; managers assign them and resolve failures. **Service Offerings › Service tasks** lists active tasks with search and filters scoped to the service responsible for each step, including delegated steps. The execution log combines viewer notes with recorded task updates; delegated users only see entries for their current task. Notification steps generate in-app notifications, and scheduled offerings are not yet run automatically. To create missing current-step tasks for older active executions, run `python manage.py backfill_execution_tasks --dry-run` first, then `python manage.py backfill_execution_tasks`; use `--service-id <id>` to restrict the operation.
+
+### Permissions and protected reporting
+
+Role permissions are restricted to each membership's organization subtree and any service restrictions. `python manage.py preview_permission_policy` reports the role-policy impact before deployment. The access migration updates existing Executive and Analyst grants; back up the database and restore desired grants explicitly if rollback is required. Requesters can see the full execution log for their own requests, including notes written before this policy. The protected overview requires `dashboard.aggregate`: it shows only scoped totals of at least five, suppresses groups overlapping the user's own record access, and provides no record drill-down. Totals can still be inferred from external knowledge or comparisons across snapshots; do not use this as a formal anonymity guarantee.
 
 ### Catalog lifecycle (soft-delete)
 Organization / Service / Person / Resource / Role support **create / activate / deactivate / soft-delete** via generic lifecycle views (`apps/common/lifecycle.py`): POST-only, gated by `*.create` / `*.manage` / `*.delete`, scoped (404 outside scope). `soft_delete()` fills `deleted_at`; lists hide deleted rows via `.alive()` (seeds keep working because `get_or_create` still sees them).
 
 ### Data flow for a request
-`Request` (`requester`, `service`, `offering` → its `offering_type`, `status`, `priority`, `assigned_to`) → optional `OfferingExecution`/`OfferingTask` → comments, linked incidents → problems/changes for root cause → metrics/KPI rolled up → `Event`/`AuditLog` recorded → dashboards aggregate counts.
+`Request` (`requester`, `service`, `offering` → its `offering_type`, `status`, `priority`, `assigned_to`) → `OfferingExecution`/`OfferingTask` for new requests → comments, linked incidents → problems/changes for root cause → metrics/KPI rolled up → `Event`/`AuditLog` recorded → dashboards aggregate counts.
 
 ---
 
@@ -155,6 +170,8 @@ All demo users have password **`<username>123`** (e.g. `a.duarte` / `a.duarte123
 | `h.ferreira` | Hugo Ferreira | PROBLEM_MANAGER | Torres Vedras |
 | `i.cardoso` | Inês Cardoso | ANALYST | Torres Vedras |
 | `p.nunes` | Pedro Nunes | OPERATOR | Santa Maria, São Pedro e Matacães (+ Waste/Road actors) |
+| `a.santos` | André Santos | OPERATOR | Santa Maria, São Pedro e Matacães (+ Cemitérios actor) |
+| `c.oliveira` | Carla Oliveira | OPERATOR | Santa Maria, São Pedro e Matacães (+ Cemitérios actor) |
 
 ---
 

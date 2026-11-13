@@ -9,6 +9,7 @@ The subject that starts an execution is intentionally generic
 can all be wired without import cycles.
 """
 
+from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models, transaction
@@ -16,6 +17,7 @@ from django.db.models import Max
 from django.utils.translation import gettext_lazy as _
 
 from apps.common.models import TimeStampedModel
+from apps.requests.models import Priority
 
 
 class OfferingStatus(models.TextChoices):
@@ -74,6 +76,9 @@ class ServiceOffering(TimeStampedModel):
     name = models.CharField(_("name"), max_length=255)
     description = models.TextField(_("description"), blank=True, default="")
     version = models.PositiveIntegerField(_("version"), default=1)
+    default_priority = models.CharField(
+        _("default priority"), max_length=16, choices=Priority.choices, default=Priority.VERY_LOW
+    )
     status = models.CharField(
         _("status"), max_length=32, choices=OfferingStatus.choices, default=OfferingStatus.DRAFT
     )
@@ -195,6 +200,7 @@ class ServiceOffering(TimeStampedModel):
                 service_id=self.service_id,
                 name=self.name,
                 description=self.description,
+                default_priority=self.default_priority,
                 version=(latest or self.version) + 1,
                 status=OfferingStatus.DRAFT,
                 on_request=self.on_request,
@@ -477,6 +483,17 @@ class OfferingExecution(TimeStampedModel):
     def __str__(self):
         return f"Execution #{self.pk} ({self.offering} – {self.status})"
 
+    def save(self, *args, **kwargs):
+        from django.db import transaction
+
+        from apps.offerings.request_link import sync_request_status
+
+        fields = kwargs.get("update_fields")
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            if fields is None or {"status", "subject_type", "subject_id"} & set(fields):
+                sync_request_status(self)
+
 
 class TaskStatus(models.TextChoices):
     PENDING = "PENDING", _("Pending")
@@ -519,3 +536,62 @@ class OfferingTask(TimeStampedModel):
 
     def __str__(self):
         return f"#{self.pk} {self.title}"
+
+
+class ExecutionNote(TimeStampedModel):
+    execution = models.ForeignKey(OfferingExecution, on_delete=models.CASCADE, related_name="notes")
+    task = models.ForeignKey(
+        OfferingTask, on_delete=models.CASCADE, null=True, blank=True, related_name="notes"
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="execution_notes",
+    )
+    body = models.TextField(_("body"))
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+        indexes = [models.Index(fields=["execution", "created_at"])]
+
+
+class TaskActivity(TimeStampedModel):
+    task = models.ForeignKey(OfferingTask, on_delete=models.CASCADE, related_name="activities")
+    actor = models.ForeignKey(
+        "people.Person", on_delete=models.SET_NULL, null=True, related_name="task_activities"
+    )
+    action = models.CharField(_("action"), max_length=32)
+    detail = models.CharField(_("detail"), max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
+
+    @property
+    def action_label(self):
+        labels = {
+            "created": _("Created"),
+            "assigned": _("Assigned"),
+            "claimed": _("Claimed"),
+            "started": _("Started"),
+            "completed": _("Completed"),
+            "failed": _("Failed"),
+            "retry": _("Retry"),
+            "branch": _("Follow error branch"),
+            "notified": _("Notification sent"),
+            "resumed": _("Resumed"),
+        }
+        return labels.get(self.action, self.action)
+
+
+class Notification(TimeStampedModel):
+    recipient = models.ForeignKey(
+        "people.Person", on_delete=models.CASCADE, related_name="notifications"
+    )
+    task = models.OneToOneField(OfferingTask, on_delete=models.CASCADE, related_name="notification")
+    message = models.TextField(_("message"))
+    read_at = models.DateTimeField(_("read at"), null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        indexes = [models.Index(fields=["recipient", "read_at"])]

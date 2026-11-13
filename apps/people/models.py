@@ -18,6 +18,10 @@ class PersonType(models.TextChoices):
     EXTERNAL_SUPPLIER = "EXTERNAL_SUPPLIER", _("External Supplier")
     CITIZEN = "CITIZEN", _("Citizen")
     PARTNER = "PARTNER", _("Partner")
+    SYSTEM = "SYSTEM", _("System")
+
+
+SYSTEM_PERSON_EMAIL = "system@localhost.invalid"
 
 
 class Person(SoftDeleteModel, ActiveModel):
@@ -59,6 +63,21 @@ class Person(SoftDeleteModel, ActiveModel):
 
     def __str__(self):
         return self.full_name
+
+
+def get_system_person():
+    person, _created = Person.objects.get_or_create(
+        email=SYSTEM_PERSON_EMAIL,
+        defaults={"full_name": "Sistema", "person_type": PersonType.SYSTEM},
+    )
+    if person.person_type != PersonType.SYSTEM or person.user_id is not None:
+        raise RuntimeError(f"{SYSTEM_PERSON_EMAIL} is reserved for the non-login system person.")
+    if person.full_name != "Sistema" or not person.active or person.deleted_at is not None:
+        person.full_name = "Sistema"
+        person.active = True
+        person.deleted_at = None
+        person.save(update_fields=["full_name", "active", "deleted_at", "updated_at"])
+    return person
 
 
 class Skill(TimeStampedModel):

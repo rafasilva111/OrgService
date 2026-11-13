@@ -61,6 +61,41 @@ def test_seed_command_is_idempotent():
 
 
 @pytest.mark.django_db
+def test_seed_preserves_custom_grants_and_limits_analyst_operational_access():
+    from django.core.management import call_command
+
+    call_command("seed_rbac", verbosity=0)
+    analyst = Role.objects.get(code="ANALYST")
+    custom = Permission.objects.create(code="custom.test", label="Custom")
+    RolePermission.objects.create(role=analyst, permission=custom)
+    call_command("seed_rbac", verbosity=0)
+    codes = set(
+        analyst.rolepermissions.filter(active=True).values_list("permission__code", flat=True)
+    )
+    assert "dashboard.aggregate" in codes
+    assert "custom.test" in codes
+    assert not codes.intersection({"request.view", "incident.view", "problem.view"})
+
+
+@pytest.mark.django_db
+def test_seed_does_not_widen_a_custom_scope(make_service, org_tree):
+    from apps.access.models import GrantScope, GrantScopeType
+
+    call_command("seed_rbac", verbosity=0)
+    role = Role.objects.get(code="ANALYST")
+    grant = role.rolepermissions.get(permission__code="dashboard.aggregate")
+    grant.grant_scopes.all().delete()
+    service = make_service(org_tree["parish_a"])
+    GrantScope.objects.create(
+        role_permission=grant, scope_type=GrantScopeType.SPECIFIC_SERVICE, service=service
+    )
+    call_command("seed_rbac", verbosity=0)
+    assert list(grant.grant_scopes.values_list("scope_type", flat=True)) == [
+        GrantScopeType.SPECIFIC_SERVICE
+    ]
+
+
+@pytest.mark.django_db
 def test_service_access_lists_services(
     make_person, org_tree, make_role, make_membership, make_service, grant_service
 ):

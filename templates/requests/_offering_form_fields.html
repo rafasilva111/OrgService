@@ -1,0 +1,14 @@
+{% load i18n %}
+<div id="offering-form-fields"{% if oob %} hx-swap-oob="true"{% endif %}{% if selected_offering %} class="space-y-3"{% endif %}>
+  {% if selected_offering %}
+  <div class="grid gap-1.5">
+    <label for="offering-priority" class="text-sm font-medium text-zinc-700">{% translate 'Priority' %}</label>
+    <select id="offering-priority" disabled class="w-full rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
+      <option value="{{ selected_offering.default_priority }}" selected>{{ selected_offering.get_default_priority_display }}</option>
+    </select>
+  </div>
+  {% endif %}
+  {% if answers_form.specs %}
+  {% include "offerings/_request_form_fields.html" %}
+  {% endif %}
+</div>

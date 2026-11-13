@@ -33,6 +33,7 @@ class Change(TimeStampedModel):
 
     _AUTH_ORG_FIELD = "service__organization"
     _AUTH_SERVICE_FIELD = "service"
+    _AUTH_FALLBACK_ORG_FIELD = "organization"
 
     service = models.ForeignKey(
         "services.Service",

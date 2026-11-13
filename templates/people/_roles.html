@@ -1,0 +1,4 @@
+{% load ui %}
+{% with names=record|person_roles %}
+<span class="block max-w-64 truncate" title="{{ names|join:', ' }}">{% if names %}{{ names|join:", " }}{% else %}—{% endif %}</span>
+{% endwith %}

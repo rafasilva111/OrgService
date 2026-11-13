@@ -83,7 +83,7 @@ def infer_step_type(*, external, message, on_error):
     return StepType.TASK
 
 
-def parse_definition(raw, *, roles, offerings, own_service_id=None):
+def parse_definition(raw, *, roles, offerings, own_service_id=None, service_roles=None):
     """Validate the editor's JSON.
 
     ``roles`` / ``offerings`` are the querysets the user may pick from (the
@@ -91,10 +91,7 @@ def parse_definition(raw, *, roles, offerings, own_service_id=None):
     a ``ParseResult``; invalid values are dropped from the specs so a preview
     can still render while errors are reported per step.
 
-    A step handed to another offering (``service_offering`` set) is *external*:
-    it has no role, its type is a plain task (shown as the responsible
-    offering's type) and its SLA is that offering's total SLA.
-    ``own_service_id`` is kept for callers; the rule no longer depends on it.
+    A delegated step uses the responsible offering's SLA and service roles.
     """
     errors, step_errors = [], {}
     try:
@@ -125,22 +122,24 @@ def parse_definition(raw, *, roles, offerings, own_service_id=None):
                 service_offering = None
             if service_offering is None:
                 problems.append(_("The responsible service offering is not available."))
-        # Any responsible offering other than this one: the step's SLA (and the
-        # type shown) come from that offering and it has no role of its own.
         external = service_offering is not None
 
         role, sla = None, None
+        if item.get("role") not in (None, ""):
+            try:
+                role = role_map.get(int(item["role"]))
+            except (TypeError, ValueError):
+                role = None
+            service_id = service_offering.service_id if external else own_service_id
+            if role is None or (
+                service_roles is not None
+                and role.pk not in {r.pk for r in service_roles.get(service_id, [])}
+            ):
+                problems.append(_("The role is not available for the responsible service."))
+                role = None
         if external:
-            # Computed from the responsible offering; typed values are ignored.
             sla = service_offering.sla_minutes
         else:
-            if item.get("role") not in (None, ""):
-                try:
-                    role = role_map.get(int(item["role"]))
-                except (TypeError, ValueError):
-                    role = None
-                if role is None:
-                    problems.append(_("Unknown role."))
             try:
                 sla = parse_duration(item.get("sla"))
             except (TypeError, ValueError):

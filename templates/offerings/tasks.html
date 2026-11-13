@@ -1,0 +1,10 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n %}
+{% block title %}{% translate 'Service tasks' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% translate 'Service tasks' %}{% endblock %}
+{% block content %}
+<div class="space-y-6">
+  <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Service tasks' %}</h1>
+  {% include "core/tables/_table.html" %}
+</div>
+{% endblock content %}

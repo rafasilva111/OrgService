@@ -1,49 +1,65 @@
-"""People: directory (members of visible orgs), detail and skills."""
+"""People: global read-only directory, detail and skills."""
 
 from django import forms
-from django.db.models import Count, Prefetch
+from django.db.models import Count, Prefetch, Q
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import DetailView, ListView
 
+from apps.access.models import Role
 from apps.common.breadcrumbs import BreadcrumbsMixin
 from apps.common.lifecycle import CatalogCreateView, LifecycleActionView
-from apps.common.mixins import PermissionRequiredMixin, org_filter_choices, visible_org_ids
+from apps.common.mixins import PermissionRequiredMixin
 from apps.common.tables.config import Column, Filter, FilterKind, TableConfig
 from apps.common.tables.filters import resolve_org_subtree_path
 from apps.common.tables.views import TableView
-from apps.organizations.models import OrganizationMembership
+from apps.organizations.models import Organization, OrganizationMembership
 from apps.people.models import Person, PersonType, Skill
+from apps.services.models import Service, ServiceActor
 
 
-def _base_person_queryset(user):
-    if getattr(user, "is_superuser", False):
-        return Person.objects.all().alive()
-    member_person_ids = list(
-        OrganizationMembership.objects.filter(organization_id__in=visible_org_ids(user))
-        .values_list("person_id", flat=True)
+def _base_person_queryset(_user):
+    return Person.objects.all().alive()
+
+
+def people_organization_filter_choices(_view):
+    return [
+        (str(organization.pk), organization.name)
+        for organization in Organization.objects.alive().order_by("path").only("id", "name")
+    ]
+
+
+def people_service_filter_choices(_view):
+    return [
+        (str(service.pk), service.name)
+        for service in Service.objects.alive().order_by("name").only("id", "name")
+    ]
+
+
+def people_role_filter_choices(_view):
+    return [
+        (str(role.pk), role.name)
+        for role in Role.objects.filter(
+            Q(memberships__active=True) | Q(service_actors__active=True),
+            active=True,
+            deleted_at__isnull=True,
+        )
         .distinct()
-    )
-    return Person.objects.filter(id__in=member_person_ids).alive()
+        .order_by("name")
+        .only("id", "name")
+    ]
 
 
 class PersonDirectoryView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
     model = Person
     template_name = "people/directory.html"
     platform_codes = ("people.view",)
+    use_both_header_scopes = True
     table_config = TableConfig(
         key="people",
         columns=[
             Column("full_name", _("Name"), sortable=True, searchable=True),
             Column("email", _("Email"), sortable=True, searchable=True),
-            Column(
-                "person_type",
-                _("Type"),
-                sortable=True,
-                filter=Filter(FilterKind.CHOICE, choices=PersonType.choices),
-                template="partials/pill.html",
-            ),
-            # Not sortable/searchable: a person can belong to several
-            # organizations, and joining memberships would duplicate rows.
+            # Keep directory filters together and in the requested UX order.
             Column(
                 "active_memberships",
                 _("Organization"),
@@ -52,20 +68,60 @@ class PersonDirectoryView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
                     FilterKind.SUBTREE,
                     param="organization",
                     lookups=("memberships__organization__path",),
-                    choices_callable=org_filter_choices,
+                    choices_callable=people_organization_filter_choices,
                     subtree_resolver=resolve_org_subtree_path,
+                ),
+            ),
+            Column(
+                "service_actor_links.service.name",
+                _("Service"),
+                template="people/_services.html",
+                filter=Filter(
+                    FilterKind.CHOICE,
+                    param="service",
+                    lookup="service_actor_links__service_id",
+                    choices_callable=people_service_filter_choices,
+                ),
+            ),
+            Column(
+                "full_name",
+                _("Role"),
+                template="people/_roles.html",
+                filter=Filter(
+                    FilterKind.CHOICE,
+                    param="role",
+                    lookups=(
+                        "memberships__role_id",
+                        "service_actor_links__role_id",
+                    ),
+                    choices_callable=people_role_filter_choices,
                 ),
             ),
             Column("active", _("Active"), sortable=True, template="partials/bool.html"),
         ],
         default_sort="full_name",
         caption="People",
-        empty_headline="No people in scope",
-        empty_body="People with memberships in organizations you can see will appear here.",
+        empty_headline="No people found",
+        empty_body="People in the directory will appear here.",
         row_url_name="people:detail",
     )
     breadcrumb_title = _("Directory")
     organization_filter_fields = ("memberships__organization",)
+
+    def apply_service_filter(self, qs):
+        raw_ids = [value for value in self.request.GET.getlist("service") if value.strip()]
+        if not raw_ids and self.context_service_pk is not None:
+            raw_ids = [str(self.context_service_pk)]
+        if not raw_ids:
+            return qs
+        try:
+            service_ids = [int(value) for value in raw_ids]
+        except ValueError:
+            return qs
+        return qs.filter(
+            service_actor_links__active=True,
+            service_actor_links__service_id__in=service_ids,
+        ).distinct()
 
     def apply_organization_filter(self, qs):
         """Filter to active members in an organization subtree.
@@ -84,23 +140,42 @@ class PersonDirectoryView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
             memberships__active=True,
         ).distinct()
 
-    def resolve_filter_organization_pk(self) -> int | None:
-        """People have no service FK, so a header-selected service scopes the
-        directory to the service's organization subtree instead."""
-        pk = super().resolve_filter_organization_pk()
-        if pk is None and self.context_service_pk is not None:
-            return self.context_service_organization_pk()
-        return pk
+    def resolve_organization_path(self, pk: int) -> str | None:
+        return (
+            Organization.objects.alive()
+            .filter(pk=pk)
+            .values_list("path", flat=True)
+            .first()
+        )
 
     def get_base_queryset(self):
         return _base_person_queryset(self.request.user).prefetch_related(
             Prefetch(
                 "memberships",
-                queryset=OrganizationMembership.objects.filter(active=True)
-                .select_related("organization")
+                queryset=OrganizationMembership.objects.filter(
+                    active=True,
+                    organization__active=True,
+                    organization__deleted_at__isnull=True,
+                    role__active=True,
+                    role__deleted_at__isnull=True,
+                )
+                .select_related("organization", "role")
                 .order_by("organization__path"),
                 to_attr="active_memberships",
-            )
+            ),
+            Prefetch(
+                "service_actor_links",
+                queryset=ServiceActor.objects.filter(
+                    active=True,
+                    service__active=True,
+                    service__deleted_at__isnull=True,
+                    role__active=True,
+                    role__deleted_at__isnull=True,
+                )
+                .select_related("service", "role")
+                .order_by("service__name", "role__name"),
+                to_attr="active_service_actor_links",
+            ),
         )
 
 
@@ -119,9 +194,11 @@ class PersonDetailView(BreadcrumbsMixin, PermissionRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         person = self.object
-        ctx["memberships"] = person.memberships.filter(active=True).select_related(
-            "organization", "role"
-        )
+        ctx["memberships"] = person.memberships.filter(
+            active=True,
+            organization__active=True,
+            organization__deleted_at__isnull=True,
+        ).select_related("organization", "role")
         ctx["skills"] = person.skills.select_related("skill").order_by("-level")
         return ctx
 

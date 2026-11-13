@@ -1,18 +1,18 @@
 """Requests: table (search/filters/bulk close), detail and create."""
 
 from django import forms
-from django.core.exceptions import PermissionDenied
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.db.models import Q
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
-from django.views.generic import FormView, View
+from django.views.generic import DetailView, FormView, View
 
 from apps.common.breadcrumbs import BreadcrumbsMixin
 from apps.common.mixins import (
     CreatePermissionMixin,
-    PermissionRequiredMixin,
-    ScopedDetailView,
     selected_service_pk,
     service_filter_choices,
     user_has_permission_code,
@@ -30,10 +30,22 @@ from apps.requests.models import Priority, Request, RequestAttachment, RequestSt
 CLOSED_STATUSES = (RequestStatus.RESOLVED, RequestStatus.CLOSED, RequestStatus.CANCELLED)
 
 
+def visible_requests(user):
+    authorized = Request.objects.visible_to(user, "request.view")
+    if not user.is_authenticated or not user.is_active:
+        return authorized
+    return Request.objects.filter(
+        Q(pk__in=authorized)
+        | Q(requester__user=user, requester__active=True, requester__deleted_at__isnull=True)
+    )
+
+
 def offerings_for_service(user, service_pk):
     """Active offerings of one service the user can see (empty if not visible)."""
     if not service_pk:
         return ServiceOffering.objects.none()
+    from apps.services.models import Service
+
     return (
         ServiceOffering.objects.filter(
             service__in=visible_services(user),
@@ -41,6 +53,7 @@ def offerings_for_service(user, service_pk):
             status=OfferingStatus.ACTIVE,
             on_request=True,
         )
+        .filter(service__in=Service.objects.visible_to(user, "request.create"))
         .select_related("offering_type")
         .order_by("name", "-version")
     )
@@ -67,12 +80,17 @@ class RequestCreateForm(forms.ModelForm):
 
     class Meta:
         model = Request
-        fields = ("service", "offering", "title", "description", "priority", "requester")
+        fields = ("service", "offering", "title", "description")
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
+        from apps.services.models import Service
+
         self.fields["service"].queryset = (
-            visible_services(user).select_related("organization").order_by("name")
+            visible_services(user)
+            .filter(pk__in=Service.objects.visible_to(user, "request.create"))
+            .select_related("organization")
+            .order_by("name")
         )
         self.fields["service"].label_from_instance = lambda s: f"{s.name} — {s.organization.name}"
         self.fields["service"].widget.attrs.update(
@@ -83,8 +101,6 @@ class RequestCreateForm(forms.ModelForm):
                 "hx-swap": "innerHTML",
             }
         )
-        self.fields["requester"].queryset = Person.objects.filter(active=True).order_by("full_name")
-
         if self.is_bound:
             service_pk = self.data.get(self.add_prefix("service"))
         else:
@@ -109,7 +125,7 @@ class RequestCreateForm(forms.ModelForm):
         )
 
 
-class RequestListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
+class RequestListView(BreadcrumbsMixin, LoginRequiredMixin, TableView):
     model = Request
     template_name = "requests/index.html"
     platform_codes = ("request.view",)
@@ -172,8 +188,21 @@ class RequestListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
     service_filter_field = "service"
     organization_filter_fields = ("service__organization",)
 
+    def dispatch(self, request, *args, **kwargs):
+        if (
+            request.user.is_authenticated
+            and not user_has_permission_code(request.user, "request.view")
+            and not Request.objects.filter(
+                requester__user=request.user,
+                requester__active=True,
+                requester__deleted_at__isnull=True,
+            ).exists()
+        ):
+            raise PermissionDenied
+        return super().dispatch(request, *args, **kwargs)
+
     def get_base_queryset(self):
-        return Request.objects.visible_to(self.request.user, "request.view").select_related(
+        return visible_requests(self.request.user).select_related(
             "service", "offering", "offering__offering_type"
         )
 
@@ -198,14 +227,30 @@ class RequestListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
         return super().apply_column_filters(qs)
 
     def perform_bulk_action(self, action: str, queryset):
+        from django.contrib import messages
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.offerings.models import OfferingExecution
+
         if action != "mark_closed":
             raise PermissionDenied
-        if not user_has_permission_code(self.request.user, "request.update"):
+        if not user_has_permission_code(self.request.user, "request.close"):
             raise PermissionDenied
+        authorized = Request.objects.visible_to(self.request.user, "request.close")
+        if queryset.exclude(pk__in=authorized).exists():
+            raise PermissionDenied
+        linked_ids = OfferingExecution.objects.filter(
+            subject_type=ContentType.objects.get_for_model(Request),
+            subject_id__in=queryset.values("pk"),
+        ).values("subject_id")
+        if queryset.filter(pk__in=linked_ids).exists():
+            messages.error(
+                self.request,
+                _("Requests linked to executions cannot be closed independently."),
+            )
+            return self.redirect_to_list()
         updated = queryset.exclude(status=RequestStatus.CLOSED).update(status=RequestStatus.CLOSED)
         if updated:
-            from django.contrib import messages
-
             messages.success(self.request, f"Closed {updated} request(s).")
         return self.redirect_to_list()
 
@@ -251,6 +296,7 @@ class RequestCreateView(BreadcrumbsMixin, CreatePermissionMixin, FormView):
         (initial value or re-display after errors)."""
         ctx = super().get_context_data(**kwargs)
         selected = self._selected_offering(ctx["form"])
+        ctx["selected_offering"] = selected
         ctx["offering_steps"] = offering_steps(selected) if selected else None
         ctx["answers_form"] = getattr(self, "answers_form", None) or (
             answers_form_for(selected) if selected else None
@@ -272,13 +318,29 @@ class RequestCreateView(BreadcrumbsMixin, CreatePermissionMixin, FormView):
 
     @transaction.atomic
     def form_valid(self, form):
+        person = Person.objects.filter(user=self.request.user).first()
+        if person is None:
+            form.add_error(
+                None,
+                _("Your account must be linked to a person before creating a request."),
+            )
+            return self.form_invalid(form)
         request_obj = form.save(commit=False)
-        created_by = Person.objects.filter(user=self.request.user).first()
-        request_obj.created_by = created_by
+        request_obj.priority = form.cleaned_data["offering"].default_priority
+        request_obj.requester = person
+        request_obj.created_by = person
         request_obj.status = RequestStatus.NEW
         data, uploads = self.answers_form.answers() if self.answers_form else ({}, [])
         request_obj.form_data = data
-        request_obj.save()
+        from apps.offerings.execution import start_request_execution
+
+        try:
+            with transaction.atomic():
+                request_obj.save()
+                start_request_execution(request_obj, person)
+        except ValidationError as exc:
+            form.add_error(None, exc)
+            return self.form_invalid(form)
         for key, upload in uploads:
             attachment = RequestAttachment(
                 request=request_obj,
@@ -334,6 +396,8 @@ class RequestOfferingStepsView(CreatePermissionMixin, View):
     create_perm_code = "request.create"
 
     def get(self, request, *args, **kwargs):
+        from apps.services.models import Service
+
         try:
             pk = int(request.GET.get("offering", ""))
         except ValueError:
@@ -344,7 +408,9 @@ class RequestOfferingStepsView(CreatePermissionMixin, View):
                 service__in=visible_services(request.user),
                 status=OfferingStatus.ACTIVE,
                 on_request=True,
-            ).first()
+            )
+            .filter(service__in=Service.objects.visible_to(request.user, "request.create"))
+            .first()
             if pk is not None
             else None
         )
@@ -353,11 +419,15 @@ class RequestOfferingStepsView(CreatePermissionMixin, View):
         return render(
             request,
             "requests/_offering_selected.html",
-            {"steps": steps, "answers_form": answers_form_for(selected) if selected else None},
+            {
+                "steps": steps,
+                "selected_offering": selected,
+                "answers_form": answers_form_for(selected) if selected else None,
+            },
         )
 
 
-class RequestDetailView(BreadcrumbsMixin, ScopedDetailView):
+class RequestDetailView(BreadcrumbsMixin, LoginRequiredMixin, DetailView):
     model = Request
     template_name = "requests/detail.html"
     scope_action = "request.view"
@@ -367,22 +437,38 @@ class RequestDetailView(BreadcrumbsMixin, ScopedDetailView):
         return f"#{self.object.pk} {self.object.title}"
 
     def get_queryset(self):
-        return (
-            super()
-            .get_queryset()
-            .select_related(
-                "service", "offering", "offering__offering_type", "requester", "assigned_to"
-            )
+        return visible_requests(self.request.user).select_related(
+            "service", "offering", "offering__offering_type", "requester", "assigned_to"
         )
 
     def get_context_data(self, **kwargs):
+        from django.contrib.contenttypes.models import ContentType
+
+        from apps.offerings.models import OfferingExecution
+        from apps.offerings.views import actionable_tasks, execution_visible_services
+
         ctx = super().get_context_data(**kwargs)
         ctx["comments"] = self.object.comments.select_related("author").order_by("created_at")
         ctx["answers"] = answer_rows(self.object)
+        accessible = Q(pk__in=actionable_tasks(self.request.user).values("execution_id"))
+        if user_has_permission_code(self.request.user, "offering.view"):
+            accessible |= Q(offering__service__in=execution_visible_services(self.request.user))
+        if (
+            self.object.requester_id
+            and self.object.requester.user_id == self.request.user.pk
+            and self.object.requester.active
+            and self.object.requester.deleted_at is None
+        ):
+            accessible |= Q(pk__isnull=False)
+        ctx["execution"] = OfferingExecution.objects.filter(
+            accessible,
+            subject_type=ContentType.objects.get_for_model(Request),
+            subject_id=self.object.pk,
+        ).first()
         return ctx
 
 
-class RequestAttachmentView(PermissionRequiredMixin, View):
+class RequestAttachmentView(LoginRequiredMixin, View):
     """Download a request attachment — only for users who can see the request
     (404 otherwise, without revealing that it exists)."""
 
@@ -391,7 +477,7 @@ class RequestAttachmentView(PermissionRequiredMixin, View):
     def get(self, request, pk):
         from django.http import FileResponse, Http404
 
-        visible = Request.objects.visible_to(request.user, "request.view")
+        visible = visible_requests(request.user)
         attachment = (
             RequestAttachment.objects.filter(pk=pk, request__in=visible)
             .select_related("request")

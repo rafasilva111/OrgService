@@ -32,7 +32,8 @@ class Resource(SoftDeleteModel, ActiveModel):
     """Generic resource abstraction."""
 
     _AUTH_ORG_FIELD = "organization"
-    _AUTH_SERVICE_FIELD = None
+    _AUTH_SERVICE_FIELD = "service"
+    _AUTH_FALLBACK_ORG_FIELD = "organization"
 
     resource_type = models.CharField(
         _("resource type"),

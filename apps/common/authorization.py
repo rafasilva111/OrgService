@@ -103,6 +103,44 @@ def _role_permissions_for_membership(membership, action=None):
     return list(qs.select_related("permission").prefetch_related("grant_scopes"))
 
 
+def has_platform_scope(user, action):
+    """Whether an unrestricted root membership grants platform-wide access."""
+    from apps.access.models import GrantScopeType
+    from apps.organizations.models import Organization, OrganizationMembership
+
+    if not getattr(user, "is_authenticated", False) or not user.is_active:
+        return False
+    if user.is_superuser:
+        return True
+    roots = Organization.objects.filter(parent__isnull=True)
+    if roots.count() != 1:
+        return False
+    memberships = OrganizationMembership.objects.filter(
+        person__user=user,
+        person__active=True,
+        person__deleted_at__isnull=True,
+        active=True,
+        role__active=True,
+        role__deleted_at__isnull=True,
+        organization__in=roots,
+        organization__active=True,
+        organization__deleted_at__isnull=True,
+    ).select_related("organization", "role")
+    for membership in memberships:
+        if _service_access_ids(membership):
+            continue
+        for grant in _role_permissions_for_membership(membership, action):
+            scopes = list(grant.grant_scopes.all())
+            if not scopes or any(
+                scope.active
+                and scope.scope_type
+                in (GrantScopeType.INHERIT, GrantScopeType.ORG_SUBTREE, GrantScopeType.ALL_SERVICES)
+                for scope in scopes
+            ):
+                return True
+    return False
+
+
 def _inherit_scope_q(membership, service_field, org_field):
     """Current (pre-GrantScope) behavior for a membership."""
     if service_field:
@@ -209,10 +247,44 @@ def _org_scope_q(membership, scope, org_field):
 
 def _scope_q_for_membership(membership, scope, service_field, org_field):
     if service_field:
-        return _service_scope_q(membership, scope, service_field, _service_access_ids(membership))
+        lookup = f"{service_field}__in"
+        query = _service_scope_q(membership, scope, service_field, _service_access_ids(membership))
+        return (
+            query & Q(**{lookup: _service_ids_below_org(membership.organization)})
+            if query is not None
+            else None
+        )
     if org_field:
-        return _org_scope_q(membership, scope, org_field)
+        query = _org_scope_q(membership, scope, org_field)
+        if query is None:
+            return None
+        lookup = f"{org_field}__in"
+        query &= Q(**{lookup: _descendant_org_pks(membership.organization)})
+        allowed = _service_access_ids(membership)
+        if allowed:
+            query &= Q(**{lookup: _org_ids_for_services(allowed)})
+        return query
     return None
+
+
+def _scope_q_for_model(membership, scope, model, service_field, org_field):
+    query = _scope_q_for_membership(membership, scope, service_field, org_field)
+    fallback = getattr(model, "_AUTH_FALLBACK_ORG_FIELD", None)
+    if not fallback or not service_field or _service_access_ids(membership):
+        return query
+    from apps.access.models import GrantScopeType
+
+    if scope is not None and scope.scope_type not in (
+        GrantScopeType.INHERIT,
+        GrantScopeType.ORG_SUBTREE,
+        GrantScopeType.ALL_SERVICES,
+    ):
+        return query
+    org_query = _scope_q_for_membership(membership, scope, None, fallback)
+    if org_query is None:
+        return query
+    org_query &= Q(**{f"{service_field}__isnull": True})
+    return org_query if query is None else query | org_query
 
 
 def _service_ids_for_scope(membership, scope):
@@ -279,7 +351,7 @@ def membership_service_scope(membership):
     has_scope = False
     for role_permission in role_permissions:
         active_scopes = [s for s in role_permission.grant_scopes.all() if s.active]
-        if active_scopes:
+        if role_permission.grant_scopes.all():
             has_scope = True
             for scope in active_scopes:
                 ids |= _service_ids_for_scope(membership, scope)
@@ -290,6 +362,7 @@ def membership_service_scope(membership):
     allowed = _service_access_ids(membership)
     if allowed:
         ids &= set(allowed)
+    ids &= set(_service_ids_below_org(membership.organization).values_list("pk", flat=True))
 
     if not ids:
         return []
@@ -317,7 +390,15 @@ def authorization_scope_q(model, user, action=None):
     from apps.organizations.models import OrganizationMembership
 
     memberships = OrganizationMembership.objects.filter(
-        person__user=user, active=True
+        person__user=user,
+        person__active=True,
+        person__deleted_at__isnull=True,
+        person__user__is_active=True,
+        active=True,
+        role__active=True,
+        role__deleted_at__isnull=True,
+        organization__active=True,
+        organization__deleted_at__isnull=True,
     ).select_related("organization", "role")
 
     scopes = []
@@ -325,20 +406,22 @@ def authorization_scope_q(model, user, action=None):
         role_permissions = _role_permissions_for_membership(membership, action)
         if not role_permissions:
             if action is None:
-                query = _scope_q_for_membership(membership, None, service_field, org_field)
+                query = _scope_q_for_model(membership, None, model, service_field, org_field)
                 if query is not None:
                     scopes.append(query)
             continue
 
         for role_permission in role_permissions:
             active_scopes = [s for s in role_permission.grant_scopes.all() if s.active]
+            if not active_scopes and role_permission.grant_scopes.all():
+                continue
             if not active_scopes:
-                query = _scope_q_for_membership(membership, None, service_field, org_field)
+                query = _scope_q_for_model(membership, None, model, service_field, org_field)
                 if query is not None:
                     scopes.append(query)
                 continue
             for scope in active_scopes:
-                query = _scope_q_for_membership(membership, scope, service_field, org_field)
+                query = _scope_q_for_model(membership, scope, model, service_field, org_field)
                 if query is not None:
                     scopes.append(query)
 
@@ -362,7 +445,7 @@ class AuthorizationQuerySetMixin:
         ``action`` is a full permission code (``"request.view"``). When
         omitted it is derived from the model.
         """
-        if not user or not getattr(user, "is_authenticated", False):
+        if not user or not getattr(user, "is_authenticated", False) or not user.is_active:
             return self.none()
         if getattr(user, "is_superuser", False):
             return self.all()
@@ -415,7 +498,7 @@ def can(user, action, resource):
     checks (short-circuited through ``visible_to`` on an empty queryset is not
     meaningful for classes, so instance checks are the supported path).
     """
-    if not user or not getattr(user, "is_authenticated", False):
+    if not user or not getattr(user, "is_authenticated", False) or not user.is_active:
         return False
     if getattr(user, "is_superuser", False):
         return True

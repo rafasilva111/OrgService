@@ -75,7 +75,6 @@ def ensure_service_manager_role(base_role, service, *, key=None):
     base_permissions = list(
         base_role.rolepermissions.filter(active=True).select_related("permission")
     )
-    base_permission_ids = {rp.permission_id for rp in base_permissions}
     for base_rp in base_permissions:
         role_permission = ensure_role_permission(role, base_rp.permission)
         ensure_grant_scope(
@@ -84,12 +83,15 @@ def ensure_service_manager_role(base_role, service, *, key=None):
             service=service,
         )
 
-    role.rolepermissions.exclude(permission_id__in=base_permission_ids).delete()
     return role
 
 
 @transaction.atomic
-def ensure_org_wide_scopes(role):
+def ensure_org_wide_scopes(role, permission_codes=None):
     """Give every permission of an org-wide role the membership subtree scope."""
-    for role_permission in role.rolepermissions.filter(active=True):
-        ensure_grant_scope(role_permission, GrantScopeType.ORG_SUBTREE)
+    permissions = role.rolepermissions.filter(active=True)
+    if permission_codes is not None:
+        permissions = permissions.filter(permission__code__in=permission_codes)
+    for role_permission in permissions:
+        if not role_permission.grant_scopes.exists():
+            ensure_grant_scope(role_permission, GrantScopeType.ORG_SUBTREE)

@@ -1,2 +1,2 @@
 {% include "requests/_steps_panel.html" %}
-<div id="offering-form-fields" hx-swap-oob="true" class="mt-4 grid gap-4">{% if answers_form %}{% include "offerings/_request_form_fields.html" %}{% endif %}</div>
+{% include "requests/_offering_form_fields.html" with oob=True %}

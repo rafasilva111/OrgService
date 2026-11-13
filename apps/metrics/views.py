@@ -8,27 +8,35 @@ from apps.common.mixins import (
     PermissionRequiredMixin,
     ScopedDetailView,
     service_filter_choices,
-    visible_services,
 )
 from apps.common.tables.config import Column, Filter, FilterKind, TableConfig
 from apps.common.tables.views import TableView
 from apps.metrics.models import KPI, SLA, AggregationType, Metric, ScopeType
 
 
-def _metric_queryset(user):
-    qs = Metric.objects.all()
+def _scoped_metrics(user, queryset, *permissions):
+    from apps.common.authorization import has_platform_scope
+    from apps.services.models import Service
+
     if getattr(user, "is_superuser", False):
-        return qs
-    service_ids = list(visible_services(user).values_list("id", flat=True))
-    return qs.filter(Q(service__isnull=True) | Q(service_id__in=service_ids))
+        return queryset
+    services = Service.objects.none()
+    include_global = False
+    for permission in permissions:
+        services |= Service.objects.visible_to(user, permission)
+        include_global |= has_platform_scope(user, permission)
+    scope = Q(service__in=services)
+    if include_global:
+        scope |= Q(service__isnull=True)
+    return queryset.filter(scope)
+
+
+def _metric_queryset(user):
+    return _scoped_metrics(user, Metric.objects.all(), "metrics.view")
 
 
 def _kpi_queryset(user):
-    qs = KPI.objects.all()
-    if getattr(user, "is_superuser", False):
-        return qs
-    service_ids = list(visible_services(user).values_list("id", flat=True))
-    return qs.filter(Q(service__isnull=True) | Q(service_id__in=service_ids))
+    return _scoped_metrics(user, KPI.objects.all(), "metrics.view")
 
 
 class MetricListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
@@ -116,16 +124,18 @@ class KpiListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
         return (
             _kpi_queryset(self.request.user)
             .select_related("service")
-            .annotate(metrics_count=Count("metrics", distinct=True))
+            .annotate(
+                metrics_count=Count(
+                    "metrics",
+                    filter=Q(metrics__in=_metric_queryset(self.request.user)),
+                    distinct=True,
+                )
+            )
         )
 
 
 def _sla_queryset(user):
-    qs = SLA.objects.all()
-    if getattr(user, "is_superuser", False):
-        return qs
-    service_ids = list(visible_services(user).values_list("id", flat=True))
-    return qs.filter(Q(service__isnull=True) | Q(service_id__in=service_ids))
+    return _scoped_metrics(user, SLA.objects.all(), "metrics.view", "offering.view")
 
 
 class SlaListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):

@@ -88,6 +88,8 @@ class Column:
     template: str | None = None  # cell fragment under templates/
     width: str | None = None
     nulls_first: bool = False  # when sorting, put blank values at the top
+    # Filter-only columns still contribute a drawer filter without a table cell.
+    visible: bool = True
 
     def resolved_filter(self) -> Filter | None:
         if self.filter is None:

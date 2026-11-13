@@ -11,6 +11,7 @@ Provides:
 
 from django import forms
 from django.template import Library
+from django.template.defaultfilters import title
 from django.utils.html import format_html, format_html_join
 from django.utils.safestring import mark_safe
 
@@ -43,6 +44,7 @@ ICONS = {
     "user": '<path d="M5.121 17.804A13.937 13.937 0 0 1 12 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/>',
     "settings": '<path d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 0 1 1.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.108 1.205.166.395.506.71.93.78l.893.149c.543.09.94.56.94 1.11v1.093c0 .55-.397 1.02-.94 1.11l-.893.149c-.424.07-.764.384-.78.93-.164.398-.142.855.108 1.205l.527.737c.32.447.269 1.06-.12 1.45l-.773.774a1.125 1.125 0 0 1-1.45.12l-.737-.527c-.35-.25-.807-.272-1.205-.108-.395.166-.71.506-.78.93l-.149.893c-.09.543-.56.94-1.11.94h-1.093c-.55 0-1.02-.397-1.11-.94l-.149-.893c-.07-.424-.384-.764-.78-.93-.398-.164-.855-.142-1.205.108l-.737.527a1.125 1.125 0 0 1-1.45-.12l-.773-.774a1.125 1.125 0 0 1-.12-1.45l.527-.737c.25-.35.273-.806.108-1.205-.166-.395-.506-.71-.93-.78l-.893-.149c-.543-.09-.94-.56-.94-1.11v-1.093c0-.55.397-1.02.94-1.11l.893-.149c.424-.07.764-.384.78-.93.164-.398.142-.855-.108-1.205l-.527-.737a1.125 1.125 0 0 1 .12-1.45l.773-.774a1.125 1.125 0 0 1 1.45-.12l.737.527c.35.25.807.272 1.205.108.395-.166.71-.506.78-.93l.149-.893zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>',
     "logout": '<path d="M17 16l4-4m0 0-4-4m4 4H7m6 4v1a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h4a3 3 0 0 1 3 3v1"/>',
+    "bell": '<path d="M14.857 17H9.143M5.429 17h13.142c-.884-.96-1.571-2.297-1.571-5a5 5 0 0 0-10 0c0 2.703-.687 4.04-1.571 5zM10 19a2 2 0 0 0 4 0"/>',
     "plus": '<path d="M12 4v16m8-8H4"/>',
     "x": '<path d="M6 18L18 6M6 6l12 12"/>',
     "filter": '<path d="M3 4a1 1 0 0 1 1-1h16a1 1 0 0 1 .7 1.7L15 11.4v6.6a1 1 0 0 1-.4.8l-4 3A1 1 0 0 1 9 21v-9.6L2.3 4.7A1 1 0 0 1 3 4z"/>',
@@ -64,6 +66,13 @@ def icon(name: str, class_name: str = "size-5"):
         class_name or "size-5",
         mark_safe(body),
     )
+
+
+@register.simple_tag
+def unread_notifications(user):
+    from apps.offerings.models import Notification
+
+    return Notification.objects.filter(recipient__user=user, read_at__isnull=True).count()
 
 
 _PILL_CLASSES = {
@@ -101,6 +110,7 @@ _PILL_CLASSES = {
     "BLOCKED": "bg-red-50 text-red-700 ring-red-600/20",
     "DONE": "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
     "LOW": "bg-zinc-100 text-zinc-600 ring-zinc-500/20",
+    "VERY_LOW": "bg-zinc-100 text-zinc-600 ring-zinc-500/20",
     "MEDIUM": "bg-blue-50 text-blue-700 ring-blue-600/20",
     "HIGH": "bg-amber-50 text-amber-700 ring-amber-600/20",
     "MAJOR": "bg-red-50 text-red-700 ring-red-600/20",
@@ -129,6 +139,45 @@ def fieldvalue(obj, path: str):
         else:
             current = getattr(current, part, None)
     return current or ""
+
+
+@register.filter
+def field_display(obj, path: str):
+    """Resolve a model choice label, falling back to the existing cell value."""
+    parts = str(path).split(".")
+    current = obj
+    for part in parts[:-1]:
+        if current is None:
+            return ""
+        current = current.get(part) if isinstance(current, dict) else getattr(current, part, None)
+    if current is None:
+        return ""
+    display = getattr(current, f"get_{parts[-1]}_display", None)
+    if callable(display):
+        return display()
+    return title(fieldvalue(obj, path))
+
+
+@register.filter
+def person_services(person):
+    """Service names from a person's active service assignments."""
+    links = getattr(person, "active_service_actor_links", ())
+    return tuple(dict.fromkeys(link.service.name for link in links))
+
+
+@register.filter
+def person_roles(person):
+    """Unique active roles from a person's memberships and service assignments."""
+    memberships = getattr(person, "active_memberships", ())
+    service_links = getattr(person, "active_service_actor_links", ())
+    roles = {
+        role.pk: role.name
+        for role in (
+            *(membership.role for membership in memberships),
+            *(link.role for link in service_links),
+        )
+    }
+    return tuple(sorted(roles.values(), key=str.casefold))
 
 
 @register.filter

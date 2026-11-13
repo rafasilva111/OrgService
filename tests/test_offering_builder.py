@@ -8,6 +8,8 @@ from django.urls import reverse
 
 from apps.offerings.builder import parse_definition, save_definition, validate_graph
 from apps.offerings.models import (
+    ExecutionStatus,
+    OfferingExecution,
     OfferingStatus,
     OfferingTransition,
     ServiceOffering,
@@ -15,6 +17,8 @@ from apps.offerings.models import (
     StepType,
     TransitionOutcome,
 )
+from apps.requests.models import Priority
+from apps.services.models import ServiceActor
 
 pytestmark = pytest.mark.django_db
 
@@ -103,7 +107,10 @@ def ctx(client, make_user, make_person, make_role, make_membership, org_tree, ma
     outside = make_service(org_tree["parish_b"], "Outside")
     role = make_role(permissions=MANAGER_PERMS)
     user = make_user()
-    make_membership(make_person(user, name="Manager"), org_tree["parish_a"], role)
+    person = make_person(user, name="Manager")
+    make_membership(person, org_tree["parish_a"], role)
+    ServiceActor.objects.create(service=cemetery, role=role, person=person)
+    ServiceActor.objects.create(service=cleaning_service, role=role, person=person)
     assert client.login(username=user.username, password="x")
     return {
         "client": client,
@@ -143,6 +150,7 @@ def _post(ctx, url, plan, action="save", **fields):
         "offering_type": ctx["type"].pk,
         "on_request": "on",
         "description": "",
+        "default_priority": Priority.VERY_LOW,
         "definition": json.dumps(plan),
         "action": action,
     }
@@ -163,6 +171,7 @@ def test_create_draft_builds_steps_and_branches(ctx):
     assert response.url == reverse("offerings:edit", args=[offering.pk])
     assert offering.status == OfferingStatus.DRAFT and offering.version == 1
     assert offering.offering_type == ctx["type"]
+    assert offering.default_priority == Priority.VERY_LOW
 
     steps = list(offering.steps.order_by("order"))
     assert [s.step_type for s in steps] == [
@@ -173,9 +182,9 @@ def test_create_draft_builds_steps_and_branches(ctx):
         StepType.END,
     ]
     start, validate, burial, notify, end = steps
-    # Handed to another service: SLA/type/role come from the responsible offering.
+    # Handed to another service: SLA/type come from the offering, role from its service.
     assert burial.service_offering == ctx["cleaning"]
-    assert burial.sla_minutes == 480 and burial.responsible_role is None
+    assert burial.sla_minutes == 480 and burial.responsible_role == ctx["role"]
     assert burial.step_type == StepType.TASK
     # Total = normal path (validate + burial); the error branch (notify) is excluded.
     assert offering.sla_minutes == 480
@@ -206,6 +215,34 @@ def test_editor_reopens_draft_with_its_plan(ctx):
     assert definition[1]["next"] == "end"
 
 
+def test_offering_priority_can_be_set_and_edited(ctx):
+    create = ctx["client"].get(reverse("offerings:create")).content.decode()
+    assert '<option value="VERY_LOW" selected>' in create
+    _post(ctx, reverse("offerings:create"), _plan(ctx), default_priority="HIGH")
+    offering = ServiceOffering.objects.get(name="Realizar um funeral")
+    assert offering.default_priority == Priority.HIGH
+    detail = ctx["client"].get(reverse("offerings:detail", args=[offering.pk])).content.decode()
+    assert "Default priority: High" in detail
+    response = _post(
+        ctx, reverse("offerings:edit", args=[offering.pk]), _plan(ctx), default_priority="LOW"
+    )
+    assert response.status_code == 302
+    offering.refresh_from_db()
+    assert offering.default_priority == Priority.LOW
+
+
+def test_offering_rejects_invalid_priority(ctx):
+    response = _post(ctx, reverse("offerings:create"), _plan(ctx), default_priority="INVALID")
+    assert response.status_code == 200
+    assert not ServiceOffering.objects.filter(name="Realizar um funeral").exists()
+
+
+def test_offering_priority_labels_are_translated(ctx):
+    body = ctx["client"].get(reverse("offerings:create"), HTTP_ACCEPT_LANGUAGE="pt").content.decode()
+    assert "Prioridade predefinida" in body
+    assert "Muito baixa" in body
+
+
 def test_invalid_plan_is_redisplayed_with_step_errors(ctx):
     response = _post(ctx, reverse("offerings:create"), [{"key": "x", "name": ""}])
     assert response.status_code == 200
@@ -221,6 +258,43 @@ def test_publish_from_editor_and_published_is_read_only(ctx):
     assert ctx["client"].get(reverse("offerings:edit", args=[offering.pk])).status_code == 404
 
 
+def test_published_offering_edit_creates_draft_preserving_executions(ctx):
+    _post(ctx, reverse("offerings:create"), _plan(ctx), action="publish")
+    offering = ServiceOffering.objects.get(name="Realizar um funeral")
+    original_step = offering.steps.get(code="validate")
+    execution = OfferingExecution.objects.create(
+        offering=offering, current_step=original_step, status=ExecutionStatus.RUNNING
+    )
+    body = ctx["client"].get(reverse("offerings:detail", args=[offering.pk])).content.decode()
+    assert f'action="{reverse("offerings:new_version", args=[offering.pk])}"' in body
+    assert ">Edit</button>" in body
+    assert "Editing creates a new draft version" in body
+
+    response = ctx["client"].post(reverse("offerings:new_version", args=[offering.pk]))
+    draft = ServiceOffering.objects.get(name=offering.name, version=2)
+    assert response.url == reverse("offerings:edit", args=[draft.pk])
+    assert draft.status == OfferingStatus.DRAFT
+    assert draft.steps.get(code="validate").name == original_step.name
+    execution.refresh_from_db()
+    offering.refresh_from_db()
+    assert execution.offering == offering and execution.current_step == original_step
+    assert offering.status == OfferingStatus.ACTIVE
+
+    plan = _plan(ctx)
+    plan[0]["name"] = "Validar documentos atualizados"
+    response = _post(ctx, reverse("offerings:edit", args=[draft.pk]), plan, action="publish")
+    assert response.url == reverse("offerings:detail", args=[draft.pk])
+    execution.refresh_from_db()
+    original_step.refresh_from_db()
+    offering.refresh_from_db()
+    draft.refresh_from_db()
+    assert draft.status == OfferingStatus.ACTIVE
+    assert draft.steps.get(code="validate").name == "Validar documentos atualizados"
+    assert offering.status == OfferingStatus.DEPRECATED
+    assert execution.offering == offering and execution.current_step == original_step
+    assert original_step.name == "Validar documentação"
+
+
 def test_publish_refuses_a_broken_plan(ctx):
     plan = [{"key": "a", "name": "A", "next": "end"}, {"key": "b", "name": "Orphan"}]
     response = _post(ctx, reverse("offerings:create"), plan, action="publish")
@@ -230,12 +304,13 @@ def test_publish_refuses_a_broken_plan(ctx):
 
 
 def test_new_version_copies_plan_and_publishing_deprecates_previous(ctx):
-    _post(ctx, reverse("offerings:create"), _plan(ctx), action="publish")
+    _post(ctx, reverse("offerings:create"), _plan(ctx), action="publish", default_priority="HIGH")
     v1 = ServiceOffering.objects.get(name="Realizar um funeral")
     response = ctx["client"].post(reverse("offerings:new_version", args=[v1.pk]))
     v2 = ServiceOffering.objects.get(name="Realizar um funeral", version=2)
     assert response.url == reverse("offerings:edit", args=[v2.pk])
     assert v2.status == OfferingStatus.DRAFT
+    assert v2.default_priority == Priority.HIGH
     assert v2.steps.count() == v1.steps.count()
     assert v2.transitions.filter(outcome=TransitionOutcome.FAILURE).count() == 1
 
@@ -426,6 +501,46 @@ def test_recurrence_summary_and_next_runs():
         date(2027, 1, 31),
         date(2027, 2, 28),
     ]
+
+
+def test_offering_detail_shows_availability_in_description_without_sla_link(ctx):
+    _post(
+        ctx,
+        reverse("offerings:create"),
+        [{"key": "work", "name": "Work", "sla": "2h"}],
+        action="publish",
+        description="A clear description.",
+    )
+    offering = ServiceOffering.objects.get(name="Realizar um funeral")
+    body = ctx["client"].get(reverse("offerings:detail", args=[offering.pk])).content.decode()
+    header = body.split("A clear description.", 1)[1].split(
+        "Editing creates a new draft version", 1
+    )[0]
+    assert "How it starts" in header and "On request" in header
+    assert "Total SLA" not in header
+    assert f'{reverse("metrics:slas")}?service={offering.service_id}' not in body
+    assert "Total SLA: 2h" in body
+    assert body.count("How it starts") == 1
+
+
+def test_recurring_offering_detail_shows_next_runs_in_description(ctx):
+    _post(
+        ctx,
+        reverse("offerings:create"),
+        [{"key": "work", "name": "Work"}],
+        on_schedule="on",
+        recurrence_frequency="MONTHLY",
+        recurrence_interval="1",
+        recurrence_month_day="1",
+        recurrence_start="2026-12-01",
+        description="Recurring description.",
+    )
+    offering = ServiceOffering.objects.get(name="Realizar um funeral")
+    body = ctx["client"].get(reverse("offerings:detail", args=[offering.pk])).content.decode()
+    header = body.split("Recurring description.", 1)[1].split("Default priority", 1)[0]
+    assert "How it starts" in header
+    assert "On request" in header
+    assert "Next runs" in header
 
 
 def test_offering_needs_at_least_one_way_to_start(ctx):
@@ -621,7 +736,7 @@ def test_sla_accepts_typed_durations(ctx):
 
 
 # ------------------------------------------ external steps and the total SLA
-def test_external_step_takes_type_sla_and_no_role_from_the_offering(ctx):
+def test_external_step_takes_type_and_sla_but_retains_selected_role(ctx):
     plan = [
         {
             "key": "clean",
@@ -644,7 +759,7 @@ def test_external_step_takes_type_sla_and_no_role_from_the_offering(ctx):
         own_service_id=ctx["cemetery"].pk,
     )
     step = own.steps[0]
-    assert (step.step_type, step.role, step.sla_minutes) == (StepType.TASK, None, 480)
+    assert (step.step_type, step.role, step.sla_minutes) == (StepType.TASK, ctx["role"], 480)
     # Any chosen offering (any service) supplies the SLA; typed values are ignored.
     assert other.steps[0].sla_minutes == 480
     same_service = parse_definition(
@@ -654,10 +769,75 @@ def test_external_step_takes_type_sla_and_no_role_from_the_offering(ctx):
         own_service_id=ctx["cleaning"].service_id,
     )
     assert same_service.steps[0].sla_minutes == 480
-    assert same_service.steps[0].role is None
+    assert same_service.steps[0].role == ctx["role"]
 
     manual = _parse([{"key": "own", "name": "Own", "sla": "1h"}])  # "this offering"
     assert manual.steps[0].sla_minutes == 60
+
+
+def test_roles_are_scoped_to_the_effective_service_in_editor_and_save(ctx, make_role):
+    other_role = make_role()
+    person = ctx["cemetery"].actors.first().person
+    ServiceActor.objects.create(service=ctx["outside"], role=other_role, person=person)
+    response = ctx["client"].get(reverse("offerings:create"))
+    assert response.status_code == 200
+    assert "rolesFor(step)" in response.content.decode()
+    assert [ctx["role"].pk, ctx["role"].name] in response.context["editor_options"][
+        "serviceRoles"
+    ][str(ctx["cemetery"].pk)]
+    assert str(ctx["outside"].pk) not in response.context["editor_options"]["serviceRoles"]
+
+    plan = [{"key": "validate", "name": "Validar requerimento", "role": other_role.pk}]
+    response = _post(ctx, reverse("offerings:create"), plan)
+    assert response.status_code == 200
+    assert "The role is not available for the responsible service." in response.content.decode()
+    assert not ServiceOffering.objects.filter(name="Realizar um funeral").exists()
+
+    plan[0]["role"] = ctx["role"].pk
+    response = _post(ctx, reverse("offerings:create"), plan)
+    assert response.status_code == 302
+    offering = ServiceOffering.objects.get(name="Realizar um funeral")
+    assert offering.steps.get(code="validate").responsible_role == ctx["role"]
+    response = ctx["client"].get(reverse("offerings:edit", args=[offering.pk]))
+    assert response.context["editor_definition"][0]["role"] == ctx["role"].pk
+
+
+def test_delegated_role_must_belong_to_delegated_service(ctx, make_role):
+    own_role = make_role()
+    ServiceActor.objects.create(
+        service=ctx["cemetery"], role=own_role, person=ctx["cemetery"].actors.first().person
+    )
+    plan = [{
+        "key": "work", "name": "Work", "role": own_role.pk,
+        "service_offering": ctx["cleaning"].pk,
+    }]
+    response = _post(ctx, reverse("offerings:create"), plan)
+    assert response.status_code == 200
+    assert "The role is not available for the responsible service." in response.content.decode()
+    plan[0]["role"] = ctx["role"].pk
+    response = _post(ctx, reverse("offerings:create"), plan)
+    assert response.status_code == 302
+    assert ServiceOffering.objects.get(name="Realizar um funeral").steps.get(
+        code="work"
+    ).responsible_role == ctx["role"]
+
+
+def test_inactive_service_actor_role_is_not_available(ctx, make_role):
+    role = make_role()
+    ServiceActor.objects.create(
+        service=ctx["cemetery"],
+        role=role,
+        person=ctx["cemetery"].actors.first().person,
+        active=False,
+    )
+    response = ctx["client"].get(reverse("offerings:create"))
+    roles = response.context["editor_options"]["serviceRoles"][str(ctx["cemetery"].pk)]
+    assert [role.pk, role.name] not in roles
+    response = _post(
+        ctx, reverse("offerings:create"), [{"key": "work", "name": "Work", "role": role.pk}]
+    )
+    assert response.status_code == 200
+    assert "The role is not available for the responsible service." in response.content.decode()
 
 
 def test_total_sla_follows_the_normal_path_only(ctx):
@@ -678,6 +858,8 @@ def test_total_sla_follows_the_normal_path_only(ctx):
     assert offering.sla_minutes == 26 * 60  # 2h + 1d; the 3d error branch is excluded
     detail = ctx["client"].get(reverse("offerings:detail", args=[offering.pk])).content.decode()
     assert "Total SLA" in detail and "1d 2h" in detail
+    end_row = detail.split("<p class=\"truncate text-sm font-medium text-zinc-800\">End</p>")[1].split("</li>")[0]
+    assert end_row.index("Total SLA: 1d 2h") < end_row.index(">End</span>")
     listing = ctx["client"].get(reverse("offerings:index")).content.decode()
     assert "1d 2h" in listing
 
@@ -705,6 +887,8 @@ def test_preview_total_sla_and_editor_rows_carry_service_sla_and_type(ctx):
         .content.decode()
     )
     assert "Total SLA" in body and "8h" in body
+    end_row = body.split('<p class="truncate text-sm font-medium text-zinc-800">End</p>')[1].split("</li>")[0]
+    assert end_row.index("Total SLA: 8h") < end_row.index(">End</span>")
 
     editor = ctx["client"].get(reverse("offerings:create")).content.decode()
     options = json.loads(

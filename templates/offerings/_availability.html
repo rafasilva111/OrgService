@@ -1,5 +1,5 @@
 {% load i18n ui %}{% with summary=offering.availability_summary %}
-<div class="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+{% if inline %}<div class="text-sm text-zinc-600">{% else %}<div class="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">{% endif %}
   <h2 class="text-xs font-semibold uppercase tracking-wide text-zinc-500">{% translate 'How it starts' %}</h2>
   {% if summary %}
   <p class="mt-1 text-sm font-medium text-zinc-800">{{ summary }}</p>
@@ -9,7 +9,7 @@
   {% else %}
   <p class="mt-1 text-sm text-red-600">{% translate 'Choose at least one: on request and/or recurring.' %}</p>
   {% endif %}
-  {% if offering.sla_minutes is not None %}
+  {% if not inline and offering.sla_minutes is not None %}
   <p class="mt-2 text-sm text-zinc-700"><span class="font-medium">{% translate 'Total SLA' %}:</span> {{ offering.sla_minutes|minutes }}
     {% if offering.pk %}{% with sla=offering.slas.first %}{% if sla %}
     &middot; <a href="{% url 'metrics:slas' %}?service={{ offering.service_id }}" class="text-indigo-600 hover:text-indigo-800">{% translate 'SLA' %} {{ sla.get_scope_display|lower }}</a>{% if not sla.active %} <span class="text-xs text-zinc-500">({% translate 'inactive' %})</span>{% endif %}

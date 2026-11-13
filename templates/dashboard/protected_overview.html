@@ -1,0 +1,20 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n %}
+{% block title %}{% translate 'Protected overview' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% translate 'Protected overview' %}{% endblock %}
+{% block content %}
+<div class="space-y-6">
+  <div>
+    <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Protected overview' %}</h1>
+    <p class="mt-1 text-sm text-zinc-500">{% translate 'Aggregate totals within your reporting scope. Small or overlapping groups are suppressed.' %}</p>
+  </div>
+  <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    {% for report in reports %}
+    <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+      <h2 class="text-sm font-medium text-zinc-600">{{ report.label }}</h2>
+      <p class="mt-2 text-2xl font-semibold text-zinc-900">{% if report.value is not None %}{{ report.value }}{% else %}—{% endif %}</p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock content %}

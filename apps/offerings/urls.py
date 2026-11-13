@@ -15,5 +15,16 @@ urlpatterns = [
     path("<int:pk>/new-version/", views.OfferingNewVersionView.as_view(), name="new_version"),
     path("<int:pk>/delete/", views.OfferingDeleteDraftView.as_view(), name="delete"),
     path("executions/", views.OfferingExecutionListView.as_view(), name="executions"),
+    path("tasks/", views.OfferingTaskListView.as_view(), name="tasks"),
+    path("tasks/<int:pk>/action/", views.OfferingTaskActionView.as_view(), name="task_action"),
+    path("notifications/", views.NotificationListView.as_view(), name="notifications"),
+    path(
+        "notifications/<int:pk>/read/",
+        views.NotificationReadView.as_view(),
+        name="notification_read",
+    ),
+    path(
+        "executions/<int:pk>/", views.OfferingExecutionDetailView.as_view(), name="execution_detail"
+    ),
     path("<int:pk>/", views.ServiceOfferingDetailView.as_view(), name="detail"),
 ]

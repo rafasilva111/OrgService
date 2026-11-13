@@ -1,7 +1,7 @@
 """Access: roles, permissions and their grants."""
 
 from django import forms
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils.translation import gettext_lazy as _
 from django.views.generic import DetailView, ListView
 
@@ -11,6 +11,8 @@ from apps.common.lifecycle import CatalogCreateView, LifecycleActionView
 from apps.common.mixins import PermissionRequiredMixin
 from apps.common.tables.config import Column, TableConfig
 from apps.common.tables.views import TableView
+from apps.organizations.models import Organization, OrganizationMembership
+from apps.services.models import ServiceActor
 
 
 class RoleListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
@@ -35,7 +37,61 @@ class RoleListView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
     breadcrumb_title = _("Roles")
 
     def get_base_queryset(self):
-        return Role.objects.alive().annotate(permission_count=Count("permissions", distinct=True))
+        from apps.common.context_processors import _visible_services_list, user_organization_pks
+        from apps.common.mixins import selected_service_pk, visible_orgs
+
+        user, session = self.request.user, self.request.session
+        org_pk = (session.get("org_context") or {}).get("pk")
+        if org_pk not in user_organization_pks(user):
+            org_pk = None
+        org = Organization.objects.alive().filter(pk=org_pk).first() if org_pk is not None else None
+        if org is None:
+            org_pk = None
+        service_pk = selected_service_pk(user, session) if org_pk is not None else None
+        service_context = session.get("service_context") or {}
+        service = None
+        if service_pk is not None:
+            service = next(
+                (
+                    item
+                    for item in _visible_services_list(user, org_pk=org_pk)
+                    if item["pk"] == service_pk and item["role_code"] == service_context.get("role")
+                ),
+                None,
+            )
+
+        roles = Role.objects.alive()
+        self.role_scope = "global"
+        self.role_scope_name = ""
+        if service is not None:
+            self.role_scope, self.role_scope_name = "service", service["name"]
+            actors = ServiceActor.objects.filter(service_id=service_pk, active=True)
+            roles = roles.filter(active=True, pk__in=actors.values("role_id")).exclude(
+                code__startswith="SERVICE_MANAGER_"
+            )
+        elif org_pk is not None:
+            from apps.common.mixins import visible_services
+
+            self.role_scope, self.role_scope_name = "organization", org.name
+            organizations = visible_orgs(user).alive().filter(path__descendants=org.path)
+            services = visible_services(user).alive().filter(organization__in=organizations)
+            actors = ServiceActor.objects.filter(service__in=services, active=True)
+            memberships = OrganizationMembership.objects.filter(
+                organization__in=organizations,
+                active=True,
+                person__active=True,
+                person__deleted_at__isnull=True,
+            )
+            roles = roles.filter(active=True).filter(
+                Q(pk__in=actors.values("role_id")) | Q(pk__in=memberships.values("role_id"))
+            )
+        return roles.annotate(permission_count=Count("permissions", distinct=True))
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["role_scope"] = self.role_scope
+        context["role_scope_name"] = self.role_scope_name
+        return context
 
 
 class RoleDetailView(BreadcrumbsMixin, PermissionRequiredMixin, DetailView):

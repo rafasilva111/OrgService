@@ -30,7 +30,6 @@ from apps.common.mixins import PermissionRequiredMixin, visible_services
 from apps.incidents.models import Incident, IncidentStatus
 from apps.offerings.models import OfferingExecution, ServiceOffering
 from apps.organizations.models import Organization
-from apps.people.models import Person
 from apps.problems.models import Problem
 from apps.requests.models import Request, RequestStatus
 from apps.resources.models import Resource
@@ -242,13 +241,45 @@ def _requests_trend_chart(queryset, days=30):
 
 
 def _visible_people(user):
-    orgs = Organization.objects.visible_to(user, "organization.view")
-    return Person.objects.filter(memberships__organization__in=orgs, active=True).distinct()
+    from apps.people.views import _base_person_queryset
+
+    return _base_person_queryset(user)
 
 
 # ---------------------------------------------------------------------------
 # Executive overview
 # ---------------------------------------------------------------------------
+
+
+class ProtectedOverview(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView):
+    template_name = "dashboard/protected_overview.html"
+    platform_codes = ("dashboard.aggregate",)
+    breadcrumb_title = _("Protected overview")
+
+    def get_context_data(self, **kwargs):
+        from apps.requests.views import visible_requests
+
+        ctx = super().get_context_data(**kwargs)
+        user = self.request.user
+        domains = (
+            (_("Requests"), Request, "request.view"),
+            (_("Incidents"), Incident, "incident.view"),
+            (_("Problems"), Problem, "problem.view"),
+            (_("Changes"), Change, "change.view"),
+        )
+        reports = []
+        for label, model, permission in domains:
+            records = model.objects.visible_to(user, "dashboard.aggregate")
+            visible = (
+                visible_requests(user)
+                if model is Request
+                else model.objects.visible_to(user, permission)
+            )
+            total = records.count()
+            disclosable = total >= 5 and not records.filter(pk__in=visible).exists()
+            reports.append({"label": label, "value": total if disclosable else None})
+        ctx["reports"] = reports
+        return ctx
 
 
 class ExecutiveDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView):
@@ -314,7 +345,11 @@ class ExecutiveDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView
         changes = Change.objects.visible_to(user, "change.view")
         offerings = ServiceOffering.objects.visible_to(user, "offering.view")
         resources = Resource.objects.visible_to(user, "resource.view")
-        executions = OfferingExecution.objects.filter(offering__service__in=services)
+        from apps.offerings.views import execution_visible_services
+
+        executions = OfferingExecution.objects.filter(
+            offering__service__in=execution_visible_services(user)
+        )
 
         ctx["stats"] = [
             {
@@ -444,7 +479,12 @@ class OrganizationDashboard(BreadcrumbsMixin, PermissionRequiredMixin, TemplateV
         changes = Change.objects.visible_to(user, "change.view").filter(
             Q(service__organization_id__in=desc_ids) | Q(organization_id__in=desc_ids)
         )
-        executions = OfferingExecution.objects.filter(offering__service_id__in=service_ids)
+        from apps.offerings.views import execution_visible_services
+
+        executions = OfferingExecution.objects.filter(
+            offering__service_id__in=service_ids,
+            offering__service__in=execution_visible_services(user),
+        )
         people = (
             _visible_people(user)
             .filter(memberships__organization_id__in=desc_ids, memberships__active=True)

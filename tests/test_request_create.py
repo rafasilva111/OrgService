@@ -6,7 +6,14 @@ import re
 import pytest
 from django.urls import reverse
 
-from apps.offerings.models import OfferingStatus, ServiceOffering, ServiceOfferingType
+from apps.offerings.models import (
+    OfferingStatus,
+    OfferingStep,
+    OfferingTransition,
+    ServiceOffering,
+    ServiceOfferingType,
+    StepType,
+)
 from apps.requests.models import Request, RequestStatus
 
 pytestmark = pytest.mark.django_db
@@ -32,6 +39,17 @@ def setup(client, make_user, make_person, make_role, make_membership, org_tree, 
         status=OfferingStatus.ACTIVE,
         offering_type=funeral,
     )
+    start = OfferingStep.objects.create(
+        offering=burial, code="start", name="Start", step_type=StepType.START, order=10
+    )
+    work = OfferingStep.objects.create(
+        offering=burial, code="work", name="Work", step_type=StepType.TASK, order=20
+    )
+    end = OfferingStep.objects.create(
+        offering=burial, code="end", name="End", step_type=StepType.END, order=30
+    )
+    OfferingTransition.objects.create(offering=burial, from_step=start, to_step=work)
+    OfferingTransition.objects.create(offering=burial, from_step=work, to_step=end)
     draft = ServiceOffering.objects.create(
         service=cemetery, name="Draft offering", status=OfferingStatus.DRAFT
     )
@@ -72,6 +90,7 @@ def _select(html, name):
 def test_form_has_no_request_type_and_waits_for_a_service(setup):
     body = setup["client"].get(reverse("requests:create")).content.decode()
     assert 'name="request_type"' not in body
+    assert 'name="requester"' not in body
     offering_select = _select(body, "offering")
     assert "Select a service first" in offering_select
     assert "Limpar cemitério" not in offering_select
@@ -134,11 +153,76 @@ def test_create_request_with_offering(setup):
     assert response.status_code == 302
     assert response.url == reverse("requests:detail", args=[req.pk])
     assert req.offering == setup["burial"]
-    assert req.status == RequestStatus.NEW
+    assert req.status == RequestStatus.IN_PROGRESS
+    assert req.priority == "VERY_LOW"
+    assert req.requester == setup["person"]
+    assert req.created_by == setup["person"]
 
     detail = setup["client"].get(response.url).content.decode()
     assert "Realizar um funeral" in detail
     assert "Serviço funerário" in detail
+
+
+def test_requester_is_taken_from_session_not_submitted_data(setup, make_person):
+    other_person = make_person(name="Someone else")
+    response = setup["client"].post(
+        reverse("requests:create"),
+        {
+            "service": setup["cemetery"].pk,
+            "offering": setup["burial"].pk,
+            "title": "Session requester",
+            "requester": other_person.pk,
+        },
+    )
+    assert response.status_code == 302
+    req = Request.objects.get(title="Session requester")
+    assert req.requester == setup["person"]
+    assert req.created_by == setup["person"]
+
+
+def test_request_requires_person_linked_to_signed_in_user(setup, make_user):
+    user = make_user()
+    user.is_superuser = True
+    user.save(update_fields=["is_superuser"])
+    setup["client"].force_login(user)
+    response = setup["client"].post(
+        reverse("requests:create"),
+        {
+            "service": setup["cemetery"].pk,
+            "offering": setup["burial"].pk,
+            "title": "Missing person",
+        },
+    )
+    assert response.status_code == 200
+    assert (
+        "Your account must be linked to a person before creating a request."
+        in response.content.decode()
+    )
+    assert not Request.objects.filter(title="Missing person").exists()
+
+
+def test_request_priority_uses_offering_default_and_ignores_submitted_priority(setup):
+    setup["burial"].default_priority = "HIGH"
+    setup["burial"].save(update_fields=["default_priority"])
+    fragment = (
+        setup["client"]
+        .get(reverse("requests:offering_steps"), {"offering": setup["burial"].pk})
+        .content.decode()
+    )
+    assert '<select id="offering-priority" disabled' in fragment
+    assert '<option value="HIGH" selected>High</option>' in fragment
+
+    response = setup["client"].post(
+        reverse("requests:create"),
+        {
+            "service": setup["cemetery"].pk,
+            "offering": setup["burial"].pk,
+            "title": "Priority from offering",
+            "priority": "CRITICAL",
+        },
+    )
+    assert response.status_code == 302
+    assert Request.objects.get(title="Priority from offering").priority == "HIGH"
 
 
 def test_offering_is_required(setup):
@@ -191,6 +275,13 @@ def test_steps_panel_shows_hint_until_an_offering_is_selected(setup):
 
 def test_selecting_an_offering_loads_its_steps(setup):
     _add_steps(setup["clean"])
+    from apps.offerings.models import OfferingStep, StepType
+
+    OfferingStep.objects.create(
+        offering=setup["clean"], code="end", name="Fim", step_type=StepType.END, order=30
+    )
+    setup["clean"].sla_minutes = 480
+    setup["clean"].save(update_fields=["sla_minutes"])
     fragment = (
         setup["client"]
         .get(reverse("requests:offering_steps"), {"offering": setup["clean"].pk})
@@ -198,9 +289,32 @@ def test_selecting_an_offering_loads_its_steps(setup):
     )
     assert fragment.index("Início") < fragment.index("Executar limpeza")
     assert "SLA 8h" in fragment
+    end_row = fragment.split(">Fim</p>")[1].split("</li>")[0]
+    assert end_row.index("Total SLA: 8h") < end_row.index(">End</span>")
 
     hint = setup["client"].get(reverse("requests:offering_steps"), {"offering": ""})
     assert "Select a service offering to see its steps." in hint.content.decode()
+
+
+@pytest.mark.parametrize(("minutes", "expected"), [(0, "Total SLA: 0min"), (None, None)])
+def test_end_step_total_sla_handles_zero_and_missing(setup, minutes, expected):
+    from apps.offerings.models import OfferingStep, StepType
+
+    OfferingStep.objects.create(
+        offering=setup["clean"], code="end", name="Fim", step_type=StepType.END, order=30
+    )
+    setup["clean"].sla_minutes = minutes
+    setup["clean"].save(update_fields=["sla_minutes"])
+    fragment = (
+        setup["client"]
+        .get(reverse("requests:offering_steps"), {"offering": setup["clean"].pk})
+        .content.decode()
+    )
+    end_row = fragment.split(">Fim</p>")[1].split("</li>")[0]
+    if expected is None:
+        assert "Total SLA" not in end_row
+    else:
+        assert expected in end_row
 
 
 def test_steps_endpoint_hides_draft_and_out_of_scope_offerings(setup, org_tree, make_service):

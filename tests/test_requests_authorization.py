@@ -2,7 +2,7 @@
 
 import pytest
 
-from apps.access.models import ServiceAccess
+from apps.access.models import GrantScope, GrantScopeType, ServiceAccess
 from apps.common.authorization import authorization_scope_q, can, visible
 from apps.organizations.models import Organization
 from apps.requests.models import Request
@@ -130,3 +130,71 @@ def test_scope_subquery_matches_request_sql(request_graph, org_tree):
     sub = muni.get_descendants(include_self=True)
     assert {o.code for o in sub} == {"muni", "pa", "pb"}
     assert Request.objects.filter(scope).count() == 2
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "scope_type", [GrantScopeType.ALL_SERVICES, GrantScopeType.SPECIFIC_SERVICE]
+)
+def test_grant_scope_cannot_escape_membership_subtree(request_graph, scope_type):
+    g = request_graph
+    g["membership"].organization = g["service_a"].organization
+    g["membership"].save(update_fields=["organization"])
+    role_permission = g["membership"].role.rolepermissions.get(permission__code="request.view")
+    GrantScope.objects.create(
+        role_permission=role_permission,
+        scope_type=scope_type,
+        service=g["service_b"] if scope_type == GrantScopeType.SPECIFIC_SERVICE else None,
+    )
+    assert not can(g["operator"], "request.view", g["req_b"])
+    assert g["req_b"] not in Request.objects.visible_to(g["operator"])
+
+
+@pytest.mark.django_db
+def test_inactive_role_person_and_grant_cannot_grant_access(request_graph):
+    g = request_graph
+    role = g["membership"].role
+    role.active = False
+    role.save(update_fields=["active"])
+    assert not Request.objects.visible_to(g["operator"]).exists()
+    role.active = True
+    role.save(update_fields=["active"])
+    g["person"].active = False
+    g["person"].save(update_fields=["active"])
+    assert not Request.objects.visible_to(g["operator"]).exists()
+    g["person"].active = True
+    g["person"].save(update_fields=["active"])
+    rp = role.rolepermissions.get(permission__code="request.view")
+    GrantScope.objects.create(
+        role_permission=rp, scope_type=GrantScopeType.ORG_SUBTREE, active=False
+    )
+    assert not Request.objects.visible_to(g["operator"]).exists()
+
+
+@pytest.mark.django_db
+def test_bulk_close_requires_close_permission_in_same_service(request_graph, client):
+    from django.urls import reverse
+
+    graph = request_graph
+    member = graph["membership"]
+    role = member.role
+    role.permissions.add(
+        *[role.permissions.model.objects.get_or_create(code="request.close")[0]],
+        through_defaults={"active": True},
+    )
+    close_grant = role.rolepermissions.get(permission__code="request.close")
+    GrantScope.objects.create(
+        role_permission=close_grant,
+        scope_type=GrantScopeType.SPECIFIC_SERVICE,
+        service=graph["service_a"],
+    )
+    client.force_login(graph["operator"])
+    response = client.post(
+        reverse("requests:index"),
+        {"action": "mark_closed", "ids": [graph["req_a"].pk, graph["req_b"].pk]},
+    )
+    assert response.status_code == 403
+    graph["req_a"].refresh_from_db()
+    graph["req_b"].refresh_from_db()
+    assert graph["req_a"].status != "CLOSED"
+    assert graph["req_b"].status != "CLOSED"

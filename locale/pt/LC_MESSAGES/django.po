@@ -13,6 +13,30 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgid "Responsible role"
+msgstr "Grupo responsável"
+
+msgid "No role"
+msgstr "Sem grupo"
+
+msgid "not available for this service"
+msgstr "não disponível para este serviço"
+
+msgid "The role is not available for the responsible service."
+msgstr "O grupo não está disponível para o serviço responsável."
+
+msgid "Claim task"
+msgstr "Assumir tarefa"
+
+msgid "Claimed"
+msgstr "Assumido"
+
+msgid "This task is not assigned to a group."
+msgstr "Esta tarefa não está atribuída a um grupo."
+
+msgid "This task has already been claimed or assigned."
+msgstr "Esta tarefa já foi assumida ou atribuída."
+
 msgid "%(counter)s active membership bound to organizations you can see."
 msgid_plural ""
 "%(counter)s active memberships bound to organizations you can see."
@@ -449,6 +473,129 @@ msgstr "Eventos"
 msgid "Executions"
 msgstr "Execuções"
 
+msgid "Execution"
+msgstr "Execução"
+
+msgid "Execution #%(number)s"
+msgstr "Execução n.º %(number)s"
+
+msgid "Current step"
+msgstr "Passo atual"
+
+msgid "People shown are task assignees; completed actions are not recorded separately."
+msgstr "As pessoas apresentadas são as responsáveis pelas tarefas; as ações concluídas não são registadas separadamente."
+
+msgid "No task recorded for this step."
+msgstr "Não existe nenhuma tarefa registada para este passo."
+
+msgid "Notifications"
+msgstr "Notificações"
+
+msgid "Mark as read"
+msgstr "Marcar como lida"
+
+msgid "No notifications yet."
+msgstr "Ainda não existem notificações."
+
+msgid "Service tasks"
+msgstr "Tarefas dos serviços"
+
+msgid "No active tasks in your services."
+msgstr "Não existem tarefas ativas nos seus serviços."
+
+msgid "Task history records the people who performed each action."
+msgstr "O histórico da tarefa regista as pessoas que realizaram cada ação."
+
+msgid "Deadline"
+msgstr "Prazo"
+
+msgid "Select an eligible person"
+msgstr "Selecione uma pessoa elegível"
+
+msgid "Assign"
+msgstr "Atribuir"
+
+msgid "Reassign"
+msgstr "Reatribuir"
+
+msgid "This task is already assigned to that person."
+msgstr "Esta tarefa já está atribuída a essa pessoa."
+
+msgid "Complete"
+msgstr "Concluir"
+
+msgid "Fail"
+msgstr "Assinalar falha"
+
+msgid "Retry"
+msgstr "Tentar novamente"
+
+msgid "Follow error branch"
+msgstr "Seguir ramo de erro"
+
+msgid "Resume"
+msgstr "Retomar"
+
+msgid "Resumed"
+msgstr "Retomada"
+
+msgid "Notification sent"
+msgstr "Notificação enviada"
+
+msgid "Your account must be linked to a person to perform this action."
+msgstr "A sua conta tem de estar associada a uma pessoa para realizar esta ação."
+
+msgid "This step has no valid transition for the chosen outcome."
+msgstr "Este passo não tem uma transição válida para o resultado escolhido."
+
+msgid "A transition points outside this offering."
+msgstr "Uma transição aponta para fora desta oferta."
+
+msgid "The offering contains an automatic step cycle."
+msgstr "A oferta contém um ciclo de passos automáticos."
+
+msgid "The notification requires a requester and a message."
+msgstr "A notificação requer um requerente e uma mensagem."
+
+msgid "Unsupported execution step type."
+msgstr "Tipo de passo de execução não suportado."
+
+msgid "This offering is not available for requests."
+msgstr "Esta oferta não está disponível para pedidos."
+
+msgid "This offering must have exactly one start step."
+msgstr "Esta oferta tem de ter exatamente um passo de início."
+
+msgid "This task is no longer the current step."
+msgstr "Esta tarefa já não corresponde ao passo atual."
+
+msgid "This execution is waiting for a manager decision."
+msgstr "Esta execução aguarda uma decisão do responsável."
+
+msgid "This task cannot be resumed."
+msgstr "Esta tarefa não pode ser retomada."
+
+msgid "This task cannot be assigned now."
+msgstr "Esta tarefa não pode ser atribuída agora."
+
+msgid "Choose an eligible person."
+msgstr "Escolha uma pessoa elegível."
+
+msgid "This task cannot be started by you."
+msgstr "Não pode iniciar esta tarefa."
+
+msgid "This task cannot be completed by you."
+msgstr "Não pode concluir esta tarefa."
+
+msgid "Choose a valid transition."
+msgstr "Escolha uma transição válida."
+
+msgid "This task is not awaiting a decision."
+msgstr "Esta tarefa não está à espera de uma decisão."
+
+msgid "Unknown task action."
+msgstr "Ação de tarefa desconhecida."
+
 msgid "Executive Overview"
 msgstr "Visão Executiva"
 
@@ -600,6 +747,9 @@ msgstr "Posição atual nas organizações e serviços que pode ver."
 
 msgid "Low"
 msgstr "Baixo"
+
+msgid "Very low"
+msgstr "Muito baixa"
 
 msgid "Major"
 msgstr "Maior"
@@ -1076,6 +1226,15 @@ msgstr "Anterior"
 
 msgid "priority"
 msgstr "prioridade"
+
+msgid "Your account must be linked to a person before creating a request."
+msgstr "A sua conta tem de estar associada a uma pessoa para criar um pedido."
+
+msgid "default priority"
+msgstr "prioridade predefinida"
+
+msgid "Default priority"
+msgstr "Prioridade predefinida"
 
 msgid "Priority"
 msgstr "Prioridade"
@@ -1802,6 +1961,9 @@ msgstr "Rascunho guardado."
 msgid "Edit"
 msgstr "Editar"
 
+msgid "Editing creates a new draft version; existing executions remain unchanged until and after publication."
+msgstr "Ao editar, é criada uma nova versão em rascunho; as execuções existentes permanecem inalteradas antes e depois da publicação."
+
 msgid "Edit %(name)s v%(version)s"
 msgstr "Editar %(name)s v%(version)s"
 
@@ -2263,3 +2425,40 @@ msgstr "campos do formulário do pedido"
 
 msgid "size (bytes)"
 msgstr "tamanho (bytes)"
+msgid "Execution log"
+msgstr "Registo da execução"
+
+msgid "Notes and recorded task updates."
+msgstr "Notas e atualizações registadas das tarefas."
+
+msgid "Only entries for your current task are shown."
+msgstr "São apresentadas apenas as entradas da sua tarefa atual."
+
+msgid "No notes or updates yet."
+msgstr "Ainda não existem notas ou atualizações."
+
+msgid "Add a note"
+msgstr "Adicionar uma nota"
+
+msgid "Post note"
+msgstr "Publicar nota"
+
+msgid "Note"
+msgstr "Nota"
+
+msgid "Unknown actor"
+msgstr "Autor desconhecido"
+
+msgid "Notes are shared with the current task team when a task is active."
+msgstr "As notas são partilhadas com a equipa da tarefa atual quando existe uma tarefa ativa."
+
+msgid "Protected overview"
+msgstr "Visão geral protegida"
+
+msgid "Aggregate totals within your reporting scope. Small or overlapping groups are suppressed."
+msgstr "Totais agregados no seu âmbito de reporte. Grupos pequenos ou sobrepostos são ocultados."
+msgid "Requests linked to executions cannot be closed independently."
+msgstr "Os pedidos associados a execuções não podem ser fechados de forma independente."
+
+msgid "This request already has an execution."
+msgstr "Este pedido já tem uma execução."

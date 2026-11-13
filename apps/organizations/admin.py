@@ -76,6 +76,18 @@ class OrganizationMembershipAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
     actions = (activate_selected, deactivate_selected)
 
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_active and request.user.is_superuser
+
+    def has_add_permission(self, request):
+        return request.user.is_active and request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_active and request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_active and request.user.is_superuser
+
 
 @admin.register(OrganizationUnit)
 class OrganizationUnitAdmin(admin.ModelAdmin):

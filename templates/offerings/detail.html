@@ -17,6 +17,8 @@
         {{ offering.service.name }} &middot; {% if offering.offering_type %}{{ offering.offering_type.name }}{% else %}{% translate 'To be defined' %}{% endif %}
       </p>
       <p class="max-w-2xl text-sm text-zinc-600">{% if offering.description %}{{ offering.description }}{% else %}{% translate 'No description provided.' %}{% endif %}</p>
+      {% include "offerings/_availability.html" with inline=True %}
+      <p class="text-sm text-zinc-600">{% translate 'Default priority' %}: {{ offering.get_default_priority_display }}</p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
       {% if can_manage %}
@@ -30,13 +32,17 @@
         </form>
         {% else %}
         <form method="post" action="{% url 'offerings:new_version' offering.pk %}">{% csrf_token %}
-          <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700">{% translate 'New version' %}</button>
+          <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700">{% translate 'Edit' %}</button>
         </form>
         {% endif %}
       {% endif %}
       <a href="{% url 'offerings:index' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50">&larr; {% translate 'Service Offerings' %}</a>
     </div>
   </div>
+
+  {% if can_manage and not offering.is_editable %}
+  <p class="text-sm text-zinc-500">{% translate 'Editing creates a new draft version; existing executions remain unchanged until and after publication.' %}</p>
+  {% endif %}
 
   {% if versions.count > 1 %}
   <div class="rounded-lg border border-zinc-200 bg-white p-3 shadow-sm">
@@ -50,12 +56,11 @@
   </div>
   {% endif %}
 
-  {% include "offerings/_availability.html" %}
-
   {% include "offerings/_steps.html" %}
 
   {% include "offerings/_request_form_preview.html" %}
 
+  {% if can_view_executions %}
   <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
     <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
       <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Recent executions' %}</h2>
@@ -64,7 +69,7 @@
     <ul class="divide-y divide-zinc-100">
       {% for e in executions %}
       <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-        <span class="min-w-0 flex-1 truncate text-zinc-700">#{{ e.pk }} &middot; {{ e.created_by|default:"—" }}</span>
+        <a href="{% url 'offerings:execution_detail' e.pk %}" class="min-w-0 flex-1 truncate font-medium text-indigo-600 hover:text-indigo-800">#{{ e.pk }} &middot; {{ e.created_by|default:"—" }}</a>
         <span class="shrink-0 text-xs text-zinc-500">{{ e.started_at|date:"M j, Y H:i"|default:"not started" }}</span>
         <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ e.status|pill_class }}">{{ e.get_status_display }}</span>
       </li>
@@ -73,5 +78,6 @@
       {% endfor %}
     </ul>
   </div>
+  {% endif %}
 </div>
 {% endblock content %}

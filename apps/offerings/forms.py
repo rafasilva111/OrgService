@@ -32,6 +32,24 @@ def step_role_choices():
     )
 
 
+def service_step_roles(services):
+    """Active shared roles configured on the given services through service actors."""
+    from apps.services.models import ServiceActor
+
+    roles = {}
+    actors = (
+        ServiceActor.objects.filter(
+            service__in=services, active=True, role__active=True, role__deleted_at__isnull=True
+        )
+        .exclude(role__code__startswith="SERVICE_MANAGER_")
+        .select_related("role")
+        .order_by("role__name", "role_id")
+    )
+    for actor in actors:
+        roles.setdefault(actor.service_id, {})[actor.role_id] = actor.role
+    return {service_id: list(by_id.values()) for service_id, by_id in roles.items()}
+
+
 def responsible_offering_choices(user):
     """ACTIVE offerings (of any service the user can see) a step can hand off to."""
     return (
@@ -139,6 +157,7 @@ class ServiceOfferingForm(forms.ModelForm):
             "name",
             "offering_type",
             "description",
+            "default_priority",
             "on_request",
             "on_schedule",
             *RECURRENCE_FIELDS,

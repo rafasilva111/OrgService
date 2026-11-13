@@ -123,6 +123,33 @@ def test_forbidden_page_uses_branded_template(client, make_user, make_member, or
     assert "Back to dashboard" in response.content.decode()
 
 
+def test_any_authenticated_user_can_view_all_people_without_write_permissions(
+    client, make_user, make_person, org_tree
+):
+    user = make_user("people_reader")
+    person_a = make_person(name="Person Parish A")
+    person_b = make_person(name="Person Parish B")
+    OrganizationMembership.objects.create(
+        person=person_a,
+        organization=org_tree["parish_a"],
+        role=Role.objects.create(code="people_reader_a", name="Reader A"),
+    )
+    OrganizationMembership.objects.create(
+        person=person_b,
+        organization=org_tree["parish_b"],
+        role=Role.objects.create(code="people_reader_b", name="Reader B"),
+    )
+    client.force_login(user)
+
+    directory = client.get(reverse("people:directory"))
+    assert directory.status_code == 200
+    assert "Person Parish A" in directory.content.decode()
+    assert "Person Parish B" in directory.content.decode()
+    assert client.get(reverse("people:detail", args=[person_b.pk])).status_code == 200
+    assert client.get(reverse("people:skills")).status_code == 200
+    assert client.get(reverse("people:create")).status_code == 403
+
+
 # ---------------------------------------------------------------------------
 # Superuser renders every list page
 # ---------------------------------------------------------------------------
@@ -300,7 +327,7 @@ def test_request_bulk_mark_closed(client, make_user, make_member, org_tree, make
     req2 = Request.objects.create(service=service, title="B", status=RequestStatus.NEW)
 
     user = make_user("closer")
-    make_member(user, org_tree["parish_a"], "request.view", "request.update")
+    make_member(user, org_tree["parish_a"], "request.view", "request.close")
     client.force_login(user)
 
     response = client.post(

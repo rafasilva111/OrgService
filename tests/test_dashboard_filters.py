@@ -14,6 +14,7 @@ from django.urls import reverse
 
 from apps.organizations.models import Organization
 from apps.requests.models import Request, RequestStatus
+from apps.services.models import ServiceActor
 
 pytestmark = pytest.mark.django_db
 
@@ -1140,14 +1141,29 @@ def test_lists_header_service_prefills_its_organization(
     assert f'<option value="{org_tree["parish_a"].pk}" selected>' in body
 
 
-def test_people_header_service_scopes_to_its_organization(
+def test_people_directory_uses_header_service_and_organization_as_filters(
     client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):
-    """People have no service FK: a header service scopes them to its org subtree."""
+    """Header context prefills both people filters without restricting global access."""
     target = make_service(org_tree["parish_a"], "People Svc A")
+    other_service = make_service(org_tree["parish_b"], "People Svc B")
+    extra_service = make_service(org_tree["parish_a"], "People Svc C")
     member_role = make_role(code="peoplemember")
-    make_membership(make_person(name="Alice Parish A"), org_tree["parish_a"], member_role)
-    make_membership(make_person(name="Bruno Parish B"), org_tree["parish_b"], member_role)
+    other_role = make_role(code="peopleother")
+    member_role.name = "People Member"
+    member_role.save(update_fields=["name"])
+    other_role.name = "Other Role"
+    other_role.save(update_fields=["name"])
+    alice = make_person(name="Alice Parish A")
+    bruno = make_person(name="Bruno Parish B")
+    carol = make_person(name="Carol Municipality")
+    make_membership(alice, org_tree["parish_a"], member_role)
+    make_membership(bruno, org_tree["parish_b"], member_role)
+    make_membership(carol, org_tree["municipality"], other_role)
+    ServiceActor.objects.create(service=target, role=member_role, person=alice)
+    ServiceActor.objects.create(service=extra_service, role=other_role, person=alice)
+    ServiceActor.objects.create(service=other_service, role=member_role, person=bruno)
+    ServiceActor.objects.create(service=target, role=other_role, person=carol)
 
     user = _filter_member(
         make_user,
@@ -1162,26 +1178,64 @@ def test_people_header_service_scopes_to_its_organization(
 
     body = client.get(reverse("people:directory")).content.decode()
     assert '<select name="organization"' in body
+    assert '<select name="service"' in body
+    assert '<select name="role"' in body
+    assert body.index('<select name="organization"') < body.index('<select name="service"')
+    assert body.index('<select name="service"') < body.index('<select name="role"')
     assert "Alice Parish A" in body
     assert "Bruno Parish B" in body
+    assert "People Svc A" in body
+    assert "People Svc B" in body
+    assert 'title="People Svc A, People Svc C"' in body
+    assert "People Member" in body
+    assert "Other Role" in body
+    assert 'title="People Member, Other Role"' in body
+    assert '<th class="px-4 py-3 whitespace-nowrap">Type</th>' not in body
 
     _set_header_scope(client, org_tree["municipality"], target)
     body = client.get(reverse("people:directory")).content.decode()
+    assert f'<option value="{target.pk}" selected>' in body
+    assert f'<option value="{org_tree["municipality"].pk}" selected>' in body
     assert "Alice Parish A" in body
     assert "Bruno Parish B" not in body
-    assert f'<option value="{org_tree["parish_a"].pk}" selected>' in body
 
-    # An explicit empty organization opts out of the header scope ("All").
-    body = client.get(reverse("people:directory"), {"organization": ""}).content.decode()
+    # Explicit empty filters opt out of both header selections.
+    body = client.get(
+        reverse("people:directory"), {"service": "", "organization": ""}
+    ).content.decode()
     assert "Alice Parish A" in body
     assert "Bruno Parish B" in body
 
-    # The drawer dropdown filters the subtree directly.
+    # The drawer's organization filter can be changed independently.
     body = client.get(
-        reverse("people:directory"), {"organization": org_tree["parish_b"].pk}
+        reverse("people:directory"),
+        {"service": "", "organization": org_tree["parish_b"].pk},
     ).content.decode()
     assert "Alice Parish A" not in body
     assert "Bruno Parish B" in body
+
+    # The service filter also works independently of the header context.
+    body = client.get(
+        reverse("people:directory"), {"service": target.pk, "organization": ""}
+    ).content.decode()
+    assert "Alice Parish A" in body
+    assert "Bruno Parish B" not in body
+
+    # Role filtering matches either organization membership roles or service roles.
+    body = client.get(
+        reverse("people:directory"),
+        {"service": "", "organization": "", "role": member_role.pk},
+    ).content.decode()
+    assert "Alice Parish A" in body
+    assert "Bruno Parish B" in body
+    assert "Carol Municipality" not in body
+
+    body = client.get(
+        reverse("people:directory"),
+        {"service": "", "organization": "", "role": other_role.pk},
+    ).content.decode()
+    assert "Carol Municipality" in body
+    assert "Alice Parish A" not in body
 
 
 def test_resources_organization_filter_matches_direct_or_service_org(

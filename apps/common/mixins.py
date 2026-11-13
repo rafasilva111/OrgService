@@ -16,18 +16,30 @@ from django.views.generic import DetailView, ListView, View
 
 
 def user_has_permission_code(user, code: str) -> bool:
-    from apps.organizations.models import OrganizationMembership
+    from apps.access.models import RolePermission
 
-    if not user or not getattr(user, "is_authenticated", False):
+    if not user or not getattr(user, "is_authenticated", False) or not user.is_active:
         return False
+    if code == "people.view":
+        return True
     if getattr(user, "is_superuser", False):
         return True
-    return OrganizationMembership.objects.filter(
+    grants = RolePermission.objects.filter(
+        permission__code=code,
         active=True,
-        person__user=user,
-        role__rolepermissions__permission__code=code,
-        role__rolepermissions__active=True,
-    ).exists()
+        role__memberships__active=True,
+        role__memberships__person__user=user,
+        role__memberships__person__active=True,
+        role__memberships__person__deleted_at__isnull=True,
+        role__active=True,
+        role__deleted_at__isnull=True,
+        role__memberships__organization__active=True,
+        role__memberships__organization__deleted_at__isnull=True,
+    ).prefetch_related("grant_scopes")
+    return any(
+        not grant.grant_scopes.all() or any(scope.active for scope in grant.grant_scopes.all())
+        for grant in grants
+    )
 
 
 def user_has_any_permission(user, codes) -> bool:
@@ -41,7 +53,7 @@ def user_has_scoped_permission(user, code: str, *, service=None, organization=No
     ``GrantScope``/``ServiceAccess`` reach. It is the write-side counterpart of
     ``Model.objects.visible_to``.
     """
-    if not user or not getattr(user, "is_authenticated", False):
+    if not user or not getattr(user, "is_authenticated", False) or not user.is_active:
         return False
     if getattr(user, "is_superuser", False):
         return True

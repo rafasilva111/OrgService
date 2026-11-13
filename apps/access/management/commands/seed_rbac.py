@@ -30,6 +30,7 @@ PERMISSIONS = [
     ("resource.manage", "Manage resource", "resources"),
     ("metrics.view", "View metrics", "metrics"),
     ("metrics.export", "Export metrics", "metrics"),
+    ("dashboard.aggregate", "View protected aggregate reports", "dashboard"),
     ("change.view", "View change", "changes"),
     ("change.approve", "Approve change", "changes"),
     ("change.manage", "Manage change", "changes"),
@@ -66,8 +67,7 @@ ROLES = {
         "people.manage",
         "people.create",
         "people.delete",
-        "metrics.view",
-        "metrics.export",
+        "dashboard.aggregate",
         "change.approve",
         "audit.view",
         "role.view",
@@ -93,6 +93,7 @@ ROLES = {
         "problem.view",
         "problem.manage",
         "offering.view",
+        "offering.execute",
         "offering.manage",
         "resource.view",
         "resource.manage",
@@ -157,11 +158,7 @@ ROLES = {
         "service.view",
     ],
     "ANALYST": [
-        "request.view",
-        "incident.view",
-        "problem.view",
-        "metrics.view",
-        "metrics.export",
+        "dashboard.aggregate",
         "service.view",
     ],
     "SUPPLIES_MANAGER": [
@@ -199,9 +196,21 @@ class Command(BaseCommand):
                     permission=perms[pcode],
                     defaults={"active": True},
                 )
-            role.rolepermissions.exclude(permission__code__in=desired_permission_codes).delete()
+            retired = {
+                "EXECUTIVE": {"metrics.view", "metrics.export"},
+                "ANALYST": {
+                    "request.view",
+                    "incident.view",
+                    "problem.view",
+                    "metrics.view",
+                    "metrics.export",
+                },
+            }
+            role.rolepermissions.filter(
+                permission__code__in=retired.get(code, set()) - desired_permission_codes
+            ).delete()
             if code in ORG_WIDE_ROLE_CODES:
-                ensure_org_wide_scopes(role)
+                ensure_org_wide_scopes(role, perm_codes)
 
         self.stdout.write(
             self.style.SUCCESS(

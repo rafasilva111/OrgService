@@ -31,6 +31,11 @@ def navigation(request):
                 continue
             if item.requires_staff and not is_staff:
                 continue
+            if item.permission:
+                from apps.common.mixins import user_has_permission_code
+
+                if not user_has_permission_code(request.user, item.permission):
+                    continue
             url = _resolve(item.url_name)
             if item.url_name == "dashboard":
                 url = _overview_url(request) or url
@@ -231,7 +236,15 @@ def _visible_services_list(user, org_pk=None):
         .values_list("pk", flat=True)
     )
     seen, out = set(), []
-    rows = person.memberships.select_related("organization", "role").filter(active=True)
+    if not user.is_active or not person.active or person.deleted_at is not None:
+        return []
+    rows = person.memberships.select_related("organization", "role").filter(
+        active=True,
+        role__active=True,
+        role__deleted_at__isnull=True,
+        organization__active=True,
+        organization__deleted_at__isnull=True,
+    )
     if org_pk is not None:
         rows = rows.filter(organization_id=org_pk)
     for m in rows.order_by("organization__name", "role__name"):

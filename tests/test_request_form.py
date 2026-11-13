@@ -3,6 +3,7 @@ Novo Pedido answers and attachments."""
 
 import json
 from datetime import date
+from html.parser import HTMLParser
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -148,6 +149,19 @@ def world(client, make_user, make_person, make_role, make_membership, org_tree, 
     funeral = ServiceOffering.objects.create(
         service=cemetery, name="Realizar um funeral", status=OfferingStatus.ACTIVE
     )
+    from apps.offerings.models import OfferingStep, OfferingTransition, StepType
+
+    start = OfferingStep.objects.create(
+        offering=funeral, code="start", name="Start", step_type=StepType.START, order=10
+    )
+    work = OfferingStep.objects.create(
+        offering=funeral, code="work", name="Work", step_type=StepType.TASK, order=20
+    )
+    end = OfferingStep.objects.create(
+        offering=funeral, code="end", name="End", step_type=StepType.END, order=30
+    )
+    OfferingTransition.objects.create(offering=funeral, from_step=start, to_step=work)
+    OfferingTransition.objects.create(offering=funeral, from_step=work, to_step=end)
     for order, (key, label, ftype, required, options) in enumerate(
         [
             ("nome", "Nome do falecido", T.TEXT, True, []),
@@ -202,6 +216,32 @@ def _post_request(world, **extra):
 
 
 # ------------------------------------------------------------- Novo Pedido
+def _request_fieldset_names(body):
+    class FieldsetParser(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.depth = 0
+            self.names = set()
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "fieldset":
+                if self.depth:
+                    self.depth += 1
+                elif attrs.get("class") == "mt-4 space-y-3 rounded-lg border border-zinc-200 p-4":
+                    self.depth = 1
+            elif self.depth and attrs.get("name"):
+                self.names.add(attrs["name"])
+
+        def handle_endtag(self, tag):
+            if tag == "fieldset" and self.depth:
+                self.depth -= 1
+
+    parser = FieldsetParser()
+    parser.feed(body)
+    return parser.names
+
+
 def test_choosing_an_offering_swaps_its_questions_into_the_form(world):
     body = (
         world["client"]
@@ -210,6 +250,7 @@ def test_choosing_an_offering_swaps_its_questions_into_the_form(world):
     )
     assert '<div id="offering-form-fields" hx-swap-oob="true"' in body
     assert 'name="q_nome"' in body and 'name="q_certidao"' in body
+    assert 'name="title"' not in body and 'name="description"' not in body
     assert 'type="date"' in body
 
     cleared = (
@@ -219,11 +260,55 @@ def test_choosing_an_offering_swaps_its_questions_into_the_form(world):
     )
     assert '<div id="offering-form-fields" hx-swap-oob="true"' in cleared
     assert 'name="q_nome"' not in cleared
+    assert "<fieldset" not in cleared
+
+    empty_offering = ServiceOffering.objects.create(
+        service=world["cemetery"], name="No questions", status=OfferingStatus.ACTIVE
+    )
+    empty = (
+        world["client"]
+        .get(reverse("requests:offering_steps"), {"offering": empty_offering.pk})
+        .content.decode()
+    )
+    assert '<div id="offering-form-fields" hx-swap-oob="true"' in empty
+    assert '<option value="VERY_LOW" selected>Very low</option>' in empty
+    assert "<fieldset" not in empty
 
 
 def test_new_request_form_is_multipart(world):
     body = world["client"].get(reverse("requests:create")).content.decode()
     assert 'enctype="multipart/form-data"' in body
+    assert 'x-data="{ offeringSelected: false }"' in body
+    assert "$event.target.name === 'service'" in body
+    assert "$event.target.name === 'offering'" in body
+    assert '<fieldset x-show="offeringSelected" x-cloak' in body
+    assert '<div id="offering-form-fields">' in body
+    assert '<legend class="px-1 text-sm font-semibold text-zinc-800">Request form</legend>' in body
+    assert {"title", "description"} <= _request_fieldset_names(body)
+    assert body.index('name="title"') < body.index('name="description"')
+    assert body.index('name="description"') < body.index('id="offering-form-fields"')
+
+
+def test_request_form_visible_for_offering_without_questions_after_error(world):
+    offering = ServiceOffering.objects.create(
+        service=world["cemetery"], name="No questions", status=OfferingStatus.ACTIVE
+    )
+    response = world["client"].post(
+        reverse("requests:create"),
+        {
+            "service": world["cemetery"].pk,
+            "offering": offering.pk,
+            "title": "",
+            "description": "Preserved description",
+            "priority": "MEDIUM",
+            "requester": world["person"].pk,
+        },
+    )
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert 'x-data="{ offeringSelected: true }"' in body
+    assert "Preserved description" in body
+    assert {"title", "description"} <= _request_fieldset_names(body)
 
 
 def test_create_request_with_answers_and_attachment(world, media):
@@ -253,6 +338,10 @@ def test_missing_required_answers_block_the_request(world):
     assert not Request.objects.filter(title="Funeral do Sr. Silva").exists()
     body = response.content.decode()
     assert 'name="q_nome"' in body  # questions re-displayed with errors
+    assert 'x-data="{ offeringSelected: true }"' in body
+    assert '<legend class="px-1 text-sm font-semibold text-zinc-800">Request form</legend>' in body
+    assert {"title", "description", "q_nome", "q_certidao"} <= _request_fieldset_names(body)
+    assert body.index('name="description"') < body.index('name="q_nome"')
     assert "This field is required." in body
     assert "&lt;p" not in body  # error markup is not escaped
 
@@ -285,6 +374,7 @@ def test_builder_saves_request_form_and_new_version_copies_it(world):
             "offering_type": "",
             "on_request": "on",
             "description": "",
+            "default_priority": "VERY_LOW",
             "definition": json.dumps([{"key": "a", "name": "Exumar"}]),
             "form_definition": json.dumps(definition),
             "action": "publish",
@@ -311,6 +401,7 @@ def test_builder_rejects_an_invalid_form_definition(world):
             "service": world["cemetery"].pk,
             "name": "Exumação",
             "on_request": "on",
+            "default_priority": "VERY_LOW",
             "definition": json.dumps([{"key": "a", "name": "Exumar"}]),
             "form_definition": json.dumps([{"label": "Tipo", "field_type": "CHOICE"}]),
         },
