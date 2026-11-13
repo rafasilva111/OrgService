@@ -22,6 +22,8 @@ from django.core.exceptions import ImproperlyConfigured
 from .base import *  # noqa: F403
 from .env import get_bool, get_list, get_str
 
+print("Running in production mode")
+
 DEV_PLACEHOLDER_SECRET_KEY = "django-insecure-dev-only-orgplatform"
 
 SECRET_KEY = get_str("DJANGO_SECRET_KEY", required=True, secret=True)

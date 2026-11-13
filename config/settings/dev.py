@@ -7,6 +7,8 @@ static file backend. This is the default when no ``ENVIRONMENT`` is set.
 from .base import *  # noqa: F403
 from .env import get_list, get_str
 
+print("Running in development mode")
+
 # Only ever a fallback: production must set DJANGO_SECRET_KEY explicitly.
 SECRET_KEY = get_str("DJANGO_SECRET_KEY", "django-insecure-dev-only-orgplatform")
 
