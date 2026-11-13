@@ -86,15 +86,83 @@ def test_execution_list_and_offering_detail_link_to_execution(execution_context)
     )
 
 
-def test_offering_detail_shows_step_average_without_sla(execution_context):
+def test_offering_detail_places_other_sections_in_left_column(execution_context):
+    body = execution_context["client"].get(
+        reverse("offerings:detail", args=[execution_context["offering"].pk])
+    ).content.decode()
+    assert '<main class="px-4 pb-16 pt-6 sm:px-6 lg:px-8">' in body
+    assert '<div class="space-y-6">' in body
+    columns = body.split('id="offering-detail-columns"', 1)[1]
+    left, right = columns.split('id="eligible-actors-panel"', 1)
+    assert "xl:grid-cols-2" in left
+    assert "Steps" in left
+    assert "Eligible people" in right
+    assert "xl:col-start-1 xl:row-start-2" in right
+    assert "Request form" in right
+    assert "Recent executions" in right
+
+
+def test_offering_detail_expands_step_with_sla_and_averages(execution_context):
     offering = execution_context["offering"]
     step = offering.steps.get(code="validate")
     step.sla_minutes = 60
     step.save(update_fields=["sla_minutes"])
     response = execution_context["client"].get(reverse("offerings:detail", args=[offering.pk]))
     row = response.content.decode().split(">Validate</p>", 1)[1].split("</li>", 1)[0]
-    assert "Average active time: 2h 0m 0s" in row
-    assert "SLA" not in row
+    summary, details = row.split("</summary>", 1)
+    assert "Average active time: 2h 0m 0s" in summary
+    assert "SLA" not in summary
+    assert ">SLA</dt><dd class=\"font-medium text-zinc-800\">1h</dd>" in details
+    assert ">Average elapsed time</dt><dd class=\"font-medium text-zinc-800\">2h 0m 0s" in details
+    assert ">Average paused time</dt><dd class=\"font-medium text-zinc-800\">0s" in details
+    assert "Based on 1 reliable completed task in this offering version." in details
+    empty_row = response.content.decode().split(">Approve</p>", 1)[1].split("</li>", 1)[0]
+    assert ">SLA</dt><dd class=\"font-medium text-zinc-800\">—" in empty_row
+    assert "Based on 0 reliable completed tasks" in empty_row
+
+
+def test_offering_step_details_handle_zero_sla_and_automatic_steps(execution_context):
+    offering = execution_context["offering"]
+    step = offering.steps.get(code="validate")
+    step.sla_minutes = 0
+    step.save(update_fields=["sla_minutes"])
+    OfferingStep.objects.create(
+        offering=offering, code="start", name="Start", step_type=StepType.START, order=1
+    )
+    client = execution_context["client"]
+    body = client.get(reverse("offerings:detail", args=[offering.pk])).content.decode()
+    row = body.split(">Validate</p>", 1)[1].split("</li>", 1)[0]
+    assert ">SLA</dt><dd class=\"font-medium text-zinc-800\">0min</dd>" in row
+    automatic = body.split(">Start</p>", 1)[1].split("</li>", 1)[0]
+    assert "Average timings apply to manual tasks only." in automatic
+    assert "Average elapsed time" not in automatic
+    execution_body = client.get(
+        reverse("offerings:execution_detail", args=[execution_context["execution"].pk])
+    ).content.decode()
+    assert "Step details" not in execution_body
+    assert "Average elapsed time" not in execution_body
+
+
+def test_offering_step_details_preserve_aggregate_permissions(
+    execution_context, make_user, make_person, make_role, make_membership, org_tree
+):
+    viewer = make_user()
+    make_membership(make_person(viewer), org_tree["parish_a"], make_role(permissions=["offering.view"]))
+    client = execution_context["client"]
+    client.force_login(viewer)
+    response = client.get(reverse("offerings:detail", args=[execution_context["offering"].pk]))
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert "Step details" in body
+    assert "Aggregate timings require access to this service and its offerings." in body
+    assert "Average elapsed time" not in body
+    assert "Average paused time" not in body
+    assert "2h 0m 0s" not in body
+    step = execution_context["offering"].steps.get(code="validate")
+    assert client.get(
+        reverse("offerings:detail", args=[execution_context["offering"].pk]),
+        {"step": step.pk}, HTTP_HX_REQUEST="true",
+    ).status_code == 404
 
 
 def test_execution_detail_rejects_out_of_scope_and_anonymous(
@@ -194,6 +262,15 @@ def test_step_average_excludes_pauses_and_unreliable_visits(execution_context, m
         assert "Average active time: 2h 0m 0s" in body
         assert "No reliable completed tasks" in body
         assert "excludes recorded pauses" in body
+    response = client.get(reverse("offerings:detail", args=[execution.offering_id]))
+    work_step = next(s for s in response.context["steps"] if s.pk == step.pk)
+    assert work_step.average_duration == timedelta(hours=2)
+    assert work_step.average_elapsed_duration == timedelta(hours=3)
+    assert work_step.average_pause_duration == timedelta(hours=1)
+    assert work_step.average_sample_count == 2
+    details = response.content.decode().split(">Validate</p>", 1)[1].split("</li>", 1)[0]
+    assert ">Average elapsed time</dt><dd class=\"font-medium text-zinc-800\">3h 0m 0s" in details
+    assert ">Average paused time</dt><dd class=\"font-medium text-zinc-800\">1h 0m 0s" in details
     assert any(call.args[1] == invalid.pk for call in warning.call_args_list)
 
 
@@ -242,6 +319,15 @@ def test_zero_average_is_visible_in_portuguese(execution_context):
     body = response.content.decode()
     assert "Tempo médio ativo: 0s" in body
     assert "Sem tarefas concluídas com tempos fiáveis" in body
+    with translation.override("pt"):
+        offering_body = execution_context["client"].get(
+            reverse("offerings:detail", args=[execution.offering_id]),
+            HTTP_ACCEPT_LANGUAGE="pt",
+        ).content.decode()
+    assert "Detalhes do passo" in offering_body
+    assert "Tempo médio decorrido" in offering_body
+    assert "Tempo médio em pausa" in offering_body
+    assert "1 tarefa concluída com tempos fiáveis" in offering_body
 
 
 def test_execution_log_combines_existing_updates_and_viewer_notes(execution_context):

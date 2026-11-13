@@ -5,7 +5,7 @@
 {% block header_title %}{{ offering.name }}{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl space-y-6">
+<div class="space-y-6">
   <div class="flex flex-wrap items-end justify-between gap-3">
     <div class="space-y-3">
       <div class="flex flex-wrap items-center gap-2">
@@ -57,28 +57,45 @@
   </div>
   {% endif %}
 
-  {% include "offerings/_steps.html" with hide_slas=True %}
-
-  {% include "offerings/_request_form_preview.html" %}
-
-  {% if can_view_executions %}
-  <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
-    <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
-      <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Recent executions' %}</h2>
-      <a href="{% url 'offerings:executions' %}?service={{ offering.service.pk }}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
+  <div id="offering-detail-columns" class="grid items-start gap-6 {% if can_view_executions %}xl:grid-cols-2{% endif %}">
+    <div class="min-w-0">
+    {% include "offerings/_steps.html" with hide_slas=True step_details=True %}
     </div>
-    <ul class="divide-y divide-zinc-100">
-      {% for e in executions %}
-      <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
-        <a href="{% url 'offerings:execution_detail' e.pk %}" class="min-w-0 flex-1 truncate font-medium text-indigo-600 hover:text-indigo-800">#{{ e.pk }} &middot; {{ e.created_by|default:"—" }}</a>
-        <span class="shrink-0 text-xs text-zinc-500">{{ e.started_at|date:"M j, Y H:i"|default:"not started" }}</span>
-        <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ e.status|pill_class }}">{{ e.get_status_display }}</span>
-      </li>
-      {% empty %}
-      <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No executions yet.' %}</li>
-      {% endfor %}
-    </ul>
+    {% if can_view_executions %}
+    <aside id="eligible-actors-panel" class="min-w-0 xl:col-start-2 xl:row-span-2 xl:row-start-1" aria-live="polite">
+      {% if actors_context %}
+      {% include "core/tables/_table.html" with config=actors_context.config visible_columns=actors_context.visible_columns object_list=actors_context.object_list paginator=actors_context.paginator page_obj=actors_context.page_obj is_paginated=actors_context.is_paginated query_without_sort=actors_context.query_without_sort table_description=actors_context.table_description %}
+      {% else %}
+      <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+        <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Eligible people' %}</h2>
+        <p class="mt-2 text-sm text-zinc-500">{% translate 'Select a step to see its eligible people.' %}</p>
+      </div>
+      {% endif %}
+    </aside>
+    {% endif %}
+    <div class="min-w-0 space-y-6 {% if can_view_executions %}xl:col-start-1 xl:row-start-2{% endif %}">
+      {% include "offerings/_request_form_preview.html" %}
+
+      {% if can_view_executions %}
+      <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+        <div class="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
+          <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Recent executions' %}</h2>
+          <a href="{% url 'offerings:executions' %}?service={{ offering.service.pk }}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'View all' %}</a>
+        </div>
+        <ul class="divide-y divide-zinc-100">
+          {% for e in executions %}
+          <li class="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+            <a href="{% url 'offerings:execution_detail' e.pk %}" class="min-w-0 flex-1 truncate font-medium text-indigo-600 hover:text-indigo-800">#{{ e.pk }} &middot; {{ e.created_by|default:"—" }}</a>
+            <span class="shrink-0 text-xs text-zinc-500">{{ e.started_at|date:"M j, Y H:i"|default:"not started" }}</span>
+            <span class="shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ e.status|pill_class }}">{{ e.get_status_display }}</span>
+          </li>
+          {% empty %}
+          <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No executions yet.' %}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
   </div>
-  {% endif %}
 </div>
 {% endblock content %}

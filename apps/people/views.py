@@ -13,7 +13,7 @@ from apps.common.tables.config import Column, Filter, FilterKind, TableConfig
 from apps.common.tables.filters import resolve_org_subtree_path
 from apps.common.tables.views import TableView
 from apps.organizations.models import Organization, OrganizationMembership
-from apps.people.models import Person, PersonType, Skill
+from apps.people.models import Person, Skill
 from apps.services.models import Service, ServiceActor
 
 

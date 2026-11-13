@@ -36,6 +36,64 @@ def active_duration(task):
     return task.completed_at - task.started_at - paused
 
 
+def average_durations(durations):
+    if not durations:
+        return None, None, None
+    active = sum((active for active, _ in durations), timedelta()) / len(durations)
+    elapsed = sum((elapsed for _, elapsed in durations), timedelta()) / len(durations)
+    paused = sum((elapsed - active for active, elapsed in durations), timedelta()) / len(durations)
+    return active, elapsed, paused
+
+
+def pause_prefetch():
+    return Prefetch(
+        "activities",
+        queryset=TaskActivity.objects.filter(action__in=("paused", "resumed")).order_by(
+            "created_at", "pk"
+        ),
+        to_attr="pause_events",
+    )
+
+
+def reliable_sample(task):
+    if task.started_at is None or task.completed_at is None:
+        return None
+    duration = active_duration(task)
+    if duration is None:
+        logger.warning("Excluding task %s from step average: invalid pause history", task.pk)
+        return None
+    return duration, task.completed_at - task.started_at
+
+
+def add_person_step_statistics(people, step):
+    """Count all completed visits and average reliable timings by final assignee."""
+    people = list(people)
+    by_id = {person.pk: person for person in people}
+    samples = defaultdict(list)
+    for person in people:
+        person.completed_task_count = 0
+    tasks = OfferingTask.objects.filter(
+        execution__offering=step.offering,
+        step=step,
+        assigned_to_id__in=by_id,
+        status=TaskStatus.DONE,
+    ).prefetch_related(pause_prefetch())
+    for task in tasks:
+        by_id[task.assigned_to_id].completed_task_count += 1
+        sample = reliable_sample(task)
+        if sample is not None:
+            samples[task.assigned_to_id].append(sample)
+    for person in people:
+        durations = samples[person.pk]
+        (
+            person.average_duration,
+            person.average_elapsed_duration,
+            person.average_pause_duration,
+        ) = average_durations(durations)
+        person.average_sample_count = len(durations)
+    return people
+
+
 def add_step_averages(steps, offering):
     """Populate each manual step with a same-version historical task average."""
     steps = list(steps)
@@ -47,24 +105,19 @@ def add_step_averages(steps, offering):
         status=TaskStatus.DONE,
         started_at__isnull=False,
         completed_at__isnull=False,
-    ).prefetch_related(
-        Prefetch(
-            "activities",
-            queryset=TaskActivity.objects.filter(action__in=("paused", "resumed")).order_by(
-                "created_at", "pk"
-            ),
-            to_attr="pause_events",
-        )
-    )
+    ).prefetch_related(pause_prefetch())
     for task in tasks:
-        duration = active_duration(task)
-        if duration is None:
-            logger.warning("Excluding task %s from step average: invalid pause history", task.pk)
-            continue
-        samples[task.step_id].append(duration)
+        sample = reliable_sample(task)
+        if sample is not None:
+            samples[task.step_id].append(sample)
     for step in steps:
         if step.pk in step_ids:
             durations = samples[step.pk]
             step.show_average_duration = True
-            step.average_duration = sum(durations, timedelta()) / len(durations) if durations else None
+            (
+                step.average_duration,
+                step.average_elapsed_duration,
+                step.average_pause_duration,
+            ) = average_durations(durations)
+            step.average_sample_count = len(durations)
     return steps

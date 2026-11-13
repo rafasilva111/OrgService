@@ -167,6 +167,118 @@ def test_offering_productivity_periods_versions_statuses_and_assignees(flow, cli
     assert client.get(url, {"offering": "999999999999999999999999"}).status_code == 404
 
 
+def test_offering_step_eligible_people_table_pagination_and_scope(
+    flow, client, make_user, make_person, make_role, make_membership, make_service, org_tree
+):
+    service = make_service(org_tree["parish_b"], "Delegated")
+    delegated = ServiceOffering.objects.create(service=service, name="Delegated offering")
+    role = make_role(permissions=["offering.execute"])
+    step = flow["work"]
+    step.service_offering = delegated
+    step.responsible_role = role
+    step.save(update_fields=["service_offering", "responsible_role"])
+    workers = []
+    for i in range(12):
+        person = make_person(make_user(), name=f"Worker {i:02d}")
+        make_membership(person, org_tree["parish_b"], role)
+        workers.append(person)
+    outsider = make_person(make_user(), name="Not eligible")
+    make_membership(outsider, org_tree["parish_a"], role)
+    disabled = make_person(make_user(), name="Inactive")
+    make_membership(disabled, org_tree["parish_b"], role)
+    disabled.active = False
+    disabled.save(update_fields=["active"])
+    execution = OfferingExecution.objects.create(offering=flow["offering"])
+    start = timezone.now() - timedelta(hours=8)
+    for worker, hours in ((workers[0], 5), (workers[0], 1), (workers[10], 2)):
+        task = OfferingTask.objects.create(
+            execution=execution, step=step, assigned_to=worker, title="Completed",
+            status=TaskStatus.DONE, started_at=start, completed_at=start + timedelta(hours=hours),
+        )
+        if hours == 5:
+            for action, offset in (("paused", 1), ("resumed", 2), ("paused", 3), ("resumed", 4)):
+                event = task.activities.create(action=action)
+                type(event).objects.filter(pk=event.pk).update(created_at=start + timedelta(hours=offset))
+    OfferingTask.objects.create(
+        execution=execution, step=step, assigned_to=workers[0], title="Missing timestamps",
+        status=TaskStatus.DONE,
+    )
+    invalid = OfferingTask.objects.create(
+        execution=execution, step=step, assigned_to=workers[0], title="Invalid history",
+        status=TaskStatus.DONE, started_at=start, completed_at=start + timedelta(hours=6),
+    )
+    event = invalid.activities.create(action="paused")
+    type(event).objects.filter(pk=event.pk).update(created_at=start + timedelta(hours=1))
+    OfferingTask.objects.create(
+        execution=execution, step=step, assigned_to=workers[0], title="Running",
+        status=TaskStatus.IN_PROGRESS, started_at=start,
+    )
+    other_version = ServiceOffering.objects.create(
+        service=flow["service"], name=flow["offering"].name, version=2
+    )
+    other_step = OfferingStep.objects.create(
+        offering=other_version, code=step.code, name="Other version", order=1
+    )
+    other_execution = OfferingExecution.objects.create(offering=other_version)
+    OfferingTask.objects.create(
+        execution=other_execution, step=other_step, assigned_to=workers[0],
+        status=TaskStatus.DONE, started_at=start, completed_at=start + timedelta(hours=8),
+    )
+
+    client.force_login(flow["user"])
+    url = reverse("offerings:detail", args=[flow["offering"].pk])
+    response = client.get(url, {"step": step.pk})
+    assert response.status_code == 200
+    assert response.context["selected_step"] == step
+    assert response.context["actors_context"]["paginator"].count == 12
+    body = response.content.decode()
+    assert "Eligible people · Work" in body
+    assert "Worker 00" in body and "Worker 09" in body
+    alice = response.context["actors_context"]["object_list"][0]
+    assert alice.completed_task_count == 4
+    assert alice.average_sample_count == 2
+    assert alice.average_duration == timedelta(hours=2)
+    assert alice.average_elapsed_duration == timedelta(hours=3)
+    assert alice.average_pause_duration == timedelta(hours=1)
+    empty_person = response.context["actors_context"]["object_list"][1]
+    assert empty_person.completed_task_count == 0
+    assert empty_person.average_duration is None
+    assert all(header in body for header in (
+        "Completed tasks", "Tasks with reliable times", "Average active time",
+        "Average elapsed time", "Average paused time"
+    ))
+    first_row = body.split(">Worker 00</a>", 1)[1].split("</tr>", 1)[0]
+    assert all(value in first_row for value in ("4", "2", "2h 0m 0s", "3h 0m 0s", "1h 0m 0s"))
+    empty_row = body.split(">Worker 01</a>", 1)[1].split("</tr>", 1)[0]
+    assert empty_row.count("—") == 3
+    assert "Worker 10" not in body and "Not eligible" not in body and "Inactive" not in body
+    assert reverse("people:detail", args=[flow["actor"].pk]) not in body
+    assert "Page 1 of 2" in body
+    assert f'page=2&step={step.pk}' in body
+    second_page = client.get(url, {"step": step.pk, "page": 2})
+    assert second_page.context["actors_context"]["page_obj"].number == 2
+    assert "Worker 10" in second_page.content.decode()
+    page_worker = second_page.context["actors_context"]["object_list"][0]
+    assert page_worker.completed_task_count == 1
+    assert page_worker.average_duration == timedelta(hours=2)
+    assert page_worker.average_pause_duration == timedelta()
+    partial = client.get(url, {"step": step.pk, "page": 2}, HTTP_HX_REQUEST="true")
+    assert partial.status_code == 200
+    assert "<html" not in partial.content.decode()
+    assert "Worker 10" in partial.content.decode() and "Worker 11" in partial.content.decode()
+    assert "2h 0m 0s" in partial.content.decode()
+    assert "Page 2 of 2" in partial.content.decode()
+    assert 'id="eligible_actors-wrap"' in partial.content.decode()
+    assert "Automatic steps do not have eligible executors." in client.get(
+        url, {"step": flow["start"].pk}, HTTP_HX_REQUEST="true"
+    ).content.decode()
+    foreign_step = OfferingStep.objects.create(
+        offering=delegated, code="other", name="Other", order=1
+    )
+    for invalid in ("abc", "-1", "999999999999999999999999", str(foreign_step.pk)):
+        assert client.get(url, {"step": invalid}, HTTP_HX_REQUEST="true").status_code == 404
+
+
 def test_offering_productivity_period_boundaries_and_future_records(flow, client, monkeypatch):
     from datetime import UTC, datetime
 

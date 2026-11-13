@@ -1134,6 +1134,50 @@ msgstr "Sem tarefas concluídas com tempos fiáveis"
 msgid "Average active time uses completed tasks in this offering version and excludes recorded pauses."
 msgstr "O tempo médio ativo usa tarefas concluídas desta versão da oferta e exclui as pausas registadas."
 
+msgid "Step details"
+msgstr "Detalhes do passo"
+
+msgid "Average elapsed time"
+msgstr "Tempo médio decorrido"
+
+msgid "Average paused time"
+msgstr "Tempo médio em pausa"
+
+msgid "Based on %(count)s reliable completed task in this offering version."
+msgid_plural "Based on %(count)s reliable completed tasks in this offering version."
+msgstr[0] "Com base em %(count)s tarefa concluída com tempos fiáveis nesta versão da oferta."
+msgstr[1] "Com base em %(count)s tarefas concluídas com tempos fiáveis nesta versão da oferta."
+
+msgid "Aggregate timings require access to this service and its offerings."
+msgstr "Os tempos agregados requerem acesso a este serviço e às suas ofertas."
+
+msgid "Average timings apply to manual tasks only."
+msgstr "Os tempos médios aplicam-se apenas a tarefas manuais."
+
+msgid "Eligible people"
+msgstr "Pessoas elegíveis"
+
+msgid "Select a step to see its eligible people."
+msgstr "Selecione um passo para ver as pessoas elegíveis."
+
+msgid "Show eligible people"
+msgstr "Ver pessoas elegíveis"
+
+msgid "No eligible people"
+msgstr "Sem pessoas elegíveis"
+
+msgid "No one is currently eligible to execute this step."
+msgstr "Não há pessoas elegíveis para executar este passo neste momento."
+
+msgid "Automatic steps do not have eligible executors."
+msgstr "Os passos automáticos não têm executores elegíveis."
+
+msgid "Completed tasks are counted by recorded assignee. Averages use reliable completed tasks for this step and offering version, excluding recorded pauses from active time."
+msgstr "As tarefas concluídas são contadas pela pessoa atribuída. As médias usam tarefas concluídas com tempos fiáveis deste passo e versão da oferta, excluindo as pausas registadas do tempo ativo."
+
+msgid "Tasks with reliable times"
+msgstr "Tarefas com tempos fiáveis"
+
 msgid "Parent"
 msgstr "Entidade Superior"
 

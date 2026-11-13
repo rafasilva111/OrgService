@@ -521,6 +521,7 @@ def test_offering_detail_shows_availability_in_description_without_sla_link(ctx)
     assert f'{reverse("metrics:slas")}?service={offering.service_id}' not in body
     assert "Total SLA" not in body
     assert "SLA 2h" not in body
+    assert ">SLA</dt><dd class=\"font-medium text-zinc-800\">2h</dd>" in body
     assert body.count("How it starts") == 1
 
 
@@ -862,6 +863,9 @@ def test_total_sla_follows_the_normal_path_only(ctx):
     assert "SLA 2h" not in detail
     assert "SLA 1d" not in detail
     assert "SLA 3d" not in detail
+    assert ">SLA</dt><dd class=\"font-medium text-zinc-800\">2h</dd>" in detail
+    assert ">SLA</dt><dd class=\"font-medium text-zinc-800\">1d</dd>" in detail
+    assert ">SLA</dt><dd class=\"font-medium text-zinc-800\">3d</dd>" in detail
     listing = ctx["client"].get(reverse("offerings:index")).content.decode()
     assert "1d 2h" in listing
 

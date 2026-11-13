@@ -9,7 +9,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
-from apps.common.management.commands.seed_default_data import Command as DefaultSeed
+from apps.common.management.commands import seed_default_data
 from apps.offerings.execution import eligible_people
 from apps.offerings.models import (
     ExecutionStatus,
@@ -153,7 +153,16 @@ class Command(BaseCommand):
                     is_paused = kind == 7
                     current_index = min((index // 3) % len(manual), len(manual) - 1)
                     current_step = path[-1] if is_completed else manual[current_index]
-                    finish = started + timedelta(minutes=45 * len(manual))
+                    task_durations = [
+                        seed_default_data.CEMETERY_PREPARATION_ACTIVE_DURATION
+                        if name == "Realizar um funeral" and step.code == "prepare"
+                        else timedelta(minutes=45)
+                        for step in manual
+                    ]
+                    total_duration = sum(task_durations, timedelta())
+                    if started + total_duration > now:
+                        started = now - total_duration
+                    finish = started + total_duration
                     request = Request.objects.create(
                         service=service,
                         offering=offering,
@@ -165,7 +174,7 @@ class Command(BaseCommand):
                     )
                     answers, file_key = sample_answers(name, started, index + 1)
                     if file_key:
-                        content = DefaultSeed._example_pdf()
+                        content = seed_default_data.Command._example_pdf()
                         attachment = RequestAttachment(
                             request=request,
                             field_key=file_key,
@@ -200,12 +209,14 @@ class Command(BaseCommand):
                         ),
                     )
                     OfferingExecution.objects.filter(pk=execution.pk).update(created_at=started)
+                    elapsed = timedelta()
                     for step_index, step in enumerate(manual):
                         if not is_completed and step_index > current_index:
                             break
-                        begin = started + timedelta(minutes=45 * step_index)
+                        begin = started + elapsed
                         done = is_completed or step_index < current_index
-                        end = begin + timedelta(minutes=45)
+                        end = begin + task_durations[step_index]
+                        elapsed += task_durations[step_index]
                         assignees = candidates[step.pk]
                         assignee = assignees[(index + step_index) % len(assignees)]
                         task_status = (

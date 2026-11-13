@@ -37,6 +37,8 @@ def test_seed_is_idempotent(seeded):
 
 
 def test_optional_cemetery_productivity_seed_is_complete_and_idempotent(seeded):
+    from datetime import timedelta
+
     from django.contrib.contenttypes.models import ContentType
     from django.core.management.base import CommandError
     from django.utils import timezone
@@ -66,6 +68,17 @@ def test_optional_cemetery_productivity_seed_is_complete_and_idempotent(seeded):
     assert set(executions.values_list("offering__name", flat=True)) == {
         "Limpar cemitério", "Realizar um funeral", "Realizar transladação"
     }
+    preparations = executions.filter(
+        offering__name="Realizar um funeral",
+        tasks__step__code="prepare",
+        tasks__status=TaskStatus.DONE,
+    )
+    assert preparations.exists()
+    assert all(
+        task.completed_at - task.started_at > timedelta(days=2)
+        for execution in preparations
+        for task in execution.tasks.filter(step__code="prepare", status=TaskStatus.DONE)
+    )
     today = timezone.localdate()
     now = timezone.now()
     totals = list(offering_totals(executions, period_start("90", now), now))
@@ -586,6 +599,19 @@ def test_funeral_total_sla_counts_the_external_step(seeded):
     # validate 4h + assign 4h + prepare 2d + burial 0 + register 1d; notify branch excluded
     assert funeral.sla_minutes == 240 + 240 + 2880 + 0 + 1440
     assert all(o.sla_minutes is not None for o in ServiceOffering.objects.all())
+
+
+def test_seeded_funeral_preparation_average_exceeds_its_two_day_sla(seeded):
+    from datetime import timedelta
+
+    from apps.offerings.models import ServiceOffering
+    from apps.offerings.step_duration import add_step_averages
+
+    offering = ServiceOffering.objects.get(name="Realizar um funeral", version=1)
+    prepare = offering.steps.get(code="prepare")
+    add_step_averages([prepare], offering)
+    assert prepare.sla_minutes == 2 * 24 * 60
+    assert prepare.average_duration > timedelta(days=2)
 
 
 def test_every_seeded_offering_has_its_sla_and_service_slas_remain(seeded):

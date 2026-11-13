@@ -65,6 +65,7 @@ from apps.resources.models import Equipment, Resource, ResourceAssignment, Resou
 from apps.services.models import ActorType, Service, ServiceActor, ServiceStatus, ServiceType
 
 NOW = timezone.now()
+CEMETERY_PREPARATION_ACTIVE_DURATION = timedelta(days=3)
 
 # Domain tables reset by ``--reset`` (everything except RBAC + auth catalogue).
 _RESET_PREFIXES = (
@@ -1712,7 +1713,7 @@ class Command(BaseCommand):
                 TaskStatus.DONE,
                 "Registar inumação concluída",
                 datetime(2026, 10, 21, 9, tzinfo=UTC),
-                datetime(2026, 10, 23, 16, tzinfo=UTC),
+                datetime(2026, 10, 24, 21, tzinfo=UTC),
             ),
             (
                 "Realizar transladação",
@@ -1775,13 +1776,29 @@ class Command(BaseCommand):
                 if completed:
                     task_codes = completed_steps[name]
                     duration_seconds = int((completed - started).total_seconds())
+                    task_durations = (
+                        [
+                            CEMETERY_PREPARATION_ACTIVE_DURATION
+                            if code == "prepare"
+                            else timedelta(hours=3)
+                            for code in task_codes
+                        ]
+                        if name == "Realizar um funeral"
+                        else None
+                    )
+                    elapsed = timedelta()
                     for index, code in enumerate(task_codes):
-                        task_started = started + timedelta(
-                            seconds=duration_seconds * index // len(task_codes)
-                        )
-                        task_completed = started + timedelta(
-                            seconds=duration_seconds * (index + 1) // len(task_codes)
-                        )
+                        if task_durations is not None:
+                            task_started = started + elapsed
+                            task_completed = task_started + task_durations[index]
+                            elapsed += task_durations[index]
+                        else:
+                            task_started = started + timedelta(
+                                seconds=duration_seconds * index // len(task_codes)
+                            )
+                            task_completed = started + timedelta(
+                                seconds=duration_seconds * (index + 1) // len(task_codes)
+                            )
                         step = steps[code]
                         task = execution.tasks.filter(step=step).order_by("pk").first()
                         if task is None:

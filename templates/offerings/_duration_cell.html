@@ -1,0 +1,1 @@
+{% load ui %}{% if column.key == "average_duration" %}{{ record.average_duration|format_duration }}{% elif column.key == "average_elapsed_duration" %}{{ record.average_elapsed_duration|format_duration }}{% else %}{{ record.average_pause_duration|format_duration }}{% endif %}

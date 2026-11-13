@@ -9,6 +9,7 @@
       <div class="min-w-0 flex-1">
         {% if config.caption %}<h2 class="text-sm font-semibold text-zinc-800">{{ config.caption }}</h2>{% endif %}
         <p class="text-xs text-zinc-500">{% if paginator %}{% blocktranslate count counter=paginator.count %}{{ counter }} record{% plural %}{{ counter }} records{% endblocktranslate %}{% else %}{% blocktranslate count counter=object_list|length %}{{ counter }} record{% plural %}{{ counter }} records{% endblocktranslate %}{% endif %}</p>
+        {% if table_description %}<p class="mt-1 text-xs text-zinc-500">{{ table_description }}</p>{% endif %}
       </div>
       <div class="flex items-center gap-2">
         {% if has_search %}

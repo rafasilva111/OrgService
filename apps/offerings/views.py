@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import F, Q
 from django.db.models.functions import Coalesce
@@ -57,6 +58,7 @@ from apps.offerings.models import (
     Notification,
     OfferingExecution,
     OfferingStatus,
+    OfferingStep,
     OfferingTask,
     PauseReason,
     ServiceOffering,
@@ -228,6 +230,74 @@ class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
     def get_queryset(self):
         return super().get_queryset().select_related("service", "offering_type")
 
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        if request.headers.get("HX-Request") and request.GET.get("step"):
+            return render(request, "core/tables/_table.html", self.get_actors_context())
+        context = self.get_context_data(object=self.object)
+        return self.render_to_response(context)
+
+    def get_actors_context(self):
+        from apps.offerings.execution import eligible_people
+        from apps.offerings.step_duration import MANUAL_STEPS, add_person_step_statistics
+
+        if not execution_visible_services(self.request.user).filter(pk=self.object.service_id).exists():
+            raise Http404
+        try:
+            step_id = int(self.request.GET.get("step", ""))
+        except ValueError as exc:
+            raise Http404 from exc
+        if not 0 < step_id <= 9223372036854775807:
+            raise Http404
+        step = get_object_or_404(
+            OfferingStep.objects.select_related(
+                "offering__service", "service_offering__service", "responsible_role"
+            ),
+            offering=self.object,
+            pk=step_id,
+        )
+        people = eligible_people(step) if step.step_type in MANUAL_STEPS else []
+        people = sorted(people, key=lambda person: (person.full_name.casefold(), person.pk))
+        paginator = Paginator(people, 10)
+        page = paginator.get_page(self.request.GET.get("page"))
+        add_person_step_statistics(page.object_list, step)
+        config = TableConfig(
+            key="eligible_actors",
+            columns=[
+                Column("full_name", _("Name")),
+                Column("completed_task_count", _("Completed tasks"), template="offerings/_count_cell.html"),
+                Column("average_sample_count", _("Tasks with reliable times"), template="offerings/_sample_count_cell.html"),
+                Column("average_duration", _("Average active time"), template="offerings/_duration_cell.html"),
+                Column("average_elapsed_duration", _("Average elapsed time"), template="offerings/_duration_cell.html"),
+                Column("average_pause_duration", _("Average paused time"), template="offerings/_duration_cell.html"),
+            ],
+            page_size=10,
+            caption=_("Eligible people") + f" · {step.name}",
+            empty_headline=_("No eligible people"),
+            empty_body=(
+                _("Automatic steps do not have eligible executors.")
+                if step.step_type not in MANUAL_STEPS
+                else _("No one is currently eligible to execute this step.")
+            ),
+            searchable=False,
+            row_url_name="people:detail",
+        )
+        return {
+            "config": config,
+            "visible_columns": config.columns,
+            "object_list": page.object_list,
+            "paginator": paginator,
+            "page_obj": page,
+            "is_paginated": paginator.num_pages > 1,
+            "query_without_sort": f"step={step.pk}",
+            "selected_step": step,
+            "table_description": _(
+                "Completed tasks are counted by recorded assignee. Averages use reliable "
+                "completed tasks for this step and offering version, excluding recorded pauses "
+                "from active time."
+            ),
+        }
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["steps"] = annotate_flow(steps_queryset(self.object))
@@ -250,6 +320,9 @@ class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
             ctx["executions"] = self.object.executions.select_related("created_by").order_by(
                 "-started_at"
             )[:8]
+        if self.request.GET.get("step"):
+            ctx["actors_context"] = self.get_actors_context()
+            ctx["selected_step"] = ctx["actors_context"]["selected_step"]
         return ctx
 
 
