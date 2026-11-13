@@ -23,25 +23,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    environment:
-      # The container runs the "prod" configuration by default, which means
-      # gunicorn and DEBUG=0. Use a distinct variable name so it is not
-      # inherited from ENVIRONMENT in .env (that one selects the configuration
-      # for local Python processes). Override to run the container in dev mode:
-      #   DOCKER_ENVIRONMENT=dev docker compose up
-      ENVIRONMENT: ${DOCKER_ENVIRONMENT:-prod}
-      POSTGRES_HOST: db
-      # Listed explicitly so they can be overridden per invocation, e.g.
-      #   SEED_DATA=0 docker compose up
-      # Compose interpolates these from the shell first and from .env second, so
-      # .env stays the default source without blocking overrides.
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0}
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
-      DJANGO_SECURE_SSL_REDIRECT: ${DJANGO_SECURE_SSL_REDIRECT:-0}
-      SEED_DATA: ${SEED_DATA:-1}
-      DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
-      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-admin123}
-      DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-admin@example.local}
     ports:
       - "${DJANGO_PORT:-8000}:8000"
     volumes:
@@ -59,6 +40,17 @@ services:
       else
         exec gunicorn config.wsgi:application -b 0.0.0.0:8000 -w 4 --timeout 120;
       fi'
+      
+  nginx:
+    image: nginx:1.28-alpine
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - web
 
 volumes:
   pgdata:
