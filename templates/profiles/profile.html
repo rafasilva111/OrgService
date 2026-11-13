@@ -10,7 +10,7 @@
     <div class="flex items-center gap-4">
       <span class="grid size-14 shrink-0 place-items-center rounded-full bg-indigo-600 text-lg font-semibold text-white">{{ profile_user|initials }}</span>
       <div class="space-y-1.5">
-        <h1 class="text-xl font-semibold text-zinc-900">{{ profile_user.get_full_name|default:profile_user.username }}</h1>
+        <h1 class="text-xl font-semibold text-zinc-900">{{ profile_user|display_name }}</h1>
         <p class="text-sm text-zinc-500">
           {{ profile_user.email|default:profile_user.username }}
           {% if person %}&middot; <a href="{% url 'people:detail' person.pk %}" class="font-medium text-indigo-600 hover:text-indigo-800">{{ person.full_name }}</a>{% endif %}

@@ -59,6 +59,39 @@ def test_profile_page_renders(client, make_user):
     assert SETTINGS_URL in body
 
 
+def test_header_and_profile_display_linked_person_and_email(client, make_user, make_person):
+    user = make_user()
+    user.first_name = "Different"
+    user.last_name = "Account Name"
+    user.email = "paula@example.test"
+    user.save(update_fields=["first_name", "last_name", "email"])
+    make_person(user, name="Paula Lopes")
+    client.force_login(user)
+    body = client.get(PROFILE_URL).content.decode()
+    assert '<p class="truncate text-sm font-medium text-zinc-800">Paula Lopes</p>' in body
+    assert '<p class="truncate text-xs text-zinc-500">paula@example.test</p>' in body
+    assert '<h1 class="text-xl font-semibold text-zinc-900">Paula Lopes</h1>' in body
+    assert ">PL</span>" in body
+
+
+def test_header_name_fallback_without_linked_person(client, make_user):
+    user = make_user()
+    user.first_name = "Account"
+    user.last_name = "Name"
+    user.save(update_fields=["first_name", "last_name"])
+    client.force_login(user)
+    body = client.get(PROFILE_URL).content.decode()
+    assert '<p class="truncate text-sm font-medium text-zinc-800">Account Name</p>' in body
+    user.first_name = user.last_name = ""
+    user.save(update_fields=["first_name", "last_name"])
+    body = client.get(PROFILE_URL).content.decode()
+    assert f'<p class="truncate text-sm font-medium text-zinc-800">{user.username}</p>' in body
+    user.email = ""
+    user.save(update_fields=["email"])
+    body = client.get(PROFILE_URL).content.decode()
+    assert f'<p class="truncate text-xs text-zinc-500">{user.username}</p>' in body
+
+
 def test_settings_page_renders_with_language_options(client, make_user):
     user = make_user()
     _login(client, user)

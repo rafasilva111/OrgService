@@ -1,0 +1,44 @@
+{% load i18n %}
+<section id="execution-log" class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+  <div class="border-b border-zinc-100 px-4 py-3">
+    <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Execution log' %}</h2>
+    <p class="mt-1 text-xs text-zinc-500">{% translate 'System history, work notes and comments.' %}</p>
+    {% if delegated_only %}<p class="mt-1 text-xs text-zinc-500">{% translate 'Only entries for your current task are shown.' %}</p>{% endif %}
+    <p class="mt-1 text-xs text-zinc-500">{% translate 'Work Notes are internal. Comments are visible to the requester.' %}</p>
+  </div>
+  <form method="post" action="#execution-log" class="space-y-2 border-b border-zinc-100 p-4">
+    {% csrf_token %}
+    <label for="{{ note_form.kind.id_for_label }}" class="block text-sm font-medium text-zinc-700">{{ note_form.kind.label }}</label>
+    <select name="{{ note_form.kind.html_name }}" id="{{ note_form.kind.id_for_label }}" class="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-indigo-500">
+      {% for value, label in note_form.kind.field.choices %}
+      <option value="{{ value }}" {% if note_form.kind.value == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    {% for error in note_form.kind.errors %}<p class="text-xs text-red-600">{{ error }}</p>{% endfor %}
+    <label for="{{ note_form.body.id_for_label }}" class="block text-sm font-medium text-zinc-700">{% translate 'Message' %}</label>
+    <textarea name="{{ note_form.body.html_name }}" id="{{ note_form.body.id_for_label }}" rows="3" maxlength="4000" required class="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm outline-none focus:border-indigo-500">{{ note_form.body.value|default_if_none:"" }}</textarea>
+    {% for error in note_form.body.errors %}<p class="text-xs text-red-600">{{ error }}</p>{% endfor %}
+    <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">{% translate 'Post message' %}</button>
+  </form>
+  <ol class="divide-y divide-zinc-100">
+    {% for entry in log_entries %}
+    <li class="space-y-1 px-4 py-3 text-sm">
+      <div class="flex flex-wrap items-center gap-x-2 text-xs text-zinc-500">
+        {% if entry.body %}
+        <span class="font-semibold text-zinc-700">{{ entry.author_display }}</span>
+        <span class="rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {% if entry.kind == 'WORK_NOTE' %}bg-violet-50 text-violet-700 ring-violet-600/20{% else %}bg-blue-50 text-blue-700 ring-blue-600/20{% endif %}">{{ entry.message_type }}</span>
+        {% else %}
+        <span class="font-semibold text-zinc-700">{% if entry.actor %}{{ entry.actor }}{% elif entry.action == "notified" %}{% translate 'System' %}{% else %}{% translate 'Unknown actor' %}{% endif %}</span>
+        <span class="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 ring-1 ring-inset ring-zinc-500/20">{% translate 'System' %}</span>
+        <span class="rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {% if entry.action == 'completed' %}bg-emerald-50 text-emerald-700 ring-emerald-600/20{% elif entry.action == 'failed' %}bg-red-50 text-red-700 ring-red-600/20{% elif entry.action == 'paused' %}bg-amber-50 text-amber-700 ring-amber-600/20{% elif entry.action == 'started' or entry.action == 'resumed' %}bg-blue-50 text-blue-700 ring-blue-600/20{% elif entry.action == 'assigned' or entry.action == 'claimed' %}bg-indigo-50 text-indigo-700 ring-indigo-600/20{% else %}bg-zinc-100 text-zinc-600 ring-zinc-500/20{% endif %}">{{ entry.action_label }}</span>
+        {% endif %}
+        <time datetime="{{ entry.created_at|date:'c' }}">{{ entry.created_at|date:"SHORT_DATETIME_FORMAT" }}</time>
+        {% if entry.task %}<span>· {{ entry.task.title }}</span>{% endif %}
+      </div>
+      {% if entry.body %}<p class="whitespace-pre-wrap break-words px-2 py-2 leading-relaxed text-zinc-800">{{ entry.body }}</p>{% elif entry.detail %}<p class="text-zinc-600">{{ entry.detail_label }}</p>{% endif %}
+    </li>
+    {% empty %}
+    <li class="px-4 py-6 text-center text-sm text-zinc-500">{% translate 'No system history or messages yet.' %}</li>
+    {% endfor %}
+  </ol>
+</section>

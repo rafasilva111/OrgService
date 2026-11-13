@@ -26,6 +26,8 @@ import os
 from datetime import UTC, date, datetime, timedelta
 
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
+from django.core.files.base import ContentFile
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
 from django.db import connection, transaction
@@ -58,7 +60,7 @@ from apps.offerings.models import (
 from apps.organizations.models import Organization, OrganizationMembership
 from apps.people.models import Person, PersonType, Skill, get_system_person
 from apps.problems.models import Problem
-from apps.requests.models import Priority, Request, RequestComment, RequestStatus
+from apps.requests.models import Priority, Request, RequestAttachment, RequestComment, RequestStatus
 from apps.resources.models import Equipment, Resource, ResourceAssignment, ResourceType
 from apps.services.models import ActorType, Service, ServiceActor, ServiceStatus, ServiceType
 
@@ -137,6 +139,7 @@ class Command(BaseCommand):
         from apps.offerings.request_link import attach_missing_requests
 
         attach_missing_requests()
+        self._seed_cemetery_request_answers(services["Cemitérios"])
         self._seed_events(services, people)
         self._seed_audit(services, people)
 
@@ -185,6 +188,7 @@ class Command(BaseCommand):
                 "full_name": "System Administrator",
                 "person_type": PersonType.EMPLOYEE,
                 "user": user,
+                "active": not user.is_superuser,
             },
         )
         if person.user_id != user.id:
@@ -434,21 +438,6 @@ class Command(BaseCommand):
                 role=role,
                 defaults={"active": True},
             )
-
-        # Give the platform admin (superuser) every existing role at Torres
-        # Vedras, so the header service/role selector can swap between all
-        # contexts (a person may hold several roles in the same org).
-        admin_person = Person.objects.filter(
-            email=os.environ.get("DJANGO_SUPERUSER_EMAIL", "admin@example.local")
-        ).first()
-        if admin_person is not None:
-            for role in Role.objects.exclude(code__startswith="SERVICE_MANAGER_"):
-                OrganizationMembership.objects.get_or_create(
-                    person=admin_person,
-                    organization=tv,
-                    role=role,
-                    defaults={"active": True},
-                )
 
         # Every service needs a Service Manager actor <-> person.
         managers = {
@@ -1577,6 +1566,115 @@ class Command(BaseCommand):
             )
 
     # -------------------------------------------------------------- executions
+    @staticmethod
+    def _example_pdf():
+        message = b"Documento de demonstracao. Sem valor legal."
+        stream = b"BT /F1 14 Tf 50 750 Td (" + message + b") Tj ET"
+        objects = [
+            b"<< /Type /Catalog /Pages 2 0 R >>",
+            b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream",
+        ]
+        pdf = b"%PDF-1.4\n"
+        offsets = [0]
+        for index, obj in enumerate(objects, 1):
+            offsets.append(len(pdf))
+            pdf += f"{index} 0 obj\n".encode() + obj + b"\nendobj\n"
+        xref = len(pdf)
+        pdf += f"xref\n0 {len(offsets)}\n0000000000 65535 f \n".encode()
+        pdf += b"".join(f"{offset:010d} 00000 n \n".encode() for offset in offsets[1:])
+        pdf += (
+            f"trailer\n<< /Size {len(offsets)} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
+        ).encode()
+        return pdf
+
+    def _seed_cemetery_request_answers(self, service):
+        samples = {
+            ("Limpar cemitério", datetime(2026, 11, 9, 9, tzinfo=UTC)): {
+                "zonas": ["Arruamentos", "Zonas verdes"],
+                "email": "requerente@example.invalid",
+            },
+            ("Limpar cemitério", datetime(2026, 10, 1, 9, tzinfo=UTC)): {
+                "zonas": ["Arruamentos", "Capela"],
+                "email": "requerente@example.invalid",
+            },
+            ("Realizar um funeral", datetime(2026, 11, 10, 10, tzinfo=UTC)): {
+                "nome-do-falecido": "Pessoa Exemplo",
+                "data-do-obito": "2026-11-08",
+                "tipo-de-sepultura": "Sepultura temporária",
+                "velorio": True,
+                "contacto": "910000000",
+                "observacoes": "Dados fictícios para demonstração.",
+            },
+            ("Realizar um funeral", datetime(2026, 10, 21, 9, tzinfo=UTC)): {
+                "nome-do-falecido": "Pessoa Exemplo Dois",
+                "data-do-obito": "2026-10-19",
+                "tipo-de-sepultura": "Jazigo",
+                "velorio": False,
+                "contacto": "910000000",
+                "observacoes": "Dados fictícios para demonstração.",
+            },
+            ("Realizar transladação", datetime(2026, 11, 6, 11, tzinfo=UTC)): {
+                "nome-do-falecido": "Pessoa Exemplo",
+                "cemiterio-de-destino": {
+                    "street": "Rua Exemplo, 1",
+                    "postal_code": "2560-100",
+                    "locality": "Torres Vedras",
+                },
+                "contacto": "910000000",
+            },
+            ("Realizar transladação", datetime(2026, 10, 12, 9, tzinfo=UTC)): {
+                "nome-do-falecido": "Pessoa Exemplo Dois",
+                "cemiterio-de-destino": {
+                    "street": "Rua Exemplo, 2",
+                    "postal_code": "2560-100",
+                    "locality": "Torres Vedras",
+                },
+                "contacto": "910000000",
+            },
+        }
+        files = {
+            "Realizar um funeral": "certidao-de-obito",
+            "Realizar transladação": "autorizacao",
+        }
+        request_type = ContentType.objects.get_for_model(Request)
+        for (name, started), answers in samples.items():
+            execution = OfferingExecution.objects.filter(
+                offering__service=service,
+                offering__name=name,
+                offering__version=1,
+                started_at=started,
+                subject_type=request_type,
+            ).first()
+            if execution is None:
+                continue
+            with transaction.atomic():
+                request = Request.objects.select_for_update().filter(
+                    pk=execution.subject_id,
+                    offering_id=execution.offering_id,
+                    title=f"{name} — #{execution.pk}",
+                ).first()
+                if request is None or request.form_data or request.attachments.exists():
+                    continue
+                data = dict(answers)
+                key = files.get(name)
+                if key:
+                    content = self._example_pdf()
+                    attachment = RequestAttachment(
+                        request=request,
+                        field_key=key,
+                        original_name="exemplo-demonstracao.pdf",
+                        size=len(content),
+                        content_type="application/pdf",
+                    )
+                    attachment.file.save(attachment.original_name, ContentFile(content), save=True)
+                    data[key] = {"attachment": attachment.pk, "name": attachment.original_name}
+                request.form_data = data
+                request.save(update_fields=["form_data", "updated_at"])
+
     def _seed_cemetery_executions(self, service, manager):
         system_person = get_system_person()
         samples = [

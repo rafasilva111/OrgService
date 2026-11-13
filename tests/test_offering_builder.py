@@ -519,7 +519,8 @@ def test_offering_detail_shows_availability_in_description_without_sla_link(ctx)
     assert "How it starts" in header and "On request" in header
     assert "Total SLA" not in header
     assert f'{reverse("metrics:slas")}?service={offering.service_id}' not in body
-    assert "Total SLA: 2h" in body
+    assert "Total SLA" not in body
+    assert "SLA 2h" not in body
     assert body.count("How it starts") == 1
 
 
@@ -857,9 +858,10 @@ def test_total_sla_follows_the_normal_path_only(ctx):
     offering = ServiceOffering.objects.get(name="Realizar um funeral")
     assert offering.sla_minutes == 26 * 60  # 2h + 1d; the 3d error branch is excluded
     detail = ctx["client"].get(reverse("offerings:detail", args=[offering.pk])).content.decode()
-    assert "Total SLA" in detail and "1d 2h" in detail
-    end_row = detail.split("<p class=\"truncate text-sm font-medium text-zinc-800\">End</p>")[1].split("</li>")[0]
-    assert end_row.index("Total SLA: 1d 2h") < end_row.index(">End</span>")
+    assert "Total SLA" not in detail
+    assert "SLA 2h" not in detail
+    assert "SLA 1d" not in detail
+    assert "SLA 3d" not in detail
     listing = ctx["client"].get(reverse("offerings:index")).content.decode()
     assert "1d 2h" in listing
 

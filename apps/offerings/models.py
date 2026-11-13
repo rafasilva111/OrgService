@@ -499,9 +499,17 @@ class TaskStatus(models.TextChoices):
     PENDING = "PENDING", _("Pending")
     ASSIGNED = "ASSIGNED", _("Assigned")
     IN_PROGRESS = "IN_PROGRESS", _("In Progress")
+    PAUSED = "PAUSED", _("Paused")
     DONE = "DONE", _("Done")
     BLOCKED = "BLOCKED", _("Blocked")
     CANCELLED = "CANCELLED", _("Cancelled")
+
+
+class PauseReason(models.TextChoices):
+    VENDOR = "VENDOR", _("Waiting for vendor")
+    REQUESTER = "REQUESTER", _("Waiting for requester")
+    APPROVAL = "APPROVAL", _("Waiting for approval")
+    COMMENT = "COMMENT", _("Mentioned in the comments")
 
 
 class OfferingTask(TimeStampedModel):
@@ -539,6 +547,10 @@ class OfferingTask(TimeStampedModel):
 
 
 class ExecutionNote(TimeStampedModel):
+    class Kind(models.TextChoices):
+        WORK_NOTE = "WORK_NOTE", _("Work Notes")
+        COMMENT = "COMMENT", _("Comments")
+
     execution = models.ForeignKey(OfferingExecution, on_delete=models.CASCADE, related_name="notes")
     task = models.ForeignKey(
         OfferingTask, on_delete=models.CASCADE, null=True, blank=True, related_name="notes"
@@ -550,6 +562,12 @@ class ExecutionNote(TimeStampedModel):
         related_name="execution_notes",
     )
     body = models.TextField(_("body"))
+    kind = models.CharField(
+        _("message type"),
+        max_length=16,
+        choices=Kind.choices,
+        default=Kind.COMMENT,
+    )
 
     class Meta:
         ordering = ["created_at", "pk"]
@@ -580,8 +598,15 @@ class TaskActivity(TimeStampedModel):
             "branch": _("Follow error branch"),
             "notified": _("Notification sent"),
             "resumed": _("Resumed"),
+            "paused": _("Paused"),
         }
         return labels.get(self.action, self.action)
+
+    @property
+    def detail_label(self):
+        if self.action == "paused":
+            return dict(PauseReason.choices).get(self.detail, self.detail)
+        return self.detail
 
 
 class Notification(TimeStampedModel):

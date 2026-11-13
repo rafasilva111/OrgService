@@ -23,6 +23,7 @@ from apps.offerings.models import (
     OfferingStep,
     OfferingTask,
     OfferingTransition,
+    PauseReason,
     ServiceOffering,
     StepType,
     TaskStatus,
@@ -101,6 +102,238 @@ def test_request_status_follows_failure_retry_and_terminal_states(flow):
         assert flow["request"].status == request_status
 
 
+def test_offering_productivity_periods_versions_statuses_and_assignees(flow, client, make_person,
+                                                                       make_user):
+    from django.utils.timezone import localtime
+
+    now = timezone.now()
+    offering = flow["offering"]
+    v2 = ServiceOffering.objects.create(
+        service=flow["service"], name=offering.name, version=2, status=OfferingStatus.ACTIVE
+    )
+    old = OfferingExecution.objects.create(
+        offering=offering, started_at=now - timedelta(days=20),
+        completed_at=now - timedelta(days=1), status=ExecutionStatus.COMPLETED,
+    )
+    running = OfferingExecution.objects.create(
+        offering=v2, started_at=now - timedelta(days=1), status=ExecutionStatus.RUNNING
+    )
+    waiting = OfferingExecution.objects.create(
+        offering=offering, started_at=now - timedelta(days=2),
+        status=ExecutionStatus.WAITING, current_step=flow["work"],
+    )
+    blocked = OfferingExecution.objects.create(
+        offering=offering, started_at=now - timedelta(days=2),
+        status=ExecutionStatus.WAITING, current_step=flow["work"],
+    )
+    OfferingTask.objects.create(execution=blocked, step=flow["work"], status=TaskStatus.BLOCKED)
+    OfferingExecution.objects.create(
+        offering=offering, started_at=now - timedelta(days=20), status=ExecutionStatus.RUNNING
+    )
+    worker = make_person(make_user(), name="Assignee")
+    OfferingTask.objects.create(
+        execution=old, step=flow["work"], status=TaskStatus.DONE,
+        assigned_to=worker, completed_at=now - timedelta(hours=2),
+    )
+    old.tasks.get().activities.create(actor=flow["actor"], action="completed")
+    OfferingTask.objects.create(
+        execution=running, step=flow["work"], status=TaskStatus.DONE,
+        completed_at=now - timedelta(hours=3),
+    )
+    OfferingTask.objects.create(
+        execution=waiting, step=flow["notify"], status=TaskStatus.DONE,
+        assigned_to=worker, completed_at=now - timedelta(hours=1),
+    )
+    client.force_login(flow["user"])
+    url = reverse("offerings:productivity")
+    response = client.get(url, {"offering": offering.pk})
+    assert response.status_code == 200
+    assert response.context["period"] == "7"
+    row = response.context["rows"][0]
+    assert row["offering"] == v2
+    assert {k: row["counts"][k] for k in ("started", "completed", "running", "waiting", "failed")} == {
+        "started": 3, "completed": 1, "running": 1, "waiting": 1, "failed": 1,
+    }
+    people = response.context["people"]
+    assert {(p["assigned_to__full_name"], p["total"]) for p in people} == {
+        ("Assignee", 1), (None, 1),
+    }
+    assert sum(day["started"] for day in response.context["timeline"]) == 3
+    assert sum(day["completed"] for day in response.context["timeline"]) == 1
+    assert all(day["day"] <= localtime(now).date() for day in response.context["timeline"])
+    assert client.get(url, {"period": "30"}).context["rows"][0]["counts"]["started"] == 5
+    assert client.get(url, {"period": "bad"}).status_code == 400
+    assert client.get(url, {"offering": "invalid"}).status_code == 404
+    assert client.get(url, {"offering": "999999999999999999999999"}).status_code == 404
+
+
+def test_offering_productivity_period_boundaries_and_future_records(flow, client, monkeypatch):
+    from datetime import UTC, datetime
+
+    now = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
+    monkeypatch.setattr("apps.offerings.views.timezone.now", lambda: now)
+    for started in (
+        datetime(2026, 11, 6, 23, 59, tzinfo=UTC),
+        datetime(2026, 11, 7, 0, 0, tzinfo=UTC),
+        datetime(2026, 11, 13, 12, 1, tzinfo=UTC),
+    ):
+        OfferingExecution.objects.create(
+            offering=flow["offering"], started_at=started, status=ExecutionStatus.RUNNING
+        )
+    client.force_login(flow["user"])
+    url = reverse("offerings:productivity")
+    with timezone.override("UTC"):
+        assert client.get(url, {"period": "7"}).context["rows"][0]["counts"]["started"] == 1
+        assert client.get(url, {"period": "30"}).context["rows"][0]["counts"]["started"] == 2
+        assert client.get(url, {"period": "90"}).context["rows"][0]["counts"]["started"] == 2
+        assert client.get(url, {"period": "year"}).context["rows"][0]["counts"]["started"] == 2
+
+
+def test_offering_productivity_enforces_scoped_access(flow, client, make_service, make_user,
+                                                     make_person, make_role, make_membership):
+    hidden_service = make_service(flow["org_tree"]["parish_b"], "Hidden")
+    hidden = ServiceOffering.objects.create(service=hidden_service, name="Secret")
+    OfferingExecution.objects.create(offering=hidden, status=ExecutionStatus.RUNNING,
+                                     started_at=timezone.now())
+    client.force_login(flow["user"])
+    url = reverse("offerings:productivity")
+    response = client.get(url)
+    assert response.status_code == 200
+    assert "Secret" not in response.content.decode()
+    assert client.get(url, {"offering": hidden.pk}).status_code == 404
+    viewer = make_user()
+    role = make_role(permissions=["request.view"])
+    make_membership(make_person(viewer), flow["org_tree"]["parish_a"], role)
+    client.force_login(viewer)
+    assert client.get(url).status_code == 403
+    client.logout()
+    assert client.get(url).status_code == 302
+
+
+def test_pause_and_resume_preserve_task_history_and_request_state(flow, client):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    task_action(task.pk, flow["user"], "assign", assignee_id=flow["actor"].pk)
+    task_action(task.pk, flow["user"], "start")
+    task.refresh_from_db()
+    started, deadline = task.started_at, task.deadline
+    client.force_login(flow["user"])
+    url = reverse("requests:detail", args=[flow["request"].pk])
+    action_url = reverse("offerings:task_action", args=[task.pk])
+    body = client.get(url).content.decode()
+    assert 'value="pause"' in body and "Waiting for vendor" in body
+    assert client.post(action_url, {
+        "action": "pause", "reason": PauseReason.COMMENT,
+        "comment": "Waiting for the document.", "next": url,
+    }).url == url
+    task.refresh_from_db()
+    execution.refresh_from_db()
+    flow["request"].refresh_from_db()
+    assert task.status == TaskStatus.PAUSED
+    assert execution.status == ExecutionStatus.WAITING
+    assert flow["request"].status == RequestStatus.WAITING
+    assert task.started_at == started and task.deadline == deadline
+    assert task.completed_at is None
+    assert task.activities.get(action="paused").detail == PauseReason.COMMENT
+    note = execution.notes.get()
+    assert note.task == task and note.body == "Waiting for the document."
+    assert note.kind == ExecutionNote.Kind.COMMENT and note.author == flow["user"]
+    assert actionable_tasks(flow["user"]).filter(pk=task.pk).exists()
+    body = client.get(url).content.decode()
+    assert "Mentioned in the comments" in body
+    assert "Waiting for the document." in body
+    header = body.split('<dl class="grid gap-x-8', 1)[1].split("</dl>", 1)[0]
+    assert ">Paused</span>" in header and "Assigned to: Worker" in header
+    assert 'value="resume"' in body and 'value="complete"' not in body
+    with pytest.raises(ValidationError):
+        task_action(task.pk, flow["user"], "complete")
+    call_command("backfill_execution_tasks", verbosity=0)
+    assert execution.tasks.count() == 1
+    assert client.post(action_url, {"action": "resume", "next": url}).url == url
+    task.refresh_from_db()
+    execution.refresh_from_db()
+    flow["request"].refresh_from_db()
+    assert task.status == TaskStatus.IN_PROGRESS
+    assert task.started_at == started and task.deadline == deadline
+    assert execution.status == ExecutionStatus.RUNNING
+    assert flow["request"].status == RequestStatus.IN_PROGRESS
+    task_action(task.pk, flow["user"], "pause", reason=PauseReason.VENDOR)
+    task_action(task.pk, flow["user"], "resume")
+    assert list(task.activities.filter(action__in=["paused", "resumed"]).values_list(
+        "action", flat=True
+    )) == ["paused", "resumed", "paused", "resumed"]
+    task_action(task.pk, flow["user"], "complete")
+    execution.refresh_from_db()
+    assert execution.status == ExecutionStatus.COMPLETED
+
+
+@pytest.mark.parametrize("reason,comment", [
+    ("", "text"),
+    ("invalid", "text"),
+    (PauseReason.COMMENT, "  "),
+    (PauseReason.VENDOR, "x" * 4001),
+])
+def test_pause_rejects_invalid_input_without_side_effects(flow, reason, comment):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    task_action(task.pk, flow["user"], "start")
+    with pytest.raises(ValidationError):
+        task_action(task.pk, flow["user"], "pause", reason=reason, comment=comment)
+    task.refresh_from_db()
+    execution.refresh_from_db()
+    assert task.status == TaskStatus.IN_PROGRESS
+    assert execution.status == ExecutionStatus.RUNNING
+    assert not task.activities.filter(action="paused").exists()
+    assert not execution.notes.exists()
+
+
+def test_pause_permissions_for_assignee_and_manager(flow, make_user, make_person, make_role,
+                                                   make_membership, client):
+    executor_role = make_role(permissions=["service.view", "offering.view", "offering.execute"])
+    worker = make_person(make_user(), name="Assignee")
+    other = make_person(make_user(), name="Other worker")
+    for person in (worker, other):
+        make_membership(person, flow["org_tree"]["parish_a"], executor_role)
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    task_action(task.pk, flow["user"], "assign", assignee_id=worker.pk)
+    task_action(task.pk, worker.user, "start")
+    with pytest.raises(PermissionDenied):
+        task_action(task.pk, other.user, "pause", reason=PauseReason.APPROVAL)
+    client.force_login(other.user)
+    assert "Pause task" not in client.get(
+        reverse("offerings:execution_detail", args=[execution.pk])
+    ).content.decode()
+    task_action(task.pk, worker.user, "pause", reason=PauseReason.APPROVAL)
+    with pytest.raises(PermissionDenied):
+        task_action(task.pk, other.user, "resume")
+    task_action(task.pk, worker.user, "resume")
+    task_action(task.pk, flow["user"], "pause", reason=PauseReason.REQUESTER)
+    task_action(task.pk, flow["user"], "resume")
+
+
+def test_pause_visible_to_delegated_assignee_and_manager_without_execute(
+    flow, make_user, make_person, make_role, make_membership, client
+):
+    worker = make_person(make_user(), name="Worker only")
+    manager = make_person(make_user(), name="Manager only")
+    for person, permission in ((worker, "offering.execute"), (manager, "offering.manage")):
+        role = make_role(permissions=["service.view", permission])
+        make_membership(person, flow["org_tree"]["parish_a"], role)
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    task_action(task.pk, flow["user"], "assign", assignee_id=worker.pk)
+    task_action(task.pk, worker.user, "start")
+    task_action(task.pk, manager.user, "pause", reason=PauseReason.APPROVAL)
+    client.force_login(worker.user)
+    response = client.get(reverse("offerings:execution_detail", args=[execution.pk]))
+    assert response.status_code == 200
+    assert b'value="resume"' in response.content
+    task_action(task.pk, worker.user, "resume")
+    task_action(task.pk, worker.user, "pause", reason=PauseReason.VENDOR)
+    task_action(task.pk, manager.user, "resume")
+
+
 def test_cannot_start_a_second_execution_for_request(flow):
     start_request_execution(flow["request"], flow["actor"])
     with pytest.raises(ValidationError, match="already has an execution"):
@@ -148,6 +381,319 @@ def test_request_and_execution_detail_links_respect_permissions(flow, client):
     assert request_url in client.get(execution_url).content.decode()
 
 
+def test_only_requester_in_request_header_links_to_person(flow, client):
+    from apps.people.models import get_system_person
+
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    task_action(task.pk, flow["user"], "assign", assignee_id=flow["actor"].pk)
+    ExecutionNote.objects.create(
+        execution=execution, task=task, author=flow["user"], body="A linked comment"
+    )
+    RequestComment.objects.create(
+        request=flow["request"], author=flow["actor"], body="A historical comment"
+    )
+    client.force_login(flow["user"])
+    person_url = reverse("people:detail", args=[flow["actor"].pk])
+    system_url = reverse("people:detail", args=[get_system_person().pk])
+    assert client.get(person_url).status_code == 200
+    body = client.get(reverse("requests:detail", args=[flow["request"].pk])).content.decode()
+    header, rest = body.split("</dl>", 1)
+    assert (
+        f'<a href="{person_url}" class="font-medium text-indigo-600 '
+        'hover:text-indigo-800">Worker</a>'
+    ) in header
+    assert f'href="{person_url}"' not in rest
+    assert f'href="{system_url}"' not in body
+    body = client.get(reverse("offerings:execution_detail", args=[execution.pk])).content.decode()
+    assert f'href="{person_url}"' not in body
+    assert f'href="{system_url}"' not in body
+    flow["actor"].deleted_at = timezone.now()
+    flow["actor"].save(update_fields=["deleted_at"])
+    flow["user"].is_superuser = True
+    flow["user"].save(update_fields=["is_superuser"])
+    response = client.get(reverse("requests:detail", args=[flow["request"].pk]))
+    assert response.status_code == 200
+    assert f'href="{person_url}"' not in response.content.decode()
+    assert "Worker" in response.content.decode()
+
+
+def test_request_detail_shows_steps_and_allows_current_task_action(flow, client):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    client.force_login(flow["user"])
+    url = reverse("requests:detail", args=[flow["request"].pk])
+    body = client.get(url).content.decode()
+    assert ">Work</p>" in body
+    assert "Current step" in body
+    header = body.split('<dl class="grid gap-x-8', 1)[1].split("</dl>", 1)[0]
+    assert "Current step</dt>" in header
+    assert ">Work " in header
+    assert ">Pending</span>" in header
+    assert "Assigned to: Unassigned" in header
+    assert f'name="next" value="{url}"' in body
+    assert 'value="start"' in body
+    response = client.post(
+        reverse("offerings:task_action", args=[task.pk]),
+        {"action": "start", "next": url},
+    )
+    assert response.status_code == 302 and response.url == url
+    task.refresh_from_db()
+    assert task.status == TaskStatus.IN_PROGRESS
+    body = client.get(url).content.decode()
+    assert 'value="complete"' in body
+    header = body.split('<dl class="grid gap-x-8', 1)[1].split("</dl>", 1)[0]
+    assert ">In Progress</span>" in header
+    client.post(
+        reverse("offerings:task_action", args=[task.pk]),
+        {"action": "complete", "next": url},
+    )
+    flow["request"].refresh_from_db()
+    assert flow["request"].status == RequestStatus.RESOLVED
+    body = client.get(url).content.decode()
+    assert ">End</p>" in body
+    header = body.split('<dl class="grid gap-x-8', 1)[1].split("</dl>", 1)[0]
+    assert ">End</dd>" in header
+
+
+def test_request_current_step_summary_uses_latest_active_visit(flow, client):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    first = execution.tasks.get()
+    OfferingTask.objects.create(
+        execution=execution,
+        step=flow["work"],
+        title="Latest visit",
+        status=TaskStatus.ASSIGNED,
+        assigned_to=flow["actor"],
+    )
+    client.force_login(flow["user"])
+    response = client.get(reverse("requests:detail", args=[flow["request"].pk]))
+    header = response.content.decode().split('<dl class="grid gap-x-8', 1)[1].split("</dl>", 1)[0]
+    assert first.status == TaskStatus.PENDING
+    assert ">Assigned</span>" in header and "Assigned to: Worker" in header
+
+
+def test_request_execution_log_displays_activities_and_posts_notes(flow, client):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    client.force_login(flow["user"])
+    url = reverse("requests:detail", args=[flow["request"].pk])
+    body = client.get(url).content.decode()
+    assert 'id="execution-log"' in body
+    assert "Task history records" in body
+    assert "Created" in body.split('id="execution-log"', 1)[1]
+    assert ">Timeline</h2>" not in body
+    response = client.post(url, {"kind": "COMMENT", "body": "  A request note <script>  "})
+    assert response.status_code == 302 and response.url == f"{url}#execution-log"
+    note = execution.notes.get()
+    assert note.body == "A request note <script>"
+    assert note.kind == ExecutionNote.Kind.COMMENT
+    assert note.task == task and note.author == flow["user"]
+    body = client.get(url).content.decode()
+    assert "A request note &lt;script&gt;" in body
+    assert "A request note &lt;script&gt;" in client.get(
+        reverse("offerings:execution_detail", args=[execution.pk])
+    ).content.decode()
+
+
+def test_request_execution_log_keeps_existing_request_comments(flow, client):
+    start_request_execution(flow["request"], flow["actor"])
+    RequestComment.objects.create(request=flow["request"], body="Existing request comment")
+    client.force_login(flow["user"])
+    body = client.get(reverse("requests:detail", args=[flow["request"].pk])).content.decode()
+    assert 'id="execution-log"' in body
+    assert "Existing request comment" in body
+    log = body.split('id="execution-log"', 1)[1]
+    assert "Comments" in log
+    assert ">Timeline</h2>" not in body
+
+
+def test_execution_log_shows_all_entry_types_newest_first(flow, client):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    activity = task.activities.get(action="created")
+    note = ExecutionNote.objects.create(
+        execution=execution, task=task, author=flow["user"], body="Recent note"
+    )
+    comment = RequestComment.objects.create(
+        request=flow["request"], author=flow["actor"], body="Old request comment"
+    )
+    now = timezone.now()
+    type(activity).objects.filter(pk=activity.pk).update(created_at=now - timedelta(minutes=2))
+    ExecutionNote.objects.filter(pk=note.pk).update(created_at=now - timedelta(minutes=1))
+    RequestComment.objects.filter(pk=comment.pk).update(created_at=now - timedelta(minutes=3))
+
+    client.force_login(flow["user"])
+    for url in (
+        reverse("requests:detail", args=[flow["request"].pk]),
+        reverse("offerings:execution_detail", args=[execution.pk]),
+    ):
+        response = client.get(url)
+        assert response.status_code == 200
+        entries = response.context["log_entries"]
+        assert [(type(entry), entry.pk) for entry in entries] == [
+            (ExecutionNote, note.pk),
+            (type(activity), activity.pk),
+            (RequestComment, comment.pk),
+        ]
+        log = response.content.decode().split('id="execution-log"', 1)[1]
+        assert log.index("Recent note") < log.index("Created") < log.index("Old request comment")
+        assert log.count('bg-blue-50 text-blue-700 ring-blue-600/20">Comments</span>') == 2
+        assert 'text-zinc-600 ring-1 ring-inset ring-zinc-500/20">System</span>' in log
+        assert 'bg-zinc-100 text-zinc-600 ring-zinc-500/20">Created</span>' in log
+
+
+@pytest.mark.parametrize("body", ["", "  ", "x" * 4001])
+def test_request_execution_log_rejects_invalid_notes(flow, client, body):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    client.force_login(flow["user"])
+    response = client.post(
+        reverse("requests:detail", args=[flow["request"].pk]),
+        {"kind": "COMMENT", "body": body},
+    )
+    assert response.status_code == 400
+    assert response.context["note_form"].errors["body"]
+    assert not execution.notes.exists()
+
+
+def test_request_without_visible_execution_cannot_post_note(flow, client, make_user, make_person):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    viewer = make_user()
+    person = make_person(viewer)
+    flow["request"].requester = person
+    flow["request"].save(update_fields=["requester"])
+    person.active = False
+    person.save(update_fields=["active"])
+    client.force_login(viewer)
+    assert client.post(
+        reverse("requests:detail", args=[flow["request"].pk]),
+        {"kind": "COMMENT", "body": "No"},
+    ).status_code == 404
+    assert not execution.notes.exists()
+
+
+def test_request_view_permission_alone_does_not_expose_execution_log(
+    flow, client, make_user, make_person, make_role, make_membership
+):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    viewer = make_user()
+    role = make_role(permissions=["request.view"])
+    make_membership(make_person(viewer), flow["org_tree"]["parish_a"], role)
+    client.force_login(viewer)
+    url = reverse("requests:detail", args=[flow["request"].pk])
+    response = client.get(url)
+    assert response.status_code == 200
+    body = response.content.decode()
+    assert 'id="execution-log"' not in body
+    header = body.split('<dl class="grid gap-x-8', 1)[1].split("</dl>", 1)[0]
+    assert "Current step</dt>" in header and ">—</dd>" in header
+    assert ">Work</dd>" not in header
+    assert client.post(url, {"kind": "COMMENT", "body": "No access"}).status_code == 404
+    assert not execution.notes.exists()
+
+
+def test_incident_detail_shows_existing_execution_steps_and_actions(flow, client):
+    from apps.incidents.models import Incident
+
+    perm, _ = Permission.objects.get_or_create(
+        code="incident.view", defaults={"label": "View incident", "module": "incident"}
+    )
+    flow["role"].permissions.add(perm, through_defaults={"active": True})
+    incident = Incident.objects.create(service=flow["service"], title="Incident")
+    execution = OfferingExecution.objects.create(
+        offering=flow["offering"], subject=incident, current_step=flow["work"],
+        status=ExecutionStatus.RUNNING,
+    )
+    task = OfferingTask.objects.create(execution=execution, step=flow["work"], title="Repair")
+    client.force_login(flow["user"])
+    url = reverse("incidents:detail", args=[incident.pk])
+    body = client.get(url).content.decode()
+    assert "Repair" in body
+    assert "Average active time: No reliable completed tasks" in body
+    request_execution = start_request_execution(flow["request"], flow["actor"])
+    request_body = client.get(reverse("requests:detail", args=[flow["request"].pk])).content.decode()
+    assert request_execution and "Average active time: No reliable completed tasks" in request_body
+    assert 'value="start"' in body
+    response = client.post(
+        reverse("offerings:task_action", args=[task.pk]), {"action": "start", "next": url}
+    )
+    assert response.url == url
+    task.refresh_from_db()
+    assert task.status == TaskStatus.IN_PROGRESS
+    other = Incident.objects.create(service=flow["service"], title="No execution")
+    assert "Task history records the people" not in client.get(
+        reverse("incidents:detail", args=[other.pk])
+    ).content.decode()
+
+
+def test_requester_sees_steps_but_cannot_operate_tasks(
+    flow, client, make_user, make_person
+):
+    requester = make_person(make_user(), name="Requester")
+    flow["request"].requester = requester
+    flow["request"].save(update_fields=["requester"])
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    client.force_login(requester.user)
+    url = reverse("requests:detail", args=[flow["request"].pk])
+    body = client.get(url).content.decode()
+    assert ">Work</p>" in body
+    assert "Average active time" not in body
+    assert 'value="start"' not in body
+    assert client.post(reverse("offerings:task_action", args=[task.pk]), {"action": "start"}).status_code == 403
+
+
+def test_task_action_rejects_external_redirect(flow, client):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    client.force_login(flow["user"])
+    response = client.post(
+        reverse("offerings:task_action", args=[task.pk]),
+        {"action": "start", "next": "https://example.com/"},
+    )
+    assert response.url == reverse("offerings:execution_detail", args=[execution.pk])
+
+
+def test_incident_viewer_without_execution_access_does_not_see_steps(
+    flow, client, make_user, make_person, make_role, make_membership
+):
+    from apps.incidents.models import Incident
+
+    incident = Incident.objects.create(service=flow["service"], title="Incident")
+    execution = OfferingExecution.objects.create(
+        offering=flow["offering"], subject=incident, current_step=flow["work"],
+        status=ExecutionStatus.RUNNING,
+    )
+    OfferingTask.objects.create(execution=execution, step=flow["work"], title="Private work")
+    viewer = make_user()
+    viewer_role = make_role(permissions=["incident.view"])
+    make_membership(make_person(viewer), flow["org_tree"]["parish_a"], viewer_role)
+    client.force_login(viewer)
+    response = client.get(reverse("incidents:detail", args=[incident.pk]))
+    assert response.status_code == 200
+    assert "Private work" not in response.content.decode()
+    assert client.get(reverse("offerings:execution_detail", args=[execution.pk])).status_code == 404
+
+
+def test_request_detail_hides_completion_when_task_assigned_to_another_person(
+    flow, client, make_user, make_person
+):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    task.assigned_to = make_person(make_user())
+    task.status = TaskStatus.IN_PROGRESS
+    task.save(update_fields=["assigned_to", "status"])
+    client.force_login(flow["user"])
+    body = client.get(reverse("requests:detail", args=[flow["request"].pk])).content.decode()
+    assert ">Work</p>" in body
+    assert 'value="complete"' not in body
+    assert client.post(
+        reverse("offerings:task_action", args=[task.pk]), {"action": "complete"}
+    ).status_code == 302
+    task.refresh_from_db()
+    assert task.status == TaskStatus.IN_PROGRESS
+
+
 def test_linked_requests_cannot_be_closed_independently(flow, client):
     permission, _ = Permission.objects.get_or_create(
         code="request.close", defaults={"label": "Close", "module": "request"}
@@ -189,6 +735,10 @@ def test_group_claim_controls_and_lifecycle(
     url = reverse("offerings:execution_detail", args=[execution.pk])
     body = client.get(url).content.decode()
     assert ">Claim task</button>" in body
+    controls = body.split('<div class="flex flex-wrap items-center gap-2">')[-1].split("</div>", 1)[0]
+    assert 'name="assignee" required' in controls
+    assert 'value="assign"' in controls and 'value="claim"' in controls
+    assert controls.count("<form ") == 2
     assert ">Start</button>" not in body
     task_action(task.pk, flow["user"], "claim")
     task.refresh_from_db()
@@ -395,7 +945,11 @@ def test_requester_can_see_own_execution_and_notes_but_not_operate_tasks(
     execution = start_request_execution(flow["request"], flow["actor"])
     task = execution.tasks.get()
     ExecutionNote.objects.create(
-        execution=execution, task=task, author=flow["user"], body="Internal note"
+        execution=execution,
+        task=task,
+        author=flow["user"],
+        body="Internal note",
+        kind=ExecutionNote.Kind.WORK_NOTE,
     )
     client.force_login(user)
     request_url = reverse("requests:detail", args=[flow["request"].pk])
@@ -403,8 +957,20 @@ def test_requester_can_see_own_execution_and_notes_but_not_operate_tasks(
     assert client.get(request_url).status_code == 200
     response = client.get(execution_url)
     assert response.status_code == 200
-    assert "Internal note" in response.content.decode()
-    assert client.post(execution_url, {"body": "Requester note"}).status_code == 302
+    assert "Internal note" not in response.content.decode()
+    assert [value for value, _ in response.context["note_form"].fields["kind"].choices] == [
+        ExecutionNote.Kind.COMMENT
+    ]
+    assert client.post(
+        execution_url, {"kind": "WORK_NOTE", "body": "Requester private note"}
+    ).status_code == 400
+    assert not ExecutionNote.objects.filter(body="Requester private note").exists()
+    assert client.post(
+        execution_url, {"kind": "COMMENT", "body": "Requester comment"}
+    ).status_code == 302
+    requester_body = client.get(execution_url).content.decode()
+    assert "Requester comment" in requester_body
+    assert "Internal note" not in requester_body
     assert ExecutionNote.objects.filter(execution=execution, author=user).exists()
     assert (
         client.post(
@@ -578,7 +1144,9 @@ def test_delegated_worker_sees_only_current_task(
     task = execution.tasks.get()
     client.force_login(flow["user"])
     detail_url = reverse("offerings:execution_detail", args=[execution.pk])
-    assert client.post(detail_url, {"body": "Owner message"}).status_code == 302
+    assert client.post(
+        detail_url, {"kind": "COMMENT", "body": "Owner message"}
+    ).status_code == 302
     assert ExecutionNote.objects.get(body="Owner message").task == task
     old_task = OfferingTask.objects.create(
         execution=execution, step=flow["notify"], title="Private step", status=TaskStatus.DONE
@@ -608,10 +1176,32 @@ def test_delegated_worker_sees_only_current_task(
     assert "Private old note" not in body
     assert "Private general note" not in body
     assert "Private step" not in body
-    assert client.post(detail_url, {"body": "Related team message"}).status_code == 302
+    assert "Average active time" not in body
+    request_viewer = make_role(permissions=["request.view"])
+    make_membership(worker_person, org_tree["parish_a"], request_viewer)
+    request_body = client.get(reverse("requests:detail", args=[flow["request"].pk])).content.decode()
+    assert ">Work</p>" in request_body
+    assert "Average active time" not in request_body
+    assert "Private step" not in request_body
+    assert ">Notify</p>" not in request_body
+    assert ">Claim task</button>" in request_body
+    log = request_body.split('id="execution-log"', 1)[1]
+    assert "Owner message" in log
+    assert "Private old note" not in log and "Private general note" not in log
+    request_url = reverse("requests:detail", args=[flow["request"].pk])
+    assert client.post(
+        request_url, {"kind": "WORK_NOTE", "body": "Request team message"}
+    ).url == (
+        f"{request_url}#execution-log"
+    )
+    assert ExecutionNote.objects.get(body="Request team message").task == task
+    assert client.post(
+        detail_url, {"kind": "WORK_NOTE", "body": "Related team message"}
+    ).status_code == 302
     assert ExecutionNote.objects.get(body="Related team message").task == task
-    client.force_login(flow["user"])
     assert "Related team message" in client.get(detail_url).content.decode()
+    client.force_login(flow["user"])
+    assert "Related team message" not in client.get(detail_url).content.decode()
     client.force_login(worker)
     assert ">Claim task</button>" in client.get(detail_url).content.decode()
     task_action(task.pk, worker, "claim")
@@ -643,6 +1233,7 @@ def test_task_table_navigation_search_filters_sort_and_pagination(
     assert response.status_code == 200
     assert response.context["paginator"].count == 28
     assert len(response.context["object_list"]) == 25
+    assert "Page 1 of 2" in response.content.decode()
     group = next(
         group for group in response.context["nav_groups"] if group["label"] == "Service Offerings"
     )
@@ -661,7 +1252,9 @@ def test_task_table_navigation_search_filters_sort_and_pagination(
         client.get(url, {"organization": org_tree["parish_a"].pk}).context["paginator"].count == 28
     )
     assert client.get(url, {"sort": "title", "page": 1}).context["object_list"][0] == task
-    assert len(client.get(url, {"page": 2}).context["object_list"]) == 3
+    page_two = client.get(url, {"page": 2}, HTTP_HX_REQUEST="true")
+    assert len(page_two.context["object_list"]) == 3
+    assert "Page 2 of 2" in page_two.content.decode()
     assert client.get(url, {"created_at__from": "2099-01-01"}).context["paginator"].count == 0
     partial = client.get(url, {"q": "Alpha"}, HTTP_HX_REQUEST="true")
     assert partial.context["partial"]
@@ -670,6 +1263,46 @@ def test_task_table_navigation_search_filters_sort_and_pagination(
     assert client.get(url, {"service": other_service.pk}).context["paginator"].count == 0
     client.logout()
     assert client.get(url).status_code == 302
+
+
+def test_task_table_can_show_all_ongoing_tasks_in_authorized_services(
+    flow, client, make_user, make_person, make_role, make_membership,
+    make_service, org_tree
+):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    task.assigned_to = flow["actor"]
+    task.save(update_fields=["assigned_to"])
+    delegated_service = make_service(org_tree["parish_a"], "Delegated service")
+    task.step.service_offering = ServiceOffering.objects.create(
+        service=delegated_service, name="Delegated offering"
+    )
+    task.step.save(update_fields=["service_offering"])
+
+    viewer = make_user()
+    viewer_person = make_person(viewer, name="Service viewer")
+    viewer_role = make_role(permissions=["service.view", "offering.execute"])
+    make_membership(viewer_person, flow["service"].organization, viewer_role)
+    client.force_login(viewer)
+
+    url = reverse("offerings:tasks")
+    session = client.session
+    session["service_context"] = {
+        "pk": flow["service"].pk,
+        "role": viewer_role.code,
+    }
+    session.save()
+    mine = client.get(url)
+    assert mine.status_code == 200
+    assert mine.context["paginator"].count == 0
+    assert "All ongoing tasks in my services" in mine.content.decode()
+
+    service_tasks = client.get(url, {"scope": "service"})
+    assert service_tasks.status_code == 200
+    assert list(service_tasks.context["object_list"]) == [task]
+    assert service_tasks.context["task_scope"] == "service"
+    assert "?scope=service" in service_tasks.content.decode()
+    assert service_tasks.context["object_list"][0].responsible_service_id == delegated_service.pk
 
 
 def test_backfill_does_not_infer_completion(flow):

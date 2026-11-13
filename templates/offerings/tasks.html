@@ -5,6 +5,16 @@
 {% block content %}
 <div class="space-y-6">
   <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Service tasks' %}</h1>
+  <nav class="flex flex-wrap gap-2" aria-label="{% translate 'Task view' %}">
+    <a href="?{% if task_scope_query %}{{ task_scope_query }}&{% endif %}scope=mine"
+       class="rounded-lg border px-3 py-2 text-sm font-medium {% if task_scope == 'mine' %}border-indigo-600 bg-indigo-50 text-indigo-700{% else %}border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50{% endif %}">
+      {% translate 'My actionable tasks' %}
+    </a>
+    <a href="?{% if task_scope_query %}{{ task_scope_query }}&{% endif %}scope=service"
+       class="rounded-lg border px-3 py-2 text-sm font-medium {% if task_scope == 'service' %}border-indigo-600 bg-indigo-50 text-indigo-700{% else %}border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50{% endif %}">
+      {% translate 'All ongoing tasks in my services' %}
+    </a>
+  </nav>
   {% include "core/tables/_table.html" %}
 </div>
 {% endblock content %}

@@ -191,7 +191,15 @@ def elapsed(value, end=None):
         from django.utils import timezone
 
         current = timezone.now()
-    seconds = max(int((current - value).total_seconds()), 0)
+    return format_duration(current - value)
+
+
+@register.filter
+def format_duration(value):
+    """Render a timedelta in the same format as elapsed time."""
+    if value is None:
+        return "—"
+    seconds = max(int(value.total_seconds()), 0)
     hours, remainder = divmod(seconds, 3600)
     minutes, secs = divmod(remainder, 60)
     if hours:
@@ -210,12 +218,17 @@ def minutes(value):
 
 
 @register.filter
+def display_name(user):
+    from apps.people.models import user_display_name
+
+    return user_display_name(user)
+
+
+@register.filter
 def initials(user):
     if not user:
         return "?"
-    name = (getattr(user, "get_full_name", lambda: "")() or "").strip()
-    if not name:
-        name = getattr(user, "username", "") or "?"
+    name = display_name(user)
     parts = [p for p in name.split() if p][:2]
     return "".join(p[0].upper() for p in parts) if parts else "?"
 

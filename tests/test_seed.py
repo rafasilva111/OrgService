@@ -16,7 +16,8 @@ pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def seeded(db):
+def seeded(db, settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path / "media"
     call_command("seed_rbac", verbosity=0)
     call_command("seed_default_data", verbosity=0)
 
@@ -33,6 +34,145 @@ def test_seed_is_idempotent(seeded):
     before = OrganizationMembership.objects.count()
     call_command("seed_default_data", verbosity=0)
     assert OrganizationMembership.objects.count() == before
+
+
+def test_optional_cemetery_productivity_seed_is_complete_and_idempotent(seeded):
+    from django.contrib.contenttypes.models import ContentType
+    from django.core.management.base import CommandError
+    from django.utils import timezone
+
+    from apps.common.management.commands.seed_cemetery_productivity import (
+        MARKER,
+        three_months_before,
+    )
+    from apps.offerings.execution import eligible_people
+    from apps.offerings.models import ExecutionStatus, OfferingExecution, StepType, TaskStatus
+    from apps.offerings.productivity import offering_detail, offering_totals, period_start
+    from apps.offerings.request_link import request_status
+
+    before = Request.objects.count()
+    call_command("seed_cemetery_productivity", verbosity=0)
+    requests = Request.objects.filter(description__startswith=MARKER)
+    assert requests.count() == 100
+    assert Request.objects.count() == before + 100
+    executions = OfferingExecution.objects.filter(
+        subject_type=ContentType.objects.get_for_model(Request),
+        subject_id__in=requests.values("pk"),
+    ).select_related("offering", "current_step")
+    assert executions.count() == 100
+    assert executions.filter(status=ExecutionStatus.COMPLETED).count() == 60
+    assert executions.filter(status=ExecutionStatus.WAITING).count() == 20
+    assert executions.filter(status=ExecutionStatus.RUNNING).count() == 20
+    assert set(executions.values_list("offering__name", flat=True)) == {
+        "Limpar cemitério", "Realizar um funeral", "Realizar transladação"
+    }
+    today = timezone.localdate()
+    now = timezone.now()
+    totals = list(offering_totals(executions, period_start("90", now), now))
+    assert sum(row["started"] for row in totals) > 90
+    assert all(row["completed"] and row["running"] and row["waiting"] and row["failed"]
+               for row in totals)
+    tasks, timeline = offering_detail(executions, period_start("90", now), now)
+    assert len(tasks) >= 4
+    assert sum(day["started"] for day in timeline) == sum(row["started"] for row in totals)
+    for execution in executions:
+        assert three_months_before(today) <= timezone.localtime(execution.started_at).date() <= today
+        assert execution.started_at <= now
+        assert execution.completed_at is None or execution.started_at <= execution.completed_at <= now
+        assert execution.subject.status == request_status(execution)
+        assert execution.subject.form_data
+        if execution.offering.name != "Limpar cemitério":
+            attachment = execution.subject.attachments.get()
+            assert attachment.file.read().startswith(b"%PDF-1.4")
+        for task in execution.tasks.select_related(
+            "step__offering__service", "step__service_offering__service",
+            "step__responsible_role", "assigned_to"
+        ):
+            assert task.started_at <= now
+            assert task.completed_at is None or task.started_at <= task.completed_at <= now
+            assert not task.activities.filter(created_at__gt=now).exists()
+            if task.step.step_type == StepType.NOTIFY:
+                assert task.notification.read_at is not None
+                continue
+            assert task.assigned_to in eligible_people(task.step)
+            assert task.activities.filter(action="created").exists()
+            if task.status == TaskStatus.DONE:
+                assert task.activities.filter(action="completed").exists()
+    edited = requests.first()
+    edited.title = "Alterado pelo utilizador"
+    edited.save(update_fields=["title"])
+    call_command("seed_cemetery_productivity", verbosity=0)
+    edited.refresh_from_db()
+    assert edited.title == "Alterado pelo utilizador"
+    assert requests.count() == 100
+    assert executions.count() == 100
+    edited.description = f"{MARKER}alterado]"
+    edited.save(update_fields=["description"])
+    with pytest.raises(CommandError, match="incomplete or altered"):
+        call_command("seed_cemetery_productivity", verbosity=0)
+    assert requests.count() == 100
+    assert executions.count() == 100
+
+
+def test_seeded_superuser_can_navigate_without_operational_participation(seeded, client):
+    from django.urls import reverse
+
+    from apps.incidents.views import IncidentCreateForm
+    from apps.offerings.execution import eligible_people
+    from apps.offerings.models import OfferingStep, StepType
+    from apps.services.views import ServiceCreateForm
+
+    admin = _user("admin")
+    person = admin.person
+    assert admin.is_superuser and admin.is_active
+    assert not person.active
+    assert not person.memberships.exists()
+    assert not person.service_actor_links.exists()
+
+    grouped_step = OfferingStep.objects.filter(
+        offering__service__name="Cemitérios", responsible_role__isnull=False
+    ).first()
+    assert grouped_step is not None
+    assert person not in eligible_people(grouped_step)
+    ungrouped_step = OfferingStep.objects.filter(
+        step_type=StepType.TASK, responsible_role__isnull=True
+    ).first()
+    assert ungrouped_step is not None
+    assert person not in eligible_people(ungrouped_step)
+    assert not IncidentCreateForm(user=admin).fields["assigned_to"].queryset.filter(
+        pk=person.pk
+    ).exists()
+    assert not ServiceCreateForm(user=admin).fields["service_manager"].queryset.filter(
+        pk=person.pk
+    ).exists()
+
+    client.force_login(admin)
+    for url_name in ("dashboard", "services:index", "requests:index", "offerings:executions"):
+        assert client.get(reverse(url_name)).status_code == 200
+    call_command("seed_default_data", verbosity=0)
+    person.refresh_from_db()
+    assert not person.active
+    assert not person.memberships.exists()
+
+
+def test_seed_preserves_existing_superuser_participation_settings(seeded):
+    from apps.access.models import Role
+    from apps.organizations.models import Organization
+
+    person = _user("admin").person
+    person.active = True
+    person.save(update_fields=["active"])
+    membership = OrganizationMembership.objects.create(
+        person=person,
+        organization=Organization.objects.get(code="torres-vedras"),
+        role=Role.objects.get(code="OPERATOR"),
+    )
+    call_command("seed_default_data", verbosity=0)
+    person.refresh_from_db()
+    membership.refresh_from_db()
+    assert person.active
+    assert membership.active
+    assert person.memberships.count() == 1
 
 
 def test_seed_does_not_duplicate_executions_after_time_changes(seeded, monkeypatch):
@@ -55,6 +195,54 @@ def test_seed_with_versioned_offering_preserves_draft(seeded):
     before = list(draft.steps.values_list("pk", "name", "service_offering_id"))
     call_command("seed_default_data", verbosity=0)
     assert list(draft.steps.values_list("pk", "name", "service_offering_id")) == before
+
+
+def test_seed_cemetery_request_answers_are_complete_and_do_not_overwrite_user_data(
+    seeded, client
+):
+    from django.contrib.contenttypes.models import ContentType
+
+    from apps.offerings.models import OfferingExecution
+    from apps.offerings.request_form import answers_form_for
+
+    executions = OfferingExecution.objects.filter(
+        offering__service__name="Cemitérios",
+        subject_type=ContentType.objects.get_for_model(Request),
+    ).select_related("offering")
+    assert executions.count() == 6
+    requests = [execution.subject for execution in executions]
+    for request in requests:
+        form = answers_form_for(request.offering)
+        for field in request.offering.form_fields.all():
+            assert field.key in request.form_data
+            if field.field_type == "FILE":
+                attachment = request.attachments.get(field_key=field.key)
+                assert request.form_data[field.key]["attachment"] == attachment.pk
+                assert attachment.original_name == "exemplo-demonstracao.pdf"
+                with attachment.file.open("rb") as file:
+                    content = file.read()
+                assert content.startswith(b"%PDF-1.4")
+                assert b"demonstracao. Sem valor legal" in content
+                assert attachment.size == len(content)
+        assert form.specs
+    funeral = next(request for request in requests if request.offering.name == "Realizar um funeral")
+    client.force_login(_user("p.lopes"))
+    attachment = funeral.attachments.get()
+    response = client.get(f"/requests/attachments/{attachment.pk}/")
+    assert response.status_code == 200
+    assert b"demonstracao. Sem valor legal" in b"".join(response.streaming_content)
+    original = {request.pk: request.form_data for request in requests}
+    first = requests[0]
+    first.form_data["user-edit"] = "preserved"
+    first.save(update_fields=["form_data"])
+    call_command("seed_default_data", verbosity=0)
+    for request in requests:
+        request.refresh_from_db()
+        if request.pk == first.pk:
+            assert request.form_data["user-edit"] == "preserved"
+        else:
+            assert request.form_data == original[request.pk]
+        assert request.attachments.count() <= 1
 
 
 def test_every_service_manager_has_a_scoped_membership(seeded):

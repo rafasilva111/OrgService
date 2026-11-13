@@ -442,30 +442,52 @@ class RequestDetailView(BreadcrumbsMixin, LoginRequiredMixin, DetailView):
         )
 
     def get_context_data(self, **kwargs):
-        from django.contrib.contenttypes.models import ContentType
-
-        from apps.offerings.models import OfferingExecution
-        from apps.offerings.views import actionable_tasks, execution_visible_services
+        from apps.offerings.views import execution_subject_context
 
         ctx = super().get_context_data(**kwargs)
         ctx["comments"] = self.object.comments.select_related("author").order_by("created_at")
-        ctx["answers"] = answer_rows(self.object)
-        accessible = Q(pk__in=actionable_tasks(self.request.user).values("execution_id"))
-        if user_has_permission_code(self.request.user, "offering.view"):
-            accessible |= Q(offering__service__in=execution_visible_services(self.request.user))
-        if (
-            self.object.requester_id
-            and self.object.requester.user_id == self.request.user.pk
-            and self.object.requester.active
-            and self.object.requester.deleted_at is None
-        ):
-            accessible |= Q(pk__isnull=False)
-        ctx["execution"] = OfferingExecution.objects.filter(
-            accessible,
-            subject_type=ContentType.objects.get_for_model(Request),
-            subject_id=self.object.pk,
-        ).first()
+        ctx["answers"] = answer_rows(self.object, include_empty=True)
+        ctx.update(
+            execution_subject_context(
+                self.request.user, self.object, self.request.path, include_log=True
+            )
+        )
+        if "note_form" in kwargs:
+            ctx["note_form"] = kwargs["note_form"]
         return ctx
+
+    def post(self, request, *args, **kwargs):
+        from django.contrib.contenttypes.models import ContentType
+        from django.http import Http404
+        from django.shortcuts import redirect
+
+        from apps.offerings.views import (
+            ExecutionNoteForm,
+            add_execution_note,
+            execution_is_requester,
+            visible_executions,
+        )
+
+        self.object = self.get_object()
+        execution = visible_executions(request.user).filter(
+            subject_type=ContentType.objects.get_for_model(Request), subject_id=self.object.pk
+        ).first()
+        if execution is None:
+            raise Http404
+        form = ExecutionNoteForm(
+            request.POST,
+            allow_work_notes=not execution_is_requester(execution, request.user),
+        )
+        if not form.is_valid():
+            return self.render_to_response(self.get_context_data(note_form=form), status=400)
+        add_execution_note(
+            execution,
+            request.user,
+            form.cleaned_data["body"],
+            kind=form.cleaned_data["kind"],
+            subject=self.object,
+        )
+        return redirect(f"{request.path}#execution-log")
 
 
 class RequestAttachmentView(LoginRequiredMixin, View):

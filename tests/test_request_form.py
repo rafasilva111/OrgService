@@ -323,6 +323,8 @@ def test_create_request_with_answers_and_attachment(world, media):
     assert str(media) in attachment.file.path
 
     detail = world["client"].get(reverse("requests:detail", args=[req.pk])).content.decode()
+    assert ">Request form</h2>" in detail
+    assert ">Description</h2>" not in detail
     assert "Nome do falecido" in detail and "João Silva" in detail
     assert date_format(date(2026, 11, 10), "SHORT_DATE_FORMAT") in detail
     assert reverse("requests:attachment", args=[attachment.pk]) in detail
@@ -330,6 +332,36 @@ def test_create_request_with_answers_and_attachment(world, media):
     download = world["client"].get(reverse("requests:attachment", args=[attachment.pk]))
     assert download.status_code == 200
     assert b"".join(download.streaming_content) == b"%PDF-1.4"
+
+
+def test_request_details_show_empty_fields_without_editing(world):
+    offering = world["funeral"]
+    OfferingFormField.objects.create(
+        offering=offering, key="confirmed", label="Confirmed", field_type=T.BOOLEAN, order=50
+    )
+    req = Request.objects.create(
+        service=world["cemetery"],
+        offering=offering,
+        title="Legacy",
+        description="Legacy description",
+        form_data={"confirmed": False, "nome": "<Sensitive input>"},
+    )
+    detail = world["client"].get(reverse("requests:detail", args=[req.pk])).content.decode()
+    assert "Nome do falecido" in detail and "&lt;Sensitive input&gt;" in detail
+    assert "Data do óbito" in detail and "Certidão de óbito" in detail
+    assert "<dt class=\"text-zinc-500\">Confirmed</dt>" in detail
+    assert ">No</dd>" in detail
+    assert "Legacy description" not in detail
+    assert 'name="q_nome"' not in detail
+
+
+def test_request_details_without_form_questions(world):
+    offering = ServiceOffering.objects.create(
+        service=world["cemetery"], name="No fields", status=OfferingStatus.ACTIVE
+    )
+    req = Request.objects.create(service=world["cemetery"], offering=offering, title="Empty")
+    response = world["client"].get(reverse("requests:detail", args=[req.pk]))
+    assert "No questions configured for this request." in response.content.decode()
 
 
 def test_missing_required_answers_block_the_request(world):

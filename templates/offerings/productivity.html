@@ -1,0 +1,66 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n %}
+
+{% block title %}{% translate 'Offering productivity' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% translate 'Offering productivity' %}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Offering productivity' %}</h1>
+      <p class="mt-1 text-sm text-zinc-500">{% translate 'Compare and monitor the offerings you can access, across all versions.' %}</p>
+    </div>
+    <a href="{% url 'offerings:index' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50">← {% translate 'Service Offerings' %}</a>
+  </div>
+  <form method="get" class="flex flex-wrap items-end gap-3">
+    {% if selected %}<input type="hidden" name="offering" value="{{ selected.pk }}">{% endif %}
+    <label class="grid gap-1 text-sm font-medium text-zinc-700">{% translate 'Period' %}
+      <select name="period" class="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm">
+        {% for value, label in periods %}<option value="{{ value }}"{% if period == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700">{% translate 'Apply' %}</button>
+    {% if selected %}<a href="{% url 'offerings:productivity' %}?period={{ period }}" class="px-2 py-2 text-sm text-indigo-600 hover:text-indigo-800">{% translate 'All offerings' %}</a>{% endif %}
+  </form>
+  {% if period_error %}<p role="alert" class="text-sm text-red-700">{{ period_error }}</p>{% else %}
+  <div class="space-y-1 text-xs text-zinc-500">
+    <p>{% blocktranslate with start=start|date:"SHORT_DATETIME_FORMAT" end=end|date:"SHORT_DATETIME_FORMAT" %}Period: {{ start }} to {{ end }}.{% endblocktranslate %} {% translate 'Started and completed are counted by their respective dates. Current states refer to executions started in this period; failed includes blocked executions.' %}</p>
+    <p>{% translate 'Average execution time is not yet available because paused time is not excluded.' %}</p>
+  </div>
+  <div class="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
+    <table class="w-full text-left text-sm">
+      <thead class="bg-zinc-50 text-xs font-medium text-zinc-600">
+        <tr><th scope="col" class="px-4 py-3">{% translate 'Service Offering' %}</th><th scope="col" class="px-4 py-3">{% translate 'Service' %}</th><th scope="col" class="px-4 py-3">{% translate 'Started' %}</th><th scope="col" class="px-4 py-3">{% translate 'Completed' %}</th><th scope="col" class="px-4 py-3">{% translate 'In Progress' %}</th><th scope="col" class="px-4 py-3">{% translate 'Waiting' %}</th><th scope="col" class="px-4 py-3">{% translate 'Failed' %}</th></tr>
+      </thead>
+      <tbody class="divide-y divide-zinc-100">
+        {% for row in rows %}
+        <tr><th scope="row" class="px-4 py-3 font-medium"><a class="text-indigo-600 hover:text-indigo-800" href="?period={{ period }}&amp;offering={{ row.offering.pk }}">{{ row.offering.name }}</a></th><td class="px-4 py-3">{{ row.offering.service.name }}</td><td class="px-4 py-3">{{ row.counts.started }}</td><td class="px-4 py-3">{{ row.counts.completed }}</td><td class="px-4 py-3">{{ row.counts.running }}</td><td class="px-4 py-3">{{ row.counts.waiting }}</td><td class="px-4 py-3">{{ row.counts.failed }}</td></tr>
+        {% empty %}<tr><td colspan="7" class="px-4 py-6 text-center text-zinc-500">{% translate 'No offerings in scope.' %}</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if selected %}
+  <section class="space-y-4">
+    <h2 class="text-lg font-semibold text-zinc-900">{{ selected.service.name }} · {{ selected.name }}</h2>
+    <div class="grid gap-4 lg:grid-cols-2">
+      <div class="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
+        <h3 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Completed tasks by assignee' %}</h3>
+        <p class="px-4 pt-3 text-xs text-zinc-500">{% translate 'Manual tasks completed in the period, grouped by their recorded assignee. Automatic notifications are excluded.' %}</p>
+        <table class="w-full text-left text-sm"><thead><tr><th scope="col" class="px-4 py-3">{% translate 'Assigned to' %}</th><th scope="col" class="px-4 py-3">{% translate 'Completed tasks' %}</th></tr></thead><tbody class="divide-y divide-zinc-100">
+          {% for person in people %}<tr><td class="px-4 py-3">{% if person.assigned_to__full_name %}{{ person.assigned_to__full_name }}{% else %}{% translate 'Unassigned' %}{% endif %}</td><td class="px-4 py-3">{{ person.total }}</td></tr>{% empty %}<tr><td colspan="2" class="px-4 py-6 text-center text-zinc-500">{% translate 'No completed tasks in this period.' %}</td></tr>{% endfor %}
+        </tbody></table>
+      </div>
+      <div class="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm">
+        <h3 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Daily execution activity' %}</h3>
+        <p class="px-4 pt-3 text-xs text-zinc-500">{% translate 'Only days with execution activity are shown.' %}</p>
+        <table class="w-full text-left text-sm"><thead><tr><th scope="col" class="px-4 py-3">{% translate 'Date' %}</th><th scope="col" class="px-4 py-3">{% translate 'Started' %}</th><th scope="col" class="px-4 py-3">{% translate 'Completed' %}</th></tr></thead><tbody class="divide-y divide-zinc-100">
+          {% for day in timeline %}<tr><td class="px-4 py-3">{{ day.day|date:"DATE_FORMAT" }}</td><td class="px-4 py-3">{{ day.started }}</td><td class="px-4 py-3">{{ day.completed }}</td></tr>{% empty %}<tr><td colspan="3" class="px-4 py-6 text-center text-zinc-500">{% translate 'No execution activity in this period.' %}</td></tr>{% endfor %}
+        </tbody></table>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

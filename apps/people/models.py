@@ -65,6 +65,15 @@ class Person(SoftDeleteModel, ActiveModel):
         return self.full_name
 
 
+def user_display_name(user):
+    if user is None:
+        return "—"
+    person = getattr(user, "person", None)
+    if person and person.full_name.strip():
+        return person.full_name
+    return user.get_full_name().strip() or user.get_username()
+
+
 def get_system_person():
     person, _created = Person.objects.get_or_create(
         email=SYSTEM_PERSON_EMAIL,

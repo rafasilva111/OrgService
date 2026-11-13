@@ -5,7 +5,7 @@
 {% block header_title %}{{ incident.title }}{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl space-y-6">
+<div class="{% if not execution %}max-w-4xl {% endif %}space-y-6">
   <div class="flex flex-wrap items-end justify-between gap-3">
     <div class="space-y-3">
       <div class="flex flex-wrap items-center gap-2">
@@ -24,6 +24,8 @@
     <a href="{% url 'incidents:index' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50">&larr; {% translate 'Incidents' %}</a>
   </div>
 
+  <div class="{% if execution %}grid items-start gap-6 xl:grid-cols-2{% endif %}">
+  <div class="min-w-0 space-y-6">
   <div class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
     <h2 class="mb-2 text-sm font-semibold text-zinc-800">{% translate 'Description' %}</h2>
     <p class="whitespace-pre-wrap text-sm leading-relaxed text-zinc-600">{% if incident.description %}{{ incident.description }}{% else %}{% translate 'No description provided.' %}{% endif %}</p>
@@ -41,6 +43,9 @@
       <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No updates yet.' %}</li>
       {% endfor %}
     </ul>
+  </div>
+  </div>
+  {% if execution %}<aside class="min-w-0">{% include "offerings/_execution_steps.html" %}</aside>{% endif %}
   </div>
 </div>
 {% endblock content %}

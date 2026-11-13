@@ -160,6 +160,9 @@ class IncidentDetailView(BreadcrumbsMixin, ScopedDetailView):
         return super().get_queryset().select_related("service", "assigned_to", "reported_by")
 
     def get_context_data(self, **kwargs):
+        from apps.offerings.views import execution_subject_context
+
         ctx = super().get_context_data(**kwargs)
         ctx["updates"] = self.object.updates.select_related("author").order_by("created_at")
+        ctx.update(execution_subject_context(self.request.user, self.object, self.request.path))
         return ctx

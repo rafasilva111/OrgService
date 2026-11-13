@@ -1,0 +1,114 @@
+{% load i18n ui %}
+  <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
+    <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Steps' %}</h2>
+    <p class="px-4 pt-3 text-xs text-zinc-500">{% translate 'Task history records the people who performed each action.' %}</p>
+    {% if show_step_averages %}<p class="px-4 pt-1 text-xs text-zinc-500">{% translate 'Average active time uses completed tasks in this offering version and excludes recorded pauses.' %}</p>{% endif %}
+    <ol class="divide-y divide-zinc-100">
+      {% for step, tasks in step_tasks %}
+      <li class="flex items-start gap-3 px-4 py-3">
+        <span class="grid size-7 shrink-0 place-items-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600">{{ step.order }}</span>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm font-medium text-zinc-800">{{ step.name }}</p>
+          {% if step.show_average_duration %}<p class="mt-1 text-xs text-zinc-500">{% translate 'Average active time' %}: {% if step.average_duration is not None %}{{ step.average_duration|format_duration }}{% else %}{% translate 'No reliable completed tasks' %}{% endif %}</p>{% endif %}
+          {% for task in tasks %}
+          <div class="mt-2 space-y-1">
+            <p class="text-xs text-zinc-700">{{ task.title }} · {{ task.get_status_display }}</p>
+            <dl class="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs text-zinc-500">
+              {% if step.responsible_role %}<div class="inline-flex whitespace-nowrap"><dt class="font-medium">{% translate 'Responsible role' %}:</dt><dd class="ml-1">{{ step.responsible_role.name }}</dd></div>{% endif %}
+              {% if task.assigned_to %}<div class="inline-flex whitespace-nowrap"><dt class="font-medium">{% translate 'Assigned to' %}:</dt><dd class="ml-1">{{ task.assigned_to }}</dd></div>{% endif %}
+              {% if task.started_at %}<div class="inline-flex whitespace-nowrap"><dt class="font-medium">{% translate 'Started' %}:</dt><dd class="ml-1">{{ task.started_at|date:"SHORT_DATETIME_FORMAT" }}</dd></div>{% endif %}
+              {% if task.completed_at %}<div class="inline-flex whitespace-nowrap"><dt class="font-medium">{% translate 'Completed' %}:</dt><dd class="ml-1">{{ task.completed_at|date:"SHORT_DATETIME_FORMAT" }}</dd></div>{% endif %}
+              {% if task.started_at and task.completed_at %}<div class="inline-flex whitespace-nowrap"><dt class="font-medium">{% translate 'Duration' %}:</dt><dd class="ml-1">{{ task.started_at|elapsed:task.completed_at }}</dd></div>{% endif %}
+              {% if task.deadline %}<div class="inline-flex whitespace-nowrap"><dt class="font-medium">{% translate 'Deadline' %}:</dt><dd class="ml-1">{{ task.deadline|date:"SHORT_DATETIME_FORMAT" }}</dd></div>{% endif %}
+            </dl>
+            {% for event in task.history %}
+            <p class="text-xs text-zinc-500">{{ event.created_at|date:"SHORT_DATETIME_FORMAT" }} · {{ event.actor|default:"—" }} · {{ event.action_label }}{% if event.detail %} · {{ event.detail_label }}{% endif %}</p>
+            {% endfor %}
+            {% if task.is_current %}
+            {% if task.can_manage and task.status == "PENDING" and execution.status == "WAITING" %}
+            <form method="post" action="{% url 'offerings:task_action' task.pk %}">{% csrf_token %}{% if task_return_url %}<input type="hidden" name="next" value="{{ task_return_url }}">{% endif %}<button name="action" value="resume" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700">{% translate 'Resume' %}</button></form>
+            {% endif %}
+            {% if task.can_pause_resume and task.status == "PAUSED" and execution.status == "WAITING" %}
+            <form method="post" action="{% url 'offerings:task_action' task.pk %}">{% csrf_token %}{% if task_return_url %}<input type="hidden" name="next" value="{{ task_return_url }}">{% endif %}<button name="action" value="resume" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700">{% translate 'Resume' %}</button></form>
+            {% endif %}
+            <div class="flex flex-wrap items-center gap-2">
+            {% if task.can_manage and execution.status == "RUNNING" and task.status == "PENDING" or task.can_manage and execution.status == "RUNNING" and task.status == "ASSIGNED" or task.can_manage and execution.status == "RUNNING" and task.status == "IN_PROGRESS" %}
+            {% if not task.assigned_to_id %}
+            <form method="post" action="{% url 'offerings:task_action' task.pk %}" class="flex flex-wrap gap-2">{% csrf_token %}{% if task_return_url %}<input type="hidden" name="next" value="{{ task_return_url }}">{% endif %}
+              <input type="hidden" name="action" value="assign">
+              <select name="assignee" required class="rounded border border-zinc-300 px-2 py-1 text-xs">
+                <option value="">{% translate 'Select an eligible person' %}</option>
+                {% for person in task.eligible %}<option value="{{ person.pk }}">{{ person.full_name }}</option>{% endfor %}
+              </select>
+              <button class="rounded border border-zinc-300 px-2 py-1 text-xs">{% translate 'Assign' %}</button>
+            </form>
+            {% elif task.eligible %}
+            <details class="text-xs text-zinc-600">
+              <summary class="cursor-pointer">{% translate 'Reassign' %}</summary>
+              <form method="post" action="{% url 'offerings:task_action' task.pk %}" class="mt-2 flex flex-wrap gap-2">{% csrf_token %}{% if task_return_url %}<input type="hidden" name="next" value="{{ task_return_url }}">{% endif %}
+                <input type="hidden" name="action" value="assign">
+                <select name="assignee" required class="rounded border border-zinc-300 px-2 py-1 text-xs">
+                  <option value="">{% translate 'Select an eligible person' %}</option>
+                  {% for person in task.eligible %}<option value="{{ person.pk }}">{{ person.full_name }}</option>{% endfor %}
+                </select>
+                <button class="rounded border border-zinc-300 px-2 py-1 text-xs">{% translate 'Reassign' %}</button>
+              </form>
+            </details>
+            {% endif %}
+            {% endif %}
+            {% if task.can_claim and execution.status == "RUNNING" %}
+            <form method="post" action="{% url 'offerings:task_action' task.pk %}">{% csrf_token %}{% if task_return_url %}<input type="hidden" name="next" value="{{ task_return_url }}">{% endif %}<button name="action" value="claim" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700">{% translate 'Claim task' %}</button></form>
+            {% endif %}
+            </div>
+            {% if task.can_execute and execution.status == "RUNNING" and task.status == "PENDING" and not step.responsible_role or task.can_execute and execution.status == "RUNNING" and task.status == "ASSIGNED" %}
+            <form method="post" action="{% url 'offerings:task_action' task.pk %}">{% csrf_token %}{% if task_return_url %}<input type="hidden" name="next" value="{{ task_return_url }}">{% endif %}<button name="action" value="start" class="rounded border border-indigo-300 px-2 py-1 text-xs text-indigo-700">{% translate 'Start' %}</button></form>
+            {% endif %}
+            {% if task.can_execute and execution.status == "RUNNING" and task.status == "IN_PROGRESS" %}
+            <form method="post" action="{% url 'offerings:task_action' task.pk %}" class="flex flex-wrap gap-2">{% csrf_token %}{% if task_return_url %}<input type="hidden" name="next" value="{{ task_return_url }}">{% endif %}
+              {% if step.step_type == "GATEWAY" %}
+              <select name="outcome" required class="rounded border border-zinc-300 px-2 py-1 text-xs">
+                {% for edge in task.outcomes %}<option value="{{ edge.outcome }}">{{ edge.get_outcome_display }} → {{ edge.to_step.name }}</option>{% endfor %}
+              </select>
+              {% endif %}
+              <button name="action" value="complete" class="rounded border border-emerald-300 px-2 py-1 text-xs text-emerald-700">{% translate 'Complete' %}</button>
+              <button name="action" value="fail" class="rounded border border-red-300 px-2 py-1 text-xs text-red-700">{% translate 'Fail' %}</button>
+            </form>
+            {% endif %}
+            {% if task.can_pause_resume and execution.status == "RUNNING" and task.status == "IN_PROGRESS" %}
+            <details class="text-xs text-zinc-600">
+              <summary class="cursor-pointer">{% translate 'Pause task' %}</summary>
+              <form method="post" action="{% url 'offerings:task_action' task.pk %}" class="mt-2 space-y-2" x-data="{ reason: '' }">{% csrf_token %}{% if task_return_url %}<input type="hidden" name="next" value="{{ task_return_url }}">{% endif %}
+                <input type="hidden" name="action" value="pause">
+                <label class="block">{% translate 'Pause reason' %}
+                  <select name="reason" x-model="reason" required class="block w-full rounded border border-zinc-300 px-2 py-1 text-xs">
+                    <option value="">{% translate 'Select a reason' %}</option>
+                    {% for value, label in pause_reasons %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                  </select>
+                </label>
+                <label class="block">{% translate 'Comment' %}
+                  <textarea name="comment" rows="2" maxlength="4000" :required="reason === 'COMMENT'" class="block w-full rounded border border-zinc-300 px-2 py-1 text-xs"></textarea>
+                </label>
+                <button class="rounded border border-amber-300 px-2 py-1 text-xs text-amber-700">{% translate 'Pause task' %}</button>
+              </form>
+            </details>
+            {% endif %}
+            {% if task.can_manage and task.status == "BLOCKED" %}
+            <form method="post" action="{% url 'offerings:task_action' task.pk %}" class="flex gap-2">{% csrf_token %}{% if task_return_url %}<input type="hidden" name="next" value="{{ task_return_url }}">{% endif %}
+              <button name="action" value="retry" class="rounded border border-zinc-300 px-2 py-1 text-xs">{% translate 'Retry' %}</button>
+              {% for edge in task.outcomes %}{% if edge.outcome == "FAILURE" %}<button name="action" value="branch" class="rounded border border-zinc-300 px-2 py-1 text-xs">{% translate 'Follow error branch' %}</button>{% endif %}{% endfor %}
+            </form>
+            {% endif %}
+            {% endif %}
+          </div>
+          {% empty %}
+          <p class="mt-1 text-xs text-zinc-500">{% translate 'No task recorded for this step.' %}</p>
+          {% endfor %}
+        </div>
+        {% if step.pk == execution.current_step_id %}<span class="shrink-0 text-xs font-medium text-indigo-700">{% translate 'Current step' %}</span>{% endif %}
+        <span class="shrink-0 text-xs text-zinc-500">{{ step.get_step_type_display }}</span>
+      </li>
+      {% empty %}
+      <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No steps defined.' %}</li>
+      {% endfor %}
+    </ol>
+  </div>

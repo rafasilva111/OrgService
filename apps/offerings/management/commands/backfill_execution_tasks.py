@@ -49,6 +49,7 @@ class Command(BaseCommand):
                         TaskStatus.PENDING,
                         TaskStatus.ASSIGNED,
                         TaskStatus.IN_PROGRESS,
+                        TaskStatus.PAUSED,
                         TaskStatus.BLOCKED,
                     ),
                 ).exists():

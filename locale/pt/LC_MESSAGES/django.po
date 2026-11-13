@@ -500,6 +500,15 @@ msgstr "Ainda não existem notificações."
 msgid "Service tasks"
 msgstr "Tarefas dos serviços"
 
+msgid "Task view"
+msgstr "Vista de tarefas"
+
+msgid "My actionable tasks"
+msgstr "Tarefas que posso executar"
+
+msgid "All ongoing tasks in my services"
+msgstr "Todas as tarefas em curso nos meus serviços"
+
 msgid "No active tasks in your services."
 msgstr "Não existem tarefas ativas nos seus serviços."
 
@@ -1113,8 +1122,17 @@ msgstr "saídas"
 msgid "Overview"
 msgstr "Visão geral"
 
-msgid "Page %(page_obj.number)s of %(page_obj.paginator.num_pages)s"
-msgstr "Página %(page_obj.number)s de %(page_obj.paginator.num_pages)s"
+msgid "Page %(current_page)s of %(total_pages)s"
+msgstr "Página %(current_page)s de %(total_pages)s"
+
+msgid "Average active time"
+msgstr "Tempo médio ativo"
+
+msgid "No reliable completed tasks"
+msgstr "Sem tarefas concluídas com tempos fiáveis"
+
+msgid "Average active time uses completed tasks in this offering version and excludes recorded pauses."
+msgstr "O tempo médio ativo usa tarefas concluídas desta versão da oferta e exclui as pausas registadas."
 
 msgid "Parent"
 msgstr "Entidade Superior"
@@ -2363,6 +2381,9 @@ msgstr "Remover pergunta"
 msgid "Request form"
 msgstr "Formulário do pedido"
 
+msgid "No questions configured for this request."
+msgstr "Não existem perguntas configuradas para este pedido."
+
 msgid "Short text"
 msgstr "Texto curto"
 
@@ -2428,6 +2449,30 @@ msgstr "tamanho (bytes)"
 msgid "Execution log"
 msgstr "Registo da execução"
 
+msgid "System history, work notes and comments."
+msgstr "Histórico do sistema, notas de trabalho e comentários."
+
+msgid "Work Notes are internal. Comments are visible to the requester."
+msgstr "As notas de trabalho são internas. Os comentários são visíveis ao requerente."
+
+msgid "Message type"
+msgstr "Tipo de mensagem"
+
+msgid "Work Notes"
+msgstr "Notas de trabalho"
+
+msgid "Comments"
+msgstr "Comentários"
+
+msgid "Message"
+msgstr "Mensagem"
+
+msgid "Post message"
+msgstr "Publicar mensagem"
+
+msgid "No system history or messages yet."
+msgstr "Ainda não existem histórico do sistema ou mensagens."
+
 msgid "Notes and recorded task updates."
 msgstr "Notas e atualizações registadas das tarefas."
 
@@ -2462,3 +2507,99 @@ msgstr "Os pedidos associados a execuções não podem ser fechados de forma ind
 
 msgid "This request already has an execution."
 msgstr "Este pedido já tem uma execução."
+
+msgid "Pause task"
+msgstr "Pausar tarefa"
+
+msgid "Pause reason"
+msgstr "Motivo da pausa"
+
+msgid "Select a reason"
+msgstr "Selecione um motivo"
+
+msgid "Comment"
+msgstr "Comentário"
+
+msgid "Waiting for vendor"
+msgstr "A aguardar fornecedor"
+
+msgid "Waiting for requester"
+msgstr "A aguardar requerente"
+
+msgid "Waiting for approval"
+msgstr "A aguardar aprovação"
+
+msgid "Mentioned in the comments"
+msgstr "Indicado nos comentários"
+
+msgid "This task cannot be paused."
+msgstr "Esta tarefa não pode ser pausada."
+
+msgid "Choose a valid pause reason."
+msgstr "Selecione um motivo de pausa válido."
+
+msgid "A comment is required for this pause reason."
+msgstr "É obrigatório escrever um comentário para este motivo de pausa."
+
+msgid "The comment must not exceed 4000 characters."
+msgstr "O comentário não pode exceder 4000 caracteres."
+
+msgid "Offering productivity"
+msgstr "Produtividade das ofertas"
+
+msgid "Last 7 days"
+msgstr "Últimos 7 dias"
+
+msgid "Last 30 days"
+msgstr "Últimos 30 dias"
+
+msgid "Last 90 days"
+msgstr "Últimos 90 dias"
+
+msgid "This year"
+msgstr "Este ano"
+
+msgid "Select a valid period."
+msgstr "Selecione um período válido."
+
+msgid "Period"
+msgstr "Período"
+
+msgid "All offerings"
+msgstr "Todas as ofertas"
+
+msgid "Compare and monitor the offerings you can access, across all versions."
+msgstr "Compare e monitorize as ofertas a que tem acesso, considerando todas as versões."
+
+msgid "Period: %(start)s to %(end)s."
+msgstr "Período: %(start)s a %(end)s."
+
+msgid "Started and completed are counted by their respective dates. Current states refer to executions started in this period; failed includes blocked executions."
+msgstr "Os inícios e as conclusões são contados pelas respetivas datas. Os estados atuais referem-se às execuções iniciadas neste período; as falhas incluem execuções bloqueadas."
+
+msgid "No offerings in scope."
+msgstr "Não há ofertas no seu âmbito de acesso."
+
+msgid "Completed tasks by assignee"
+msgstr "Tarefas concluídas por pessoa atribuída"
+
+msgid "Manual tasks completed in the period, grouped by their recorded assignee. Automatic notifications are excluded."
+msgstr "Tarefas manuais concluídas no período, agrupadas pela pessoa atribuída. As notificações automáticas são excluídas."
+
+msgid "Completed tasks"
+msgstr "Tarefas concluídas"
+
+msgid "No completed tasks in this period."
+msgstr "Não há tarefas concluídas neste período."
+
+msgid "Daily execution activity"
+msgstr "Evolução diária das execuções"
+
+msgid "No execution activity in this period."
+msgstr "Não há atividade de execução neste período."
+
+msgid "Average execution time is not yet available because paused time is not excluded."
+msgstr "O tempo médio de execução ainda não está disponível, pois o tempo em pausa não é descontado."
+
+msgid "Only days with execution activity are shown."
+msgstr "São apresentados apenas os dias com atividade de execução."

@@ -9,11 +9,13 @@ from django.utils.translation import gettext as _
 
 from apps.common.mixins import user_has_scoped_permission
 from apps.offerings.models import (
+    ExecutionNote,
     ExecutionStatus,
     Notification,
     OfferingExecution,
     OfferingStatus,
     OfferingTask,
+    PauseReason,
     StepType,
     TaskActivity,
     TaskStatus,
@@ -160,7 +162,7 @@ def start_request_execution(request_obj, actor):
 
 
 @transaction.atomic
-def task_action(task_id, user, action, *, assignee_id=None, outcome=None):
+def task_action(task_id, user, action, *, assignee_id=None, outcome=None, reason=None, comment=None):
     task = OfferingTask.objects.select_related(
         "execution", "step__offering__service", "step__service_offering__service"
     ).get(pk=task_id)
@@ -171,14 +173,18 @@ def task_action(task_id, user, action, *, assignee_id=None, outcome=None):
         .get(pk=task_id)
     )
     service = task.step.effective_service
-    code = (
-        "offering.manage"
-        if action in ("assign", "retry", "branch", "resume")
-        else "offering.execute"
-    )
-    if not user_has_scoped_permission(user, code, service=service):
+    can_manage = user_has_scoped_permission(user, "offering.manage", service=service)
+    can_execute = user_has_scoped_permission(user, "offering.execute", service=service)
+    if not can_manage and not can_execute:
         raise PermissionDenied
     actor = _actor(user)
+    if action in ("pause", "resume") and (
+        action == "pause" or task.status == TaskStatus.PAUSED
+    ):
+        if not (can_manage or (can_execute and task.assigned_to_id == actor.pk)):
+            raise PermissionDenied
+    elif not (can_manage if action in ("assign", "retry", "branch", "resume") else can_execute):
+        raise PermissionDenied
     if execution.status not in ACTIVE or execution.current_step_id != task.step_id:
         raise ValidationError(_("This task is no longer the current step."))
     latest = (
@@ -188,6 +194,7 @@ def task_action(task_id, user, action, *, assignee_id=None, outcome=None):
                 TaskStatus.PENDING,
                 TaskStatus.ASSIGNED,
                 TaskStatus.IN_PROGRESS,
+                TaskStatus.PAUSED,
                 TaskStatus.BLOCKED,
             ),
         )
@@ -198,9 +205,34 @@ def task_action(task_id, user, action, *, assignee_id=None, outcome=None):
         raise ValidationError(_("This task is no longer the current step."))
     if execution.status == ExecutionStatus.WAITING and action not in ("retry", "branch", "resume"):
         raise ValidationError(_("This execution is waiting for a manager decision."))
-    if action == "resume":
-        if execution.status != ExecutionStatus.WAITING or task.status != TaskStatus.PENDING:
+    if action == "pause":
+        if execution.status != ExecutionStatus.RUNNING or task.status != TaskStatus.IN_PROGRESS:
+            raise ValidationError(_("This task cannot be paused."))
+        if reason not in PauseReason.values:
+            raise ValidationError(_("Choose a valid pause reason."))
+        comment = (comment or "").strip()
+        if reason == PauseReason.COMMENT and not comment:
+            raise ValidationError(_("A comment is required for this pause reason."))
+        if len(comment) > 4000:
+            raise ValidationError(_("The comment must not exceed 4000 characters."))
+        task.status = TaskStatus.PAUSED
+        task.save(update_fields=["status", "updated_at"])
+        _activity(task, actor, "paused", reason)
+        if comment:
+            ExecutionNote.objects.create(
+                execution=execution, task=task, author=user, body=comment,
+                kind=ExecutionNote.Kind.COMMENT,
+            )
+        execution.status = ExecutionStatus.WAITING
+        execution.save(update_fields=["status", "updated_at"])
+    elif action == "resume":
+        if execution.status != ExecutionStatus.WAITING or task.status not in (
+            TaskStatus.PENDING, TaskStatus.PAUSED
+        ):
             raise ValidationError(_("This task cannot be resumed."))
+        if task.status == TaskStatus.PAUSED:
+            task.status = TaskStatus.IN_PROGRESS
+            task.save(update_fields=["status", "updated_at"])
         execution.status = ExecutionStatus.RUNNING
         execution.save(update_fields=["status", "updated_at"])
         _activity(task, actor, "resumed")

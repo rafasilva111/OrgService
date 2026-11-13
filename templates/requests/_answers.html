@@ -1,11 +1,14 @@
-{% load i18n %}{% if answers %}
+{% load i18n %}
 <div class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
-  <h2 class="mb-3 text-sm font-semibold text-zinc-800">{% translate 'Answers' %}</h2>
+  <h2 class="mb-3 text-sm font-semibold text-zinc-800">{% translate 'Request form' %}</h2>
+  {% if answers %}
   <dl class="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[minmax(10rem,auto)_1fr]">
     {% for row in answers %}
     <dt class="text-zinc-500">{{ row.label }}</dt>
-    <dd class="text-zinc-800">{% if row.attachment %}<a href="{% url 'requests:attachment' row.attachment.pk %}" class="font-medium text-indigo-600 hover:text-indigo-800">📎 {{ row.attachment.original_name }}</a> <span class="text-xs text-zinc-500">({{ row.attachment.size|filesizeformat }})</span>{% else %}{{ row.text|linebreaksbr }}{% endif %}</dd>
+    <dd class="text-zinc-800">{% if row.attachment %}<a href="{% url 'requests:attachment' row.attachment.pk %}" class="font-medium text-indigo-600 hover:text-indigo-800">📎 {{ row.attachment.original_name }}</a> <span class="text-xs text-zinc-500">({{ row.attachment.size|filesizeformat }})</span>{% else %}{{ row.text|default:"—"|linebreaksbr }}{% endif %}</dd>
     {% endfor %}
   </dl>
+  {% else %}
+  <p class="text-sm text-zinc-500">{% translate 'No questions configured for this request.' %}</p>
+  {% endif %}
 </div>
-{% endif %}

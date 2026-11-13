@@ -6,7 +6,7 @@ from django import forms
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import F, Q
 from django.db.models.functions import Coalesce
@@ -14,6 +14,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import npgettext
 from django.views.generic import DetailView, FormView, View
@@ -57,6 +58,7 @@ from apps.offerings.models import (
     OfferingExecution,
     OfferingStatus,
     OfferingTask,
+    PauseReason,
     ServiceOffering,
     ServiceOfferingType,
     StepType,
@@ -139,6 +141,81 @@ class ServiceOfferingListView(BreadcrumbsMixin, PermissionRequiredMixin, TableVi
         ).select_related("service", "offering_type")
 
 
+class OfferingProductivityView(BreadcrumbsMixin, PermissionRequiredMixin, View):
+    platform_codes = ("offering.view",)
+    breadcrumb_title = _("Offering productivity")
+    breadcrumb_parent = (_("Service Offerings"), "offerings:index")
+
+    def get(self, request):
+        from apps.offerings.productivity import offering_detail, offering_totals, period_start
+
+        periods = (
+            ("7", _("Last 7 days")),
+            ("30", _("Last 30 days")),
+            ("90", _("Last 90 days")),
+            ("year", _("This year")),
+        )
+        period = request.GET.get("period", "7")
+        if period not in dict(periods):
+            return render(
+                request, "offerings/productivity.html",
+                {"periods": periods, "period_error": _("Select a valid period."),
+                 "breadcrumbs": self.get_breadcrumbs()},
+                status=400,
+            )
+        offerings = ServiceOffering.objects.filter(
+            service__in=execution_visible_services(request.user)
+        ).select_related("service").order_by("service__name", "name", "-version", "-pk")
+        selected = None
+        if request.GET.get("offering"):
+            try:
+                offering_id = int(request.GET["offering"])
+            except ValueError as exc:
+                raise Http404 from exc
+            if not 0 < offering_id <= 9223372036854775807:
+                raise Http404
+            selected = get_object_or_404(offerings, pk=offering_id)
+
+        now = timezone.now()
+        start = period_start(period, now)
+        executions = OfferingExecution.objects.filter(
+            offering__service__in=execution_visible_services(request.user)
+        )
+        totals = {
+            (row["offering__service_id"], row["offering__name"]): row
+            for row in offering_totals(executions, start, now)
+        }
+        rows = []
+        seen = set()
+        for offering in offerings:
+            key = (offering.service_id, offering.name)
+            if key not in seen:
+                seen.add(key)
+                rows.append({
+                    "offering": offering,
+                    "counts": totals.get(key, {
+                        "started": 0, "completed": 0, "running": 0, "waiting": 0, "failed": 0,
+                    }),
+                })
+        context = {
+            "periods": periods,
+            "period": period,
+            "rows": rows,
+            "selected": selected,
+            "start": start,
+            "end": now,
+            "breadcrumbs": self.get_breadcrumbs(),
+        }
+        if selected:
+            selected_executions = executions.filter(
+                offering__service_id=selected.service_id, offering__name=selected.name
+            )
+            context["people"], context["timeline"] = offering_detail(
+                selected_executions, start, now
+            )
+        return render(request, "offerings/productivity.html", context)
+
+
 class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
     model = ServiceOffering
     template_name = "offerings/detail.html"
@@ -167,6 +244,9 @@ class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
             execution_visible_services(self.request.user).filter(pk=self.object.service_id).exists()
         )
         if ctx["can_view_executions"]:
+            from apps.offerings.step_duration import add_step_averages
+
+            add_step_averages(ctx["steps"], self.object)
             ctx["executions"] = self.object.executions.select_related("created_by").order_by(
                 "-started_at"
             )[:8]
@@ -290,6 +370,14 @@ def actionable_tasks(user):
                 service_filter([service_id])
                 & Q(step__responsible_role_id=role_id, assigned_to__isnull=True)
             )
+    return ongoing_service_tasks(user).filter(visible)
+
+
+def ongoing_service_tasks(user):
+    services = task_services(user)
+    service_filter = Q(step__service_offering__service__in=services) | Q(
+        step__service_offering__isnull=True, step__offering__service__in=services
+    )
     return OfferingTask.objects.filter(
         execution__status__in=(ExecutionStatus.RUNNING, ExecutionStatus.WAITING),
         execution__current_step_id=F("step_id"),
@@ -297,9 +385,10 @@ def actionable_tasks(user):
             TaskStatus.PENDING,
             TaskStatus.ASSIGNED,
             TaskStatus.IN_PROGRESS,
+            TaskStatus.PAUSED,
             TaskStatus.BLOCKED,
         ),
-    ).filter(visible)
+    ).filter(service_filter)
 
 
 class OfferingTaskListView(LoginRequiredMixin, BreadcrumbsMixin, TableView):
@@ -349,9 +438,22 @@ class OfferingTaskListView(LoginRequiredMixin, BreadcrumbsMixin, TableView):
     )
     service_filter_field = "responsible_service"
 
+    def get_queryset(self):
+        self.task_scope = (
+            "service" if self.request.GET.get("scope") == "service" else "mine"
+        )
+        if self.task_scope == "service":
+            self.use_header_scope = False
+        return super().get_queryset()
+
     def get_base_queryset(self):
+        tasks = (
+            ongoing_service_tasks(self.request.user)
+            if self.task_scope == "service"
+            else actionable_tasks(self.request.user)
+        )
         return (
-            actionable_tasks(self.request.user)
+            tasks
             .annotate(
                 responsible_service_id=Coalesce(
                     "step__service_offering__service_id", "step__offering__service_id"
@@ -371,12 +473,243 @@ class OfferingTaskListView(LoginRequiredMixin, BreadcrumbsMixin, TableView):
             .select_related("assigned_to")
         )
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        query = self.request.GET.copy()
+        query.pop("scope", None)
+        query.pop("page", None)
+        context["task_scope"] = getattr(self, "task_scope", "mine")
+        context["task_scope_query"] = query.urlencode()
+        return context
+
 
 class ExecutionNoteForm(forms.Form):
+    kind = forms.ChoiceField(
+        label=_("Message type"),
+        choices=ExecutionNote.Kind.choices,
+    )
     body = forms.CharField(
         label=_("Note"),
         max_length=4000,
         widget=forms.Textarea(attrs={"rows": 3, "maxlength": 4000}),
+    )
+
+    def __init__(self, *args, allow_work_notes=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not allow_work_notes:
+            self.fields["kind"].choices = [
+                (ExecutionNote.Kind.COMMENT, _("Comments")),
+            ]
+
+
+def visible_executions(user):
+    from apps.requests.models import Request
+
+    owner_access = Q(pk__in=[])
+    if user_has_permission_code(user, "offering.view"):
+        owner_access = Q(offering__service__in=execution_visible_services(user))
+    delegated_access = Q(pk__in=actionable_tasks(user).values("execution_id"))
+    requester_access = Q(
+        subject_type=ContentType.objects.get_for_model(Request),
+        subject_id__in=Request.objects.filter(
+            requester__user=user, requester__active=True, requester__deleted_at__isnull=True
+        ).values("pk"),
+    )
+    return OfferingExecution.objects.filter(
+        owner_access | delegated_access | requester_access
+    ).select_related("offering", "offering__service", "created_by", "current_step")
+
+
+def execution_is_requester(execution, user):
+    from apps.requests.models import Request
+
+    return execution.subject_type_id == ContentType.objects.get_for_model(Request).pk and (
+        Request.objects.filter(
+            pk=execution.subject_id,
+            requester__user=user,
+            requester__active=True,
+            requester__deleted_at__isnull=True,
+        ).exists()
+    )
+
+
+def execution_delegated_only(execution, user):
+    return not (
+        user_has_permission_code(user, "offering.view")
+        and execution_visible_services(user).filter(pk=execution.offering.service_id).exists()
+        or execution_is_requester(execution, user)
+    )
+
+
+def execution_step_tasks(execution, user, delegated_only):
+    from apps.people.models import Person
+
+    actor_id = Person.objects.filter(user=user).values_list("pk", flat=True).first()
+    steps = list(execution.offering.steps.order_by("order", "pk"))
+    tasks = execution.tasks.select_related("step", "assigned_to").order_by(
+        "step__order", "started_at", "pk"
+    )
+    if delegated_only:
+        tasks = tasks.filter(pk__in=actionable_tasks(user).values("pk"))
+        steps = [execution.current_step] if execution.current_step else []
+    if execution_visible_services(user).filter(pk=execution.offering.service_id).exists():
+        from apps.offerings.step_duration import add_step_averages
+
+        add_step_averages(steps, execution.offering)
+    tasks_by_step = {step.pk: [] for step in steps}
+    for task in tasks:
+        if task.step_id not in tasks_by_step:
+            steps.append(task.step)
+            tasks_by_step[task.step_id] = []
+        tasks_by_step[task.step_id].append(task)
+        task.history = list(task.activities.select_related("actor").all())
+        from apps.offerings.execution import eligible_people
+
+        service = task.step.effective_service
+        task.can_execute = user_has_scoped_permission(
+            user, "offering.execute", service=service
+        ) and (not task.assigned_to_id or task.assigned_to_id == actor_id)
+        task.can_manage = user_has_scoped_permission(
+            user, "offering.manage", service=service
+        )
+        task.can_pause_resume = task.can_manage or (
+            task.can_execute and task.assigned_to_id is not None
+            and task.assigned_to_id == actor_id
+        )
+        task.eligible = (
+            [
+                person
+                for person in eligible_people(task.step)
+                if person.pk != task.assigned_to_id
+            ]
+            if task.can_manage
+            else []
+        )
+        task.can_claim = (
+            task.can_execute
+            and task.status == TaskStatus.PENDING
+            and task.step.responsible_role_id is not None
+            and task.assigned_to_id is None
+            and actor_id in {person.pk for person in eligible_people(task.step)}
+        )
+        task.is_current = execution.current_step_id == task.step_id and task.status not in (
+            TaskStatus.DONE,
+            TaskStatus.CANCELLED,
+        )
+        task.outcomes = list(task.step.outgoing.select_related("to_step").all())
+    return [(step, tasks_by_step[step.pk]) for step in steps]
+
+
+def execution_subject_context(user, subject, return_url, *, include_log=False):
+    execution = visible_executions(user).filter(
+        subject_type=ContentType.objects.get_for_model(subject), subject_id=subject.pk
+    ).first()
+    if execution is None:
+        return {}
+    delegated_only = execution_delegated_only(execution, user)
+    step_tasks = execution_step_tasks(execution, user, delegated_only)
+    current_task = max(
+        (
+            task
+            for step, tasks in step_tasks
+            if step.pk == execution.current_step_id
+            for task in tasks
+            if task.status in (
+                TaskStatus.PENDING,
+                TaskStatus.ASSIGNED,
+                TaskStatus.IN_PROGRESS,
+                TaskStatus.PAUSED,
+                TaskStatus.BLOCKED,
+            )
+        ),
+        key=lambda task: task.pk,
+        default=None,
+    )
+    context = {
+        "execution": execution,
+        "delegated_only": delegated_only,
+        "step_tasks": step_tasks,
+        "show_step_averages": any(
+            getattr(step, "show_average_duration", False) for step, _ in step_tasks
+        ),
+        "current_task": current_task,
+        "task_return_url": return_url,
+        "pause_reasons": PauseReason.choices,
+    }
+    if include_log:
+        context["log_entries"] = execution_log_entries(execution, user, delegated_only)
+        context["note_form"] = ExecutionNoteForm(
+            allow_work_notes=not execution_is_requester(execution, user)
+        )
+    return context
+
+
+def execution_log_entries(execution, user, delegated_only):
+    from apps.people.models import user_display_name
+
+    notes = execution.notes.select_related("author", "author__person", "task")
+    activities = TaskActivity.objects.filter(task__execution=execution).select_related(
+        "actor", "task"
+    )
+    if delegated_only:
+        visible_tasks = actionable_tasks(user).filter(execution=execution)
+        notes = notes.filter(task__in=visible_tasks)
+        activities = activities.filter(task__in=visible_tasks)
+    if execution_is_requester(execution, user):
+        notes = notes.exclude(kind=ExecutionNote.Kind.WORK_NOTE)
+
+    entries = [*notes, *activities]
+    from apps.requests.models import Request, RequestComment
+
+    if execution.subject_type_id == ContentType.objects.get_for_model(Request).pk:
+        comments = RequestComment.objects.filter(request_id=execution.subject_id).select_related(
+            "author"
+        )
+        for comment in comments:
+            comment.message_type = ExecutionNote.Kind.COMMENT.label
+            comment.author_display = comment.author.full_name if comment.author else "—"
+        entries.extend(comments)
+
+    for entry in entries:
+        if isinstance(entry, ExecutionNote):
+            entry.message_type = entry.get_kind_display()
+            entry.author_display = user_display_name(entry.author)
+    return sorted(entries, key=lambda entry: (entry.created_at, entry.pk), reverse=True)
+
+
+@transaction.atomic
+def add_execution_note(execution, user, body, *, kind=ExecutionNote.Kind.COMMENT, subject=None):
+    OfferingExecution.objects.select_for_update().get(pk=execution.pk)
+    execution = get_object_or_404(visible_executions(user), pk=execution.pk)
+    if subject is not None and (
+        execution.subject_type_id != ContentType.objects.get_for_model(subject).pk
+        or execution.subject_id != subject.pk
+    ):
+        raise Http404
+    if kind == ExecutionNote.Kind.WORK_NOTE and execution_is_requester(execution, user):
+        raise PermissionDenied
+    task = None
+    if execution.status in (ExecutionStatus.RUNNING, ExecutionStatus.WAITING):
+        task = (
+            execution.tasks.filter(
+                step_id=execution.current_step_id,
+                status__in=(
+                    TaskStatus.PENDING,
+                    TaskStatus.ASSIGNED,
+                    TaskStatus.IN_PROGRESS,
+                    TaskStatus.PAUSED,
+                    TaskStatus.BLOCKED,
+                ),
+            )
+            .order_by("-pk")
+            .first()
+        )
+    return ExecutionNote.objects.create(
+        execution=execution,
+        task=task,
+        author=user,
+        body=body,
+        kind=kind,
     )
 
 
@@ -390,145 +723,50 @@ class OfferingExecutionDetailView(LoginRequiredMixin, BreadcrumbsMixin, DetailVi
         return _("Execution #%(number)s") % {"number": self.object.pk}
 
     def get_queryset(self):
-        from apps.requests.models import Request
-
-        owner_access = Q(pk__in=[])
-        if user_has_permission_code(self.request.user, "offering.view"):
-            owner_access = Q(offering__service__in=execution_visible_services(self.request.user))
-        delegated_access = Q(pk__in=actionable_tasks(self.request.user).values("execution_id"))
-        requester_access = Q(
-            subject_type=ContentType.objects.get_for_model(Request),
-            subject_id__in=Request.objects.filter(
-                requester__user=self.request.user,
-                requester__active=True,
-                requester__deleted_at__isnull=True,
-            ).values("pk"),
-        )
-        return OfferingExecution.objects.filter(
-            owner_access | delegated_access | requester_access
-        ).select_related("offering", "offering__service", "created_by", "current_step")
+        return visible_executions(self.request.user)
 
     def get_context_data(self, **kwargs):
-        from apps.people.models import Person
         from apps.requests.models import Request
         from apps.requests.views import visible_requests
 
         ctx = super().get_context_data(**kwargs)
-        actor_id = (
-            Person.objects.filter(user=self.request.user).values_list("pk", flat=True).first()
-        )
-        ctx["delegated_only"] = not (
-            user_has_permission_code(self.request.user, "offering.view")
-            and execution_visible_services(self.request.user)
-            .filter(pk=self.object.offering.service_id)
-            .exists()
-            or self.is_requester()
-        )
+        ctx["delegated_only"] = execution_delegated_only(self.object, self.request.user)
         if self.object.subject_type_id == ContentType.objects.get_for_model(Request).pk:
             ctx["linked_request"] = visible_requests(self.request.user).filter(
                 pk=self.object.subject_id
             ).first()
-        steps = list(self.object.offering.steps.order_by("order", "pk"))
-        tasks = self.object.tasks.select_related("step", "assigned_to").order_by(
-            "step__order", "started_at", "pk"
+        ctx["step_tasks"] = execution_step_tasks(self.object, self.request.user, ctx["delegated_only"])
+        ctx["show_step_averages"] = any(
+            getattr(step, "show_average_duration", False) for step, _ in ctx["step_tasks"]
         )
-        if ctx["delegated_only"]:
-            tasks = tasks.filter(pk__in=actionable_tasks(self.request.user).values("pk"))
-            steps = [self.object.current_step] if self.object.current_step else []
-        tasks_by_step = {step.pk: [] for step in steps}
-        for task in tasks:
-            if task.step_id not in tasks_by_step:
-                steps.append(task.step)
-                tasks_by_step[task.step_id] = []
-            tasks_by_step[task.step_id].append(task)
-            task.history = list(task.activities.select_related("actor").all())
-            from apps.offerings.execution import eligible_people
-
-            service = task.step.effective_service
-            task.can_execute = user_has_scoped_permission(
-                self.request.user, "offering.execute", service=service
-            ) and (not task.assigned_to_id or task.assigned_to_id == actor_id)
-            task.can_manage = user_has_scoped_permission(
-                self.request.user, "offering.manage", service=service
-            )
-            task.eligible = (
-                [
-                    person
-                    for person in eligible_people(task.step)
-                    if person.pk != task.assigned_to_id
-                ]
-                if task.can_manage
-                else []
-            )
-            task.can_claim = (
-                task.can_execute
-                and task.status == TaskStatus.PENDING
-                and task.step.responsible_role_id is not None
-                and task.assigned_to_id is None
-                and actor_id in {person.pk for person in eligible_people(task.step)}
-            )
-            task.is_current = self.object.current_step_id == task.step_id and task.status not in (
-                TaskStatus.DONE,
-                TaskStatus.CANCELLED,
-            )
-            task.outcomes = list(task.step.outgoing.select_related("to_step").all())
-        ctx["step_tasks"] = [(step, tasks_by_step[step.pk]) for step in steps]
-        notes = self.object.notes.select_related("author", "task")
-        activities = TaskActivity.objects.filter(task__execution=self.object).select_related(
-            "actor", "task"
+        ctx["pause_reasons"] = PauseReason.choices
+        ctx["log_entries"] = execution_log_entries(
+            self.object, self.request.user, ctx["delegated_only"]
         )
-        if ctx["delegated_only"]:
-            visible_tasks = actionable_tasks(self.request.user).filter(execution=self.object)
-            notes = notes.filter(task__in=visible_tasks)
-            activities = activities.filter(task__in=visible_tasks)
-        ctx["log_entries"] = sorted(
-            [*notes, *activities], key=lambda entry: (entry.created_at, entry.pk)
+        ctx["note_form"] = (
+            kwargs["note_form"]
+            if "note_form" in kwargs
+            else ExecutionNoteForm(
+                allow_work_notes=not execution_is_requester(self.object, self.request.user)
+            )
         )
-        ctx["note_form"] = kwargs["note_form"] if "note_form" in kwargs else ExecutionNoteForm()
         return ctx
 
     def is_requester(self):
-        from apps.requests.models import Request
-
-        return (
-            self.object.subject_type_id == ContentType.objects.get_for_model(Request).pk
-            and Request.objects.filter(
-                pk=self.object.subject_id,
-                requester__user=self.request.user,
-                requester__active=True,
-                requester__deleted_at__isnull=True,
-            ).exists()
-        )
+        return execution_is_requester(self.object, self.request.user)
 
     def post(self, request, *args, **kwargs):
-        form = ExecutionNoteForm(request.POST)
-        with transaction.atomic():
-            self.object = self.get_object()
-            OfferingExecution.objects.select_for_update().get(pk=self.object.pk)
-            self.object = self.get_object()
-            if not form.is_valid():
-                return self.render_to_response(self.get_context_data(note_form=form), status=400)
-            task = None
-            if self.object.status in (ExecutionStatus.RUNNING, ExecutionStatus.WAITING):
-                task = (
-                    self.object.tasks.filter(
-                        step_id=self.object.current_step_id,
-                        status__in=(
-                            TaskStatus.PENDING,
-                            TaskStatus.ASSIGNED,
-                            TaskStatus.IN_PROGRESS,
-                            TaskStatus.BLOCKED,
-                        ),
-                    )
-                    .order_by("-pk")
-                    .first()
-                )
-            ExecutionNote.objects.create(
-                execution=self.object,
-                task=task,
-                author=request.user,
-                body=form.cleaned_data["body"],
-            )
+        self.object = self.get_object()
+        allow_work_notes = not execution_is_requester(self.object, request.user)
+        form = ExecutionNoteForm(request.POST, allow_work_notes=allow_work_notes)
+        if not form.is_valid():
+            return self.render_to_response(self.get_context_data(note_form=form), status=400)
+        add_execution_note(
+            self.object,
+            request.user,
+            form.cleaned_data["body"],
+            kind=form.cleaned_data["kind"],
+        )
         return redirect("offerings:execution_detail", pk=self.object.pk)
 
 
@@ -544,10 +782,17 @@ class OfferingTaskActionView(LoginRequiredMixin, View):
                 request.POST.get("action", ""),
                 assignee_id=request.POST.get("assignee"),
                 outcome=request.POST.get("outcome"),
+                reason=request.POST.get("reason"),
+                comment=request.POST.get("comment"),
             )
         except ValidationError as exc:
             for message in exc.messages:
                 messages.error(request, message)
+        next_url = request.POST.get("next", "")
+        if next_url and url_has_allowed_host_and_scheme(
+            next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+        ):
+            return redirect(next_url)
         return redirect("offerings:execution_detail", pk=task.execution_id)
 
 

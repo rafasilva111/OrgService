@@ -5,7 +5,7 @@
 {% block header_title %}{{ req.title }}{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl space-y-6">
+<div class="{% if not execution %}max-w-4xl {% endif %}space-y-6">
   <div class="flex flex-wrap items-end justify-between gap-3">
     <div class="space-y-3">
       <div class="flex flex-wrap items-center gap-2">
@@ -18,8 +18,8 @@
         <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Service Offering' %}</dt><dd class="font-medium text-zinc-800">{% if req.offering %}<a href="{% url 'offerings:detail' req.offering.pk %}" class="text-indigo-600 hover:text-indigo-800">{{ req.offering.name }}</a>{% else %}—{% endif %}</dd></div>
         {% if execution %}<div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Execution' %}</dt><dd><a href="{% url 'offerings:execution_detail' execution.pk %}" class="font-medium text-indigo-600 hover:text-indigo-800">#{{ execution.pk }} · {{ execution.get_status_display }}</a></dd></div>{% endif %}
         <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Type' %}</dt><dd class="font-medium text-zinc-800">{{ req.offering.offering_type.name|default:"—" }}</dd></div>
-        <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Requester' %}</dt><dd class="font-medium text-zinc-800">{{ req.requester|default:"—" }}</dd></div>
-        <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Assigned' %}</dt><dd class="font-medium text-zinc-800">{% if req.assigned_to %}{{ req.assigned_to }}{% else %}{% translate 'Unassigned' %}{% endif %}</dd></div>
+        <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Requester' %}</dt><dd class="font-medium text-zinc-800">{% if req.requester and req.requester.deleted_at == None and req.requester.person_type != "SYSTEM" %}<a href="{% url 'people:detail' req.requester.pk %}" class="font-medium text-indigo-600 hover:text-indigo-800">{{ req.requester }}</a>{% else %}{{ req.requester|default:"—" }}{% endif %}</dd></div>
+        <div class="flex gap-2"><dt class="w-24 shrink-0 text-zinc-500">{% translate 'Current step' %}</dt><dd class="font-medium text-zinc-800">{{ execution.current_step.name|default:"—" }}{% if current_task %} <span class="rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset {{ current_task.status|pill_class }}">{{ current_task.get_status_display }}</span><div class="mt-1 text-xs font-normal text-zinc-500">{% translate 'Assigned to' %}: {% if current_task.assigned_to %}{{ current_task.assigned_to }}{% else %}{% translate 'Unassigned' %}{% endif %}</div>{% endif %}</dd></div>
         <div class="flex gap-2"><dt class="w-24 text-zinc-500">{% translate 'Created' %}</dt><dd class="text-zinc-700">{{ req.created_at|date:"M j, Y H:i" }}</dd></div>
       </dl>
     </div>
@@ -28,13 +28,12 @@
     </div>
   </div>
 
-  <div class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm">
-    <h2 class="mb-2 text-sm font-semibold text-zinc-800">{% translate 'Description' %}</h2>
-    <p class="whitespace-pre-wrap text-sm leading-relaxed text-zinc-600">{% if req.description %}{{ req.description }}{% else %}{% translate 'No description provided.' %}{% endif %}</p>
-  </div>
-
+  <div class="{% if execution %}grid items-start gap-6 xl:grid-cols-2{% endif %}">
+  <div class="min-w-0 space-y-6">
   {% include "requests/_answers.html" %}
 
+  {% if execution %}{% include "offerings/_execution_log.html" %}{% endif %}
+  {% if not execution %}
   <div class="rounded-xl border border-zinc-200 bg-white shadow-sm">
     <h2 class="border-b border-zinc-100 px-4 py-3 text-sm font-semibold text-zinc-800">{% translate 'Timeline' %}</h2>
     <ul class="divide-y divide-zinc-100">
@@ -47,6 +46,10 @@
       <li class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No notes yet.' %}</li>
       {% endfor %}
     </ul>
+  </div>
+  {% endif %}
+  </div>
+  {% if execution %}<aside class="min-w-0">{% include "offerings/_execution_steps.html" %}</aside>{% endif %}
   </div>
 </div>
 {% endblock content %}

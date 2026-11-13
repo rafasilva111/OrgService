@@ -282,7 +282,7 @@ def answers_form_for(offering, data=None, files=None, *, disabled=False):
 
 
 # -------------------------------------------------------------- display
-def answer_rows(request):
+def answer_rows(request, *, include_empty=False):
     """``[{"label", "text", "attachment"}]`` for a request's answers, in the
     order of the offering's questions (unknown keys are listed last)."""
     from datetime import date
@@ -296,10 +296,12 @@ def answer_rows(request):
     for spec in specs:
         attachment = attachments.pop(spec.key, None)
         value = data.pop(spec.key, None)
-        if attachment is None and value in (None, "", [], {}):
+        if attachment is None and value in (None, "", [], {}) and not include_empty:
             continue
         text = ""
-        if spec.field_type == FormFieldType.BOOLEAN:
+        if value in (None, "", [], {}):
+            text = ""
+        elif spec.field_type == FormFieldType.BOOLEAN:
             text = _("Yes") if value else _("No")
         elif spec.field_type == FormFieldType.DATE and value:
             text = date_format(date.fromisoformat(value), "SHORT_DATE_FORMAT")

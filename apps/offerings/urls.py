@@ -10,6 +10,7 @@ urlpatterns = [
     path("", views.ServiceOfferingListView.as_view(), name="index"),
     path("new/", views.OfferingBuilderView.as_view(), name="create"),
     path("preview/", views.OfferingPreviewView.as_view(), name="preview"),
+    path("productivity/", views.OfferingProductivityView.as_view(), name="productivity"),
     path("<int:pk>/edit/", views.OfferingBuilderView.as_view(), name="edit"),
     path("<int:pk>/publish/", views.OfferingPublishView.as_view(), name="publish"),
     path("<int:pk>/new-version/", views.OfferingNewVersionView.as_view(), name="new_version"),

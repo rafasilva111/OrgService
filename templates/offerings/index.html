@@ -11,12 +11,15 @@
       <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Service Offerings' %}</h1>
       <p class="mt-1 text-sm text-zinc-500">{% translate 'Versioned definitions describing how work is performed.' %}</p>
     </div>
+    <div class="flex flex-wrap items-center gap-2">
+    <a href="{% url 'offerings:productivity' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50">{% translate 'Offering productivity' %}</a>
     {% if request.user|has_perm:"offering.manage" %}
     <a href="{% url 'offerings:create' %}"
        class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700">
       {% icon "plus" class_name="size-4" %} {% translate 'New service offering' %}
     </a>
     {% endif %}
+    </div>
   </div>
 
   {% include "core/tables/_table.html" %}
