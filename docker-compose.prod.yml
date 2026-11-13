@@ -20,6 +20,7 @@
 services:
   db:
     image: postgres:16-alpine
+    container_name: db
     restart: unless-stopped
     env_file:
       - .env
@@ -33,6 +34,7 @@ services:
 
   web:
     build: .
+    container_name: web
     restart: unless-stopped
     env_file:
       - .env
@@ -49,6 +51,7 @@ services:
 
   nginx:
     image: nginx:1.28-alpine
+    container_name: nginx
     restart: unless-stopped
     ports:
       - "80:80"
