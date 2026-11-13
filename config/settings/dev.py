@@ -14,7 +14,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = get_list(
     "DJANGO_ALLOWED_HOSTS",
-    ["localhost", "127.0.0.1", "0.0.0.0", "[::1]", "testserver"],
+    ["217.160.115.221","localhost", "127.0.0.1", "0.0.0.0", "[::1]", "testserver"],
 )
 
 # Third-party dev tooling: the debug toolbar is only installed in this config.
