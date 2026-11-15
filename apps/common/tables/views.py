@@ -34,6 +34,8 @@ class TableView(ListView):
     table_config: TableConfig | None = None
     partial_template_name = "core/tables/_table.html"
     use_header_scope = True
+    # False keeps the header's organization but ignores its service pick.
+    use_header_service_scope = True
     use_both_header_scopes = False
 
     # ``?service=<pk>`` (repeatable) restricts rows to specific service(s) —
@@ -261,7 +263,10 @@ class TableView(ListView):
         organization_explicit = "organization" in self.request.GET
         self.context_service_pk = (
             None
-            if not self.use_header_scope or service_explicit or organization_explicit
+            if not self.use_header_scope
+            or not self.use_header_service_scope
+            or service_explicit
+            or organization_explicit
             else selected_service_pk(self.request.user, self.request.session)
         )
         self.context_organization_pk = (

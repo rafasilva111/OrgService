@@ -23,6 +23,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
     ports:
       - "${DJANGO_PORT:-8000}:8000"
     volumes:
@@ -40,7 +42,50 @@ services:
       else
         exec gunicorn config.wsgi:application -b 0.0.0.0:8000 -w 4 --timeout 120;
       fi'
-      
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      SEED_DATA: "0"
+    depends_on:
+      web:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    entrypoint: []
+    command: celery -A config worker --loglevel=info
+
+  beat:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      SEED_DATA: "0"
+    depends_on:
+      web:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    entrypoint: []
+    command: celery -A config beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+
   nginx:
     image: nginx:1.28-alpine
     container_name: nginx

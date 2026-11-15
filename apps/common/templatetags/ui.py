@@ -209,12 +209,33 @@ def format_duration(value):
     return f"{secs}s"
 
 
+SLA_WARNING_RATIO = 0.8
+
+
 @register.filter
-def minutes(value):
+def sla_level(duration, sla_minutes):
+    """``"danger"`` above the SLA (whole minutes), ``"warning"`` from 80% of it.
+
+    Returns ``""`` when there is no duration or SLA to compare.
+    """
+    from datetime import timedelta
+
+    if duration is None or sla_minutes in (None, ""):
+        return ""
+    sla = timedelta(minutes=int(sla_minutes))
+    if duration > sla:
+        return "danger"
+    if sla and duration >= sla * SLA_WARNING_RATIO:
+        return "warning"
+    return ""
+
+
+@register.filter
+def minutes(value, max_parts=2):
     """Whole minutes as a human-readable duration (see ``humanize_minutes``)."""
     from apps.common.durations import humanize_minutes
 
-    return humanize_minutes(value)
+    return humanize_minutes(value, max_parts=int(max_parts))
 
 
 @register.filter

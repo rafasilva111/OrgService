@@ -19,6 +19,8 @@ urlpatterns = [
     # and dashboard:service_dashboard.
     path("", ExecutiveDashboard.as_view(), name="dashboard"),
     path("", include("apps.dashboard.urls")),
+    # Citizen portal (Portal do Munícipe)
+    path("citizen/", include("apps.citizen.urls")),
     # Profile + settings (under the header profile dropdown)
     path("", include("apps.profiles.urls")),
     # Organizations + memberships

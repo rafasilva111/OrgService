@@ -66,12 +66,10 @@ def reliable_sample(task):
 
 
 def add_person_step_statistics(people, step):
-    """Count all completed visits and average reliable timings by final assignee."""
+    """Count and average reliable completed visits by final assignee."""
     people = list(people)
     by_id = {person.pk: person for person in people}
     samples = defaultdict(list)
-    for person in people:
-        person.completed_task_count = 0
     tasks = OfferingTask.objects.filter(
         execution__offering=step.offering,
         step=step,
@@ -79,7 +77,6 @@ def add_person_step_statistics(people, step):
         status=TaskStatus.DONE,
     ).prefetch_related(pause_prefetch())
     for task in tasks:
-        by_id[task.assigned_to_id].completed_task_count += 1
         sample = reliable_sample(task)
         if sample is not None:
             samples[task.assigned_to_id].append(sample)

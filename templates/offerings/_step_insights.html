@@ -1,0 +1,6 @@
+{% load i18n %}
+<div class="space-y-6">
+  {% include "core/tables/_table.html" with config=actors_context.config visible_columns=actors_context.visible_columns object_list=actors_context.object_list paginator=actors_context.paginator page_obj=actors_context.page_obj is_paginated=actors_context.is_paginated query_without_sort=actors_context.query_without_sort table_description=actors_context.table_description %}
+  <div id="person-tasks-panel" aria-live="polite">{% if person_tasks_context %}{% include "offerings/_person_recent_tasks.html" with person=person_tasks_context.person step=person_tasks_context.step tasks=person_tasks_context.tasks order=person_tasks_context.order sla_minutes=person_tasks_context.sla_minutes all_tasks_url=person_tasks_context.all_tasks_url %}{% endif %}</div>
+  {% include "core/tables/_table.html" with config=pause_context.config visible_columns=pause_context.visible_columns object_list=pause_context.object_list paginator=None page_obj=None is_paginated=False query_without_sort="" table_description=pause_context.table_description %}
+</div>

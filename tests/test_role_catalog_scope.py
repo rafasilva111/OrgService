@@ -44,7 +44,9 @@ def select_org(client, org):
 
 
 def select_service(client, service, role):
-    client.post(reverse("dashboard:set_service_context"), {"service": service.pk, "role": role.code})
+    client.post(
+        reverse("dashboard:set_service_context"), {"service": service.pk, "role": role.code}
+    )
 
 
 def test_global_catalogue_includes_unassociated_and_inactive_roles(client, catalogue, make_role):

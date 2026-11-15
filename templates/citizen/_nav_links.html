@@ -1,0 +1,7 @@
+{% load i18n %}{% with name=request.resolver_match.url_name %}
+<a href="{% url 'citizen:home' %}" class="rounded-lg px-3 py-2 {% if name == 'home' %}bg-teal-50 font-medium text-teal-800{% else %}text-slate-600 hover:bg-slate-100{% endif %}">{% translate 'Home' %}</a>
+<a href="{% url 'citizen:services' %}" class="rounded-lg px-3 py-2 {% if name == 'services' or name == 'service_detail' or name == 'offering_detail' or name == 'request_create' %}bg-teal-50 font-medium text-teal-800{% else %}text-slate-600 hover:bg-slate-100{% endif %}">{% translate 'Services' %}</a>
+<a href="{% url 'citizen:requests' %}" class="rounded-lg px-3 py-2 {% if name == 'requests' or name == 'request_detail' %}bg-teal-50 font-medium text-teal-800{% else %}text-slate-600 hover:bg-slate-100{% endif %}">{% translate 'My requests' %}</a>
+<a href="{% url 'citizen:profile' %}" class="rounded-lg px-3 py-2 {% if name == 'profile' %}bg-teal-50 font-medium text-teal-800{% else %}text-slate-600 hover:bg-slate-100{% endif %}">{% translate 'Profile' %}</a>
+<form method="post" action="{% url 'citizen:logout' %}" class="contents">{% csrf_token %}<button type="submit" class="rounded-lg px-3 py-2 text-left text-slate-600 hover:bg-slate-100">{% translate 'Sign out' %}</button></form>
+{% endwith %}

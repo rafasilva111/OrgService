@@ -4,15 +4,19 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('offerings', '0011_system_task_creator'),
+        ("offerings", "0011_system_task_creator"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='executionnote',
-            name='kind',
-            field=models.CharField(choices=[('WORK_NOTE', 'Work Notes'), ('COMMENT', 'Comments')], default='COMMENT', max_length=16, verbose_name='message type'),
+            model_name="executionnote",
+            name="kind",
+            field=models.CharField(
+                choices=[("WORK_NOTE", "Work Notes"), ("COMMENT", "Comments")],
+                default="COMMENT",
+                max_length=16,
+                verbose_name="message type",
+            ),
         ),
     ]

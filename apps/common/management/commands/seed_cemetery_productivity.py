@@ -29,6 +29,16 @@ from apps.services.models import Service
 
 MARKER = "[demo-cemetery-productivity-v1:"
 OFFERINGS = ("Limpar cemitério", "Realizar um funeral", "Realizar transladação")
+DEMO_COUNT = 24
+LEGACY_COUNT = 100
+
+
+def marker(index):
+    return f"{MARKER}{index:03d}] Dados fictícios."
+
+
+def retained_legacy_indices():
+    return {round(index * (LEGACY_COUNT - 1) / (DEMO_COUNT - 1)) + 1 for index in range(DEMO_COUNT)}
 
 
 def three_months_before(day):
@@ -89,7 +99,14 @@ def sample_answers(name, started, index):
 
 
 class Command(BaseCommand):
-    help = "Add 100 fictitious cemetery requests and executions for productivity demos."
+    help = "Add 24 fictitious cemetery requests and executions for productivity demos."
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--reduce-legacy",
+            action="store_true",
+            help="Remove 76 of the original 100 marked demo requests and their executions.",
+        )
 
     def handle(self, *args, **options):
         service = Service.objects.filter(
@@ -127,30 +144,39 @@ class Command(BaseCommand):
                 existing = Request.objects.filter(service=service, description__startswith=MARKER)
                 if existing.exists():
                     markers = set(existing.values_list("description", flat=True))
-                    expected = {f"{MARKER}{i:03d}] Dados fictícios." for i in range(1, 101)}
-                    if existing.count() == 100 and markers == expected:
+                    expected = {marker(i) for i in range(1, DEMO_COUNT + 1)}
+                    retained = {marker(i) for i in retained_legacy_indices()}
+                    legacy = {marker(i) for i in range(1, LEGACY_COUNT + 1)}
+                    if existing.count() == DEMO_COUNT and markers in (expected, retained):
                         self.stdout.write(
-                            "The 100 marked demo requests already exist; nothing changed."
+                            f"The {DEMO_COUNT} marked demo requests already exist; nothing changed."
                         )
+                        return
+                    if (
+                        options["reduce_legacy"]
+                        and existing.count() == LEGACY_COUNT
+                        and markers == legacy
+                    ):
+                        self.reduce_legacy(existing, request_type, now)
                         return
                     raise CommandError(
                         f"Found {existing.count()} marked requests with an incomplete or altered "
-                        "cohort; inspect first."
+                        "cohort; inspect first. To reduce the original cohort, pass --reduce-legacy."
                     )
-                for index in range(100):
+                for index in range(DEMO_COUNT):
                     name = OFFERINGS[index % len(OFFERINGS)]
                     offering, path, candidates = offerings[name]
-                    day = first + timedelta(days=span * index // 99)
+                    day = first + timedelta(days=span * index // (DEMO_COUNT - 1))
                     started = timezone.make_aware(
                         datetime.combine(day, time(hour=9, minute=(index % 4) * 10)),
                         timezone.get_current_timezone(),
                     )
                     started = min(started, now - timedelta(hours=6))
                     manual = [step for step in path if step.pk in candidates]
-                    kind = index % 10
-                    is_completed = kind < 6
-                    is_blocked = kind == 6
-                    is_paused = kind == 7
+                    kind = (index // len(OFFERINGS)) % 8
+                    is_completed = kind < 4
+                    is_blocked = kind == 4
+                    is_paused = kind == 5
                     current_index = min((index // 3) % len(manual), len(manual) - 1)
                     current_step = path[-1] if is_completed else manual[current_index]
                     task_durations = [
@@ -159,6 +185,10 @@ class Command(BaseCommand):
                         else timedelta(minutes=45)
                         for step in manual
                     ]
+                    if is_completed and index % 2 == 0 and manual[-1].sla_minutes is not None:
+                        task_durations[-1] = max(
+                            task_durations[-1], timedelta(minutes=manual[-1].sla_minutes + 60)
+                        )
                     total_duration = sum(task_durations, timedelta())
                     if started + total_duration > now:
                         started = now - total_duration
@@ -167,7 +197,7 @@ class Command(BaseCommand):
                         service=service,
                         offering=offering,
                         title=f"{name} — demonstração {index + 1:03d}",
-                        description=f"{MARKER}{index + 1:03d}] Dados fictícios.",
+                        description=marker(index + 1),
                         requester=requester,
                         created_by=requester,
                         priority=offering.default_priority,
@@ -278,4 +308,99 @@ class Command(BaseCommand):
             for storage, filename in saved_files:
                 storage.delete(filename)
             raise
-        self.stdout.write(self.style.SUCCESS("Created 100 cemetery demo requests and executions."))
+        self.stdout.write(
+            self.style.SUCCESS(f"Created {DEMO_COUNT} cemetery demo requests and executions.")
+        )
+
+    def reduce_legacy(self, existing, request_type, now):
+        retained = {marker(i) for i in retained_legacy_indices()}
+        requests = list(existing.select_for_update())
+        executions = list(
+            OfferingExecution.objects.select_for_update().filter(
+                subject_type=request_type, subject_id__in=[request.pk for request in requests]
+            )
+        )
+        by_request = {}
+        for execution in executions:
+            if execution.subject_id in by_request:
+                raise CommandError("A demo request has multiple executions; inspect first.")
+            by_request[execution.subject_id] = execution
+        if len(by_request) != LEGACY_COUNT:
+            raise CommandError("A demo request is missing its execution; inspect first.")
+
+        kept = [request for request in requests if request.description in retained]
+        removed = [request for request in requests if request.description not in retained]
+        changed = 0
+        for request in sorted(kept, key=lambda item: item.description):
+            execution = by_request[request.pk]
+            if execution.status != ExecutionStatus.COMPLETED:
+                continue
+            tasks = list(execution.tasks.select_related("step").order_by("step__order", "pk"))
+            manual = [
+                task
+                for task in tasks
+                if task.step.step_type in (StepType.TASK, StepType.APPROVAL, StepType.GATEWAY)
+            ]
+            if not manual:
+                raise CommandError(f"Execution {execution.pk} has no manual task; inspect first.")
+            task = manual[-1]
+            if task.status != TaskStatus.DONE or not task.started_at or not task.completed_at:
+                raise CommandError(f"Execution {execution.pk} has an incomplete final task.")
+            if task.deadline is None or task.completed_at > task.deadline:
+                continue
+            if execution.completed_at != task.completed_at:
+                raise CommandError(
+                    f"Execution {execution.pk} has a modified timeline; inspect first."
+                )
+            completed = task.activities.filter(action="completed")
+            if completed.count() != 1:
+                raise CommandError(f"Task {task.pk} has an unexpected completion history.")
+            finish = task.deadline + timedelta(hours=1)
+            if finish > now:
+                continue
+            for notification_task in (
+                item for item in tasks if item.step.step_type == StepType.NOTIFY
+            ):
+                if (
+                    notification_task.started_at != task.completed_at
+                    or notification_task.completed_at != task.completed_at
+                ):
+                    raise CommandError(
+                        f"Execution {execution.pk} has a modified notification timeline."
+                    )
+                OfferingTask.objects.filter(pk=notification_task.pk).update(
+                    started_at=finish, completed_at=finish, created_at=finish
+                )
+                notification_task.activities.filter(action="notified").update(created_at=finish)
+                notification_task.notifications.filter(read_at__isnull=False).update(read_at=finish)
+            OfferingTask.objects.filter(pk=task.pk).update(completed_at=finish)
+            completed.update(created_at=finish)
+            OfferingExecution.objects.filter(pk=execution.pk).update(completed_at=finish)
+            changed += 1
+        if changed < 3:
+            raise CommandError(
+                "Not enough completed demo tasks could be made overdue; inspect first."
+            )
+
+        attachments = [
+            (attachment.file.storage, attachment.file.name)
+            for request in removed
+            for attachment in request.attachments.all()
+            if attachment.file
+        ]
+        OfferingExecution.objects.filter(
+            pk__in=[by_request[request.pk].pk for request in removed]
+        ).delete()
+        Request.objects.filter(pk__in=[request.pk for request in removed]).delete()
+        transaction.on_commit(lambda: self.delete_attachments(attachments))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Kept {len(kept)} demo executions, removed {len(removed)}, "
+                f"and made {changed} completed tasks exceed their SLA."
+            )
+        )
+
+    @staticmethod
+    def delete_attachments(attachments):
+        for storage, name in attachments:
+            storage.delete(name)

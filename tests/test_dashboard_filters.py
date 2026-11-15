@@ -23,6 +23,24 @@ def _member(make_person, make_membership, user, org, role):
     return make_membership(make_person(user), org, role)
 
 
+def test_requests_list_shows_ten_per_page(
+    client, make_user, make_person, make_role, make_membership, org_tree, make_service
+):
+    service = make_service(org_tree["municipality"], "Requests")
+    user = make_user()
+    role = make_role(permissions=["service.view", "request.view"])
+    _member(make_person, make_membership, user, org_tree["municipality"], role)
+    Request.objects.bulk_create(
+        [Request(service=service, title=f"Request {index}") for index in range(21)]
+    )
+    client.force_login(user)
+    url = reverse("requests:index")
+    pages = [client.get(url, {"page": number}) for number in (1, 2, 3)]
+    assert [len(response.context["object_list"]) for response in pages] == [10, 10, 1]
+    assert all(response.context["paginator"].count == 21 for response in pages)
+    assert len({request.pk for page in pages for request in page.context["object_list"]}) == 21
+
+
 def test_service_dashboard_open_requests_link_is_scoped(
     client, make_user, make_person, make_role, make_membership, org_tree, make_service
 ):

@@ -9,7 +9,7 @@ The default dataset makes the app immediately explorable — 9 municipal service
 ## 1. The project
 
 - **Stack**: Python 3.12 / Django 5.2 / PostgreSQL 16 / pytest. Runs locally or via Docker Compose.
-- **Shape**: a single `config/` project + 16 app packages under `apps/` — 13 domain apps plus `common` (shared helpers), `dashboard` (views only) and `profiles` (profile/settings). Listed below.
+- **Shape**: a single `config/` project + 17 app packages under `apps/` — 13 domain apps plus `common` (shared helpers), `dashboard` (views only), `citizen` (citizen portal, views only) and `profiles` (profile/settings). Listed below.
 - **Postgres is mandatory** — the org hierarchy uses the `ltree` extension (`apps/common/fields.py`), indexed with a GiST index.
 - **Authorization is centralized** — `apps/common/authorization.py` provides `can()` and `.visible_to()` queryset managers; operational data is scoped by RBAC, while every authenticated user can read the people directory globally. People write actions remain permission-gated.
 - **Docs in Portuguese**: `docs/architecture.md`, `docs/domain-model.md`, `docs/authorization.md`, `docs/er-diagram.mmd`; outstanding issues in `ISSUES.md`.
@@ -33,6 +33,7 @@ The default dataset makes the app immediately explorable — 9 municipal service
 | `audit` | AuditLog | immutable, generic-FK |
 | `dashboard` | views only | executive/org/service dashboards (charts) |
 | `profiles` | profile settings | header dropdown |
+| `citizen` | views only | citizen portal at `/citizen/` (sign-up, catalogue, own requests) |
 
 > `events`/`audit` and generic links (`Problem→Incident`, offering `subject`) use Django **GenericForeignKey** to avoid circular dependencies between apps.
 
@@ -70,7 +71,7 @@ Portugal            (COUNTRY)
 | Cemitérios | Santa Maria, São Pedro e Matacães | OPERATIONAL | `p.lopes` |
 | Limpeza Urbana e Espaços Verdes | Santa Maria, São Pedro e Matacães | OPERATIONAL | `p.lopes` |
 
-> Extra service actors: `l.rodrigues` (Operations Manager) on Water Supply; `p.nunes` (Operator) on Waste Management, Road Maintenance and Cemitérios; `a.santos` and `c.oliveira` (Operators) on Cemitérios.
+> Extra service actors: `l.rodrigues` (Operations Manager) on Water Supply; `p.nunes` (Operator) on Waste Management, Road Maintenance and Cemitérios; `a.santos` and `c.oliveira` (Operators) on Cemitérios. André is also an operator in Espaço Público, and Carla in Limpeza Urbana.
 
 ### Operational samples
 
@@ -83,17 +84,21 @@ Portugal            (COUNTRY)
 - Cemitérios includes six sample executions across its three offerings, in running, waiting and completed states; completed runs include task records and action history for every manual step. Re-seeding fills missing task history without resetting executions.
 - The six cemetery demo requests include fictitious form answers and clearly marked sample PDF attachments. Re-seeding leaves existing answers and attachments untouched.
 - New requests start an execution and create tasks as steps are reached. Execution details show assignees, timings and recorded action history; notifications appear in the header bell.
+- Execution details show a fixed final deadline (start plus the normal path's SLAs) when all manual steps on that path have an SLA; pauses do not extend it.
 - Request and incident details show steps for an accessible linked execution, with task actions subject to the same permissions as execution details. Incidents do not yet start executions automatically.
 - Request details also show the execution log and allow authorized viewers to add notes; existing request comments remain visible.
 - A task assignee or scoped manager can pause an in-progress task with a reason and resume it; the execution and linked request wait until resumed. Pause and resume events are recorded, and the comments reason requires a new comment. Existing deadlines are not adjusted.
 - Requests linked to executions follow their execution state: pending → new, running → in progress, waiting → waiting (or failed when the current task is blocked), completed → resolved, failed → failed and cancelled → cancelled. Such requests cannot be closed independently.
 - Demo seeding creates a request for each otherwise-unassociated execution, using its creator as requester when available, and preserves existing links and execution history. `python manage.py rebuild_execution_requests --confirm-delete-all-requests` explicitly deletes all existing requests and their related records before rebuilding these links; it does not delete incidents.
-- Offering steps can specify a responsible role from the service's configured actors (or the delegated service's actors). Eligible members with scoped execution permission can claim group tasks; managers may assign or reassign them.
-- The offering productivity dashboard compares accessible offerings across versions, with preset periods, execution counts, daily activity and completed manual tasks by recorded assignee. It does not yet calculate pause-adjusted SLA time.
+- Offering steps can specify a responsible role from the service's configured actors (or the delegated service's actors). Active service actors with that role and scoped execution permission can claim group tasks; managers may assign or reassign them. Existing assignments are preserved.
 - Offering and execution step panels show the average active duration of completed tasks for that step and offering version, excluding recorded pauses. Aggregate timings require service and offering visibility.
+- The offerings list shows average elapsed time from creation to completion of completed executions for each version, including pauses and waiting; it requires service and offering visibility.
 - On the offering detail page, expand a step to see its configured SLA and average active, elapsed and paused times for reliable completed manual tasks of that version.
-- The offering detail page lists currently eligible people for the selected step, with ten per page, completed tasks by assignee and average active, elapsed and paused times for reliable completed tasks.
-- For a larger cemetery productivity demo, run `python manage.py seed_cemetery_productivity` after the default seed. It adds 100 marked fictional requests and executions across the previous three months; re-running leaves them untouched.
+- The offering detail page lists currently eligible people for the selected step, with ten per page, the count of reliable completed tasks by assignee and average active, elapsed and paused times for those tasks.
+- Below that table, pause reasons show counts and total paused time across all tasks of the selected step and offering version, including ongoing pauses.
+- The task and pause counts link to the service task table with filters for the selected step and version; pause history lists individual pause events. The activity filter defaults to active tasks and can include historical tasks.
+- In the service task queue, filters can narrow the results by assigned person and responsible role without expanding service access.
+- For a cemetery productivity demo, run `python manage.py seed_cemetery_productivity` after the default seed. It adds 24 marked fictional requests and executions across the previous three months, including completed tasks exceeding their SLA; re-running leaves them untouched. The six default cemetery examples remain separate. To reduce the original 100-record productivity cohort, `--reduce-legacy` deletes 76 marked requests and their linked executions, tasks, history and attachments.
 - The seeded superuser has administrative access without seeded operational roles; its person record is inactive by default and is not offered for task or incident assignment or as a service manager. Re-seeding preserves existing person and membership settings.
 - The role catalogue follows the header context: a selected service shows its active configured roles; a selected organization shows active membership roles and roles configured on visible services in its subtree. With no organization selected, it shows the global catalogue. Role definitions and their permissions remain shared.
 - Managers can edit a service offering from its detail page. Editing a published offering creates a draft version; existing executions continue to use their original version.
@@ -144,11 +149,18 @@ A Service is created with a **Service Manager** (`ServiceCreateForm`/`ServiceCre
 ### Building service offerings
 Managers with `offering.manage` create offerings at `/service-offerings/new/` (button on the list): offering fields (the offering type can be left "to be defined") plus an editable list of steps (responsible offering picked by district → municipality → parish, then step type and SLA), each with a *next* step and an optional *on error* branch; **Notification** steps hold a message for the requester. An offering starts **on request** (listed in New request) and/or **on a recurring schedule** (daily/weekly/monthly/yearly, with start/end dates). Each offering stores a **total SLA**, mirrored as a resolution SLA record listed under Analytics › SLAs (`/metrics/slas/`) (sum of the step SLAs on the normal path; a step handed to another service counts that offering's total, and its type/role come from it). SLAs are typed as durations such as `1d 4h 30m`. Each offering can also define a **request form** (text, number, date, yes/no, email, phone, choice, multiple choice, attachment, address) whose questions appear in New request when it is chosen; answers are stored on the request and attachments (≤ 10 MB) are kept under `MEDIA_ROOT` and only downloadable by users who can see the request. Offerings start as **drafts**, **Publish** makes them available for new requests (the previous active version is deprecated), and a published offering is changed through **New version**.
 
-On request creation an execution starts on the published offering. Authorized workers start and complete tasks; managers assign them and resolve failures. **Service Offerings › Service tasks** lists active tasks with search and filters scoped to the service responsible for each step, including delegated steps. The execution log combines viewer notes with recorded task updates; delegated users only see entries for their current task. Notification steps generate in-app notifications, and scheduled offerings are not yet run automatically. To create missing current-step tasks for older active executions, run `python manage.py backfill_execution_tasks --dry-run` first, then `python manage.py backfill_execution_tasks`; use `--service-id <id>` to restrict the operation.
+On request creation an execution starts on the published offering. Authorized workers start and complete tasks; managers assign them and resolve failures. **Service Offerings › Service tasks** has four nested tabs (`?scope=`): tasks I can execute (`mine`), all tasks in my service (`service`), in my organization (`organization`) and all tasks I may view (`all`), each with an *Activity* switch (ongoing or including history). Filters (organization, service, status, dates, step, role, pause reason and, outside `mine`, assignee) act on the responsible service of each step, including delegated steps. The header's service and organization pre-fill the drawer (`mine`/`service`: both; `organization`: organization only; `all`: none). Step pages link to `scope=all` with step plus assignee/status (per person) or pause reason (per pause cause) filters. The execution log combines viewer notes with recorded task updates; delegated users only see entries for their current task. Notification steps generate in-app notifications.
+
+The Service Offerings list links to a separate monthly calendar of planned recurring occurrences and their total SLA for the service selected in the header. Events span the SLA in calendar days, rounding partial days up; an absent or zero SLA occupies one day. Calendar dates are schedule projections, not guaranteed execution dates; they are independent of the table filters. The calendar loads FullCalendar from jsDelivr and requires JavaScript.
+
+Celery Beat checks active recurring offerings every minute and a Celery worker starts due executions. Docker Compose includes Redis, a worker and Beat. Redis is bound to `127.0.0.1:6379` on the host; `.env` and `.env.dev` may set `CELERY_BROKER_URL=redis://127.0.0.1:6379/0` for host processes, while Compose uses `redis://redis:6379/0` inside its network. Outside Compose, run `celery -A config worker --loglevel=info` and `celery -A config beat --loglevel=info`, with exactly one Beat instance. Scheduled runs create a request whose requester is Sistema and notify the service managers at start and completion. If a previous recurring execution is active, one due occurrence waits until it finishes; occurrences missed during downtime are not backfilled. To create missing current-step tasks for older active executions, run `python manage.py backfill_execution_tasks --dry-run` first, then `python manage.py backfill_execution_tasks`; use `--service-id <id>` to restrict the operation.
 
 ### Permissions and protected reporting
 
 Role permissions are restricted to each membership's organization subtree and any service restrictions. `python manage.py preview_permission_policy` reports the role-policy impact before deployment. The access migration updates existing Executive and Analyst grants; back up the database and restore desired grants explicitly if rollback is required. Requesters can see the full execution log for their own requests, including notes written before this policy. The protected overview requires `dashboard.aggregate`: it shows only scoped totals of at least five, suppresses groups overlapping the user's own record access, and provides no record drill-down. Totals can still be inferred from external knowledge or comparisons across snapshots; do not use this as a formal anonymity guarantee.
+
+### Citizen portal (`/citizen/`)
+A separate, citizen-facing surface (`apps/citizen/`, templates in `templates/citizen/`, URL namespace `citizen:`). Citizens sign up at `/citizen/signup/` (creates a `User` whose username is the email + a `Person` of type CITIZEN) and sign in at `/citizen/login/`. It does **not** use RBAC memberships: the catalogue shows every alive, active, non-retired service with ACTIVE `on_request` offerings; a citizen can request any of them (same per-offering form as Novo Pedido, execution started automatically) and sees only requests where they are the requester. Request pages show Comments and step progress (no staff names, never Work Notes); attachments download through `/citizen/requests/<pk>/attachments/<id>/`. See ADR 019 in the Obsidian vault.
 
 ### Catalog lifecycle (soft-delete)
 Organization / Service / Person / Resource / Role support **create / activate / deactivate / soft-delete** via generic lifecycle views (`apps/common/lifecycle.py`): POST-only, gated by `*.create` / `*.manage` / `*.delete`, scoped (404 outside scope). `soft_delete()` fills `deleted_at`; lists hide deleted rows via `.alive()` (seeds keep working because `get_or_create` still sees them).
@@ -182,6 +194,8 @@ All demo users have password **`<username>123`** (e.g. `a.duarte` / `a.duarte123
 | `p.nunes` | Pedro Nunes | OPERATOR | Santa Maria, São Pedro e Matacães (+ Waste/Road actors) |
 | `a.santos` | André Santos | OPERATOR | Santa Maria, São Pedro e Matacães (+ Cemitérios actor) |
 | `c.oliveira` | Carla Oliveira | OPERATOR | Santa Maria, São Pedro e Matacães (+ Cemitérios actor) |
+
+**Citizen portal** (`/citizen/login/`) — demo citizen `joana.ribeiro@example.pt` / `cidadao123` (Joana Ribeiro, lives in Santa Maria, São Pedro e Matacães; no staff role).
 
 ---
 

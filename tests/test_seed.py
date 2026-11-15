@@ -41,6 +41,7 @@ def test_optional_cemetery_productivity_seed_is_complete_and_idempotent(seeded):
 
     from django.contrib.contenttypes.models import ContentType
     from django.core.management.base import CommandError
+    from django.db.models import F
     from django.utils import timezone
 
     from apps.common.management.commands.seed_cemetery_productivity import (
@@ -55,18 +56,20 @@ def test_optional_cemetery_productivity_seed_is_complete_and_idempotent(seeded):
     before = Request.objects.count()
     call_command("seed_cemetery_productivity", verbosity=0)
     requests = Request.objects.filter(description__startswith=MARKER)
-    assert requests.count() == 100
-    assert Request.objects.count() == before + 100
+    assert requests.count() == 24
+    assert Request.objects.count() == before + 24
     executions = OfferingExecution.objects.filter(
         subject_type=ContentType.objects.get_for_model(Request),
         subject_id__in=requests.values("pk"),
     ).select_related("offering", "current_step")
-    assert executions.count() == 100
-    assert executions.filter(status=ExecutionStatus.COMPLETED).count() == 60
-    assert executions.filter(status=ExecutionStatus.WAITING).count() == 20
-    assert executions.filter(status=ExecutionStatus.RUNNING).count() == 20
+    assert executions.count() == 24
+    assert executions.filter(status=ExecutionStatus.COMPLETED).count() == 12
+    assert executions.filter(status=ExecutionStatus.WAITING).count() == 6
+    assert executions.filter(status=ExecutionStatus.RUNNING).count() == 6
     assert set(executions.values_list("offering__name", flat=True)) == {
-        "Limpar cemitério", "Realizar um funeral", "Realizar transladação"
+        "Limpar cemitério",
+        "Realizar um funeral",
+        "Realizar transladação",
     }
     preparations = executions.filter(
         offering__name="Realizar um funeral",
@@ -82,30 +85,48 @@ def test_optional_cemetery_productivity_seed_is_complete_and_idempotent(seeded):
     today = timezone.localdate()
     now = timezone.now()
     totals = list(offering_totals(executions, period_start("90", now), now))
-    assert sum(row["started"] for row in totals) > 90
-    assert all(row["completed"] and row["running"] and row["waiting"] and row["failed"]
-               for row in totals)
+    assert sum(row["started"] for row in totals) > 20
+    assert all(
+        row["completed"] and row["running"] and row["waiting"] and row["failed"] for row in totals
+    )
     tasks, timeline = offering_detail(executions, period_start("90", now), now)
     assert len(tasks) >= 4
     assert sum(day["started"] for day in timeline) == sum(row["started"] for row in totals)
+    overdue = executions.filter(
+        tasks__status=TaskStatus.DONE,
+        tasks__deadline__isnull=False,
+        tasks__completed_at__gt=F("tasks__deadline"),
+    ).distinct()
+    assert overdue.count() >= 6
+    assert set(overdue.values_list("offering__name", flat=True)) == {
+        "Limpar cemitério",
+        "Realizar um funeral",
+        "Realizar transladação",
+    }
     for execution in executions:
-        assert three_months_before(today) <= timezone.localtime(execution.started_at).date() <= today
+        assert (
+            three_months_before(today) <= timezone.localtime(execution.started_at).date() <= today
+        )
         assert execution.started_at <= now
-        assert execution.completed_at is None or execution.started_at <= execution.completed_at <= now
+        assert (
+            execution.completed_at is None or execution.started_at <= execution.completed_at <= now
+        )
         assert execution.subject.status == request_status(execution)
         assert execution.subject.form_data
         if execution.offering.name != "Limpar cemitério":
             attachment = execution.subject.attachments.get()
             assert attachment.file.read().startswith(b"%PDF-1.4")
         for task in execution.tasks.select_related(
-            "step__offering__service", "step__service_offering__service",
-            "step__responsible_role", "assigned_to"
+            "step__offering__service",
+            "step__service_offering__service",
+            "step__responsible_role",
+            "assigned_to",
         ):
             assert task.started_at <= now
             assert task.completed_at is None or task.started_at <= task.completed_at <= now
             assert not task.activities.filter(created_at__gt=now).exists()
             if task.step.step_type == StepType.NOTIFY:
-                assert task.notification.read_at is not None
+                assert task.notifications.get().read_at is not None
                 continue
             assert task.assigned_to in eligible_people(task.step)
             assert task.activities.filter(action="created").exists()
@@ -117,14 +138,57 @@ def test_optional_cemetery_productivity_seed_is_complete_and_idempotent(seeded):
     call_command("seed_cemetery_productivity", verbosity=0)
     edited.refresh_from_db()
     assert edited.title == "Alterado pelo utilizador"
-    assert requests.count() == 100
-    assert executions.count() == 100
+    assert requests.count() == 24
+    assert executions.count() == 24
     edited.description = f"{MARKER}alterado]"
     edited.save(update_fields=["description"])
     with pytest.raises(CommandError, match="incomplete or altered"):
         call_command("seed_cemetery_productivity", verbosity=0)
-    assert requests.count() == 100
-    assert executions.count() == 100
+    assert requests.count() == 24
+    assert executions.count() == 24
+
+
+def test_reduce_legacy_cemetery_productivity_preserves_selected_executions(seeded, monkeypatch):
+    from django.contrib.contenttypes.models import ContentType
+    from django.core.management.base import CommandError
+    from django.db.models import F
+
+    from apps.common.management.commands import seed_cemetery_productivity as seed
+    from apps.offerings.models import ExecutionNote, OfferingExecution, TaskStatus
+
+    monkeypatch.setattr(seed, "DEMO_COUNT", 100)
+    call_command("seed_cemetery_productivity", verbosity=0)
+    monkeypatch.setattr(seed, "DEMO_COUNT", 24)
+    requests = Request.objects.filter(description__startswith=seed.MARKER)
+    request_type = ContentType.objects.get_for_model(Request)
+    last = requests.get(description=seed.marker(100))
+    execution = OfferingExecution.objects.get(subject_type=request_type, subject_id=last.pk)
+    note = ExecutionNote.objects.create(execution=execution, body="Preserve me")
+    kept_ids = set(
+        requests.filter(
+            description__in={seed.marker(i) for i in seed.retained_legacy_indices()}
+        ).values_list("pk", flat=True)
+    )
+    with pytest.raises(CommandError, match="reduce-legacy"):
+        call_command("seed_cemetery_productivity", verbosity=0)
+    call_command("seed_cemetery_productivity", "--reduce-legacy", verbosity=0)
+    assert set(requests.values_list("pk", flat=True)) == kept_ids
+    assert ExecutionNote.objects.filter(pk=note.pk, execution=execution).exists()
+    executions = OfferingExecution.objects.filter(
+        subject_type=request_type, subject_id__in=kept_ids
+    )
+    assert executions.count() == 24
+    assert (
+        executions.filter(
+            tasks__status=TaskStatus.DONE,
+            tasks__completed_at__gt=F("tasks__deadline"),
+        )
+        .distinct()
+        .count()
+        >= 6
+    )
+    call_command("seed_cemetery_productivity", verbosity=0)
+    assert requests.count() == 24
 
 
 def test_seeded_superuser_can_navigate_without_operational_participation(seeded, client):
@@ -132,7 +196,7 @@ def test_seeded_superuser_can_navigate_without_operational_participation(seeded,
 
     from apps.incidents.views import IncidentCreateForm
     from apps.offerings.execution import eligible_people
-    from apps.offerings.models import OfferingStep, StepType
+    from apps.offerings.models import OfferingStep
     from apps.services.views import ServiceCreateForm
 
     admin = _user("admin")
@@ -147,17 +211,21 @@ def test_seeded_superuser_can_navigate_without_operational_participation(seeded,
     ).first()
     assert grouped_step is not None
     assert person not in eligible_people(grouped_step)
-    ungrouped_step = OfferingStep.objects.filter(
-        step_type=StepType.TASK, responsible_role__isnull=True
-    ).first()
-    assert ungrouped_step is not None
+    ungrouped_step = grouped_step
+    ungrouped_step.responsible_role = None
     assert person not in eligible_people(ungrouped_step)
-    assert not IncidentCreateForm(user=admin).fields["assigned_to"].queryset.filter(
-        pk=person.pk
-    ).exists()
-    assert not ServiceCreateForm(user=admin).fields["service_manager"].queryset.filter(
-        pk=person.pk
-    ).exists()
+    assert (
+        not IncidentCreateForm(user=admin)
+        .fields["assigned_to"]
+        .queryset.filter(pk=person.pk)
+        .exists()
+    )
+    assert (
+        not ServiceCreateForm(user=admin)
+        .fields["service_manager"]
+        .queryset.filter(pk=person.pk)
+        .exists()
+    )
 
     client.force_login(admin)
     for url_name in ("dashboard", "services:index", "requests:index", "offerings:executions"):
@@ -210,9 +278,7 @@ def test_seed_with_versioned_offering_preserves_draft(seeded):
     assert list(draft.steps.values_list("pk", "name", "service_offering_id")) == before
 
 
-def test_seed_cemetery_request_answers_are_complete_and_do_not_overwrite_user_data(
-    seeded, client
-):
+def test_seed_cemetery_request_answers_are_complete_and_do_not_overwrite_user_data(seeded, client):
     from django.contrib.contenttypes.models import ContentType
 
     from apps.offerings.models import OfferingExecution
@@ -238,7 +304,9 @@ def test_seed_cemetery_request_answers_are_complete_and_do_not_overwrite_user_da
                 assert b"demonstracao. Sem valor legal" in content
                 assert attachment.size == len(content)
         assert form.specs
-    funeral = next(request for request in requests if request.offering.name == "Realizar um funeral")
+    funeral = next(
+        request for request in requests if request.offering.name == "Realizar um funeral"
+    )
     client.force_login(_user("p.lopes"))
     attachment = funeral.attachments.get()
     response = client.get(f"/requests/attachments/{attachment.pk}/")
@@ -309,14 +377,19 @@ def test_cemeteries_has_active_operators_with_execution_access(seeded):
         offering__service=cemetery,
         responsible_role=operator_role,
         step_type=StepType.TASK,
+        service_offering__isnull=True,
     ).first()
     assert task_step is not None
-    assert operator_usernames <= {
-        person.user.username for person in eligible_people(task_step)
-    }
+    assert operator_usernames <= {person.user.username for person in eligible_people(task_step)}
+
+    prepare = OfferingStep.objects.get(offering__name="Realizar um funeral", code="prepare")
+    clean = OfferingStep.objects.get(offering__name="Limpar cemitério", code="clean")
+    assert {person.user.username for person in eligible_people(prepare)} == {"a.santos"}
+    assert {person.user.username for person in eligible_people(clean)} == {"c.oliveira"}
 
 
 def test_seeded_cemetery_executions_are_visible_consistent_and_idempotent(seeded, client):
+    from apps.offerings.execution import eligible_people
     from apps.offerings.models import (
         ExecutionStatus,
         OfferingExecution,
@@ -361,7 +434,7 @@ def test_seeded_cemetery_executions_are_visible_consistent_and_idempotent(seeded
         tasks = list(execution.tasks.select_related("step", "assigned_to").order_by("step__order"))
         assert tasks
         for task in tasks:
-            assert task.assigned_to == execution.created_by
+            assert task.assigned_to in eligible_people(task.step)
             assert task.step.offering == execution.offering
             assert (task.completed_at is not None) == (task.status == TaskStatus.DONE)
             activities = list(task.activities.select_related("actor").order_by("created_at", "pk"))
@@ -369,7 +442,7 @@ def test_seeded_cemetery_executions_are_visible_consistent_and_idempotent(seeded
             assert activities[0].actor.full_name == "Sistema"
             assert activities[0].actor.person_type == PersonType.SYSTEM
             assert activities[0].actor.user is None
-            assert all(activity.actor == execution.created_by for activity in activities[1:])
+            assert all(activity.actor == task.assigned_to for activity in activities[1:])
         if execution.status == ExecutionStatus.COMPLETED:
             assert all(task.status == TaskStatus.DONE for task in tasks)
             assert [task.step.code for task in tasks] == completed_steps[execution.offering.name]
@@ -585,6 +658,9 @@ def test_cemetery_cleaning_is_on_request_and_monthly(seeded):
     cleaning = ServiceOffering.objects.get(name="Limpar cemitério")
     assert cleaning.on_request and cleaning.on_schedule
     assert cleaning.recurrence_frequency == "MONTHLY" and cleaning.recurrence_month_day == 1
+    assert cleaning.recurrence_interval == 1
+    assert cleaning.recurrence_start == date(2026, 12, 1)
+    assert cleaning.recurrence_end is None
     assert cleaning.next_occurrences(1, after=date(2026, 11, 12)) == [date(2026, 12, 1)]
 
 
@@ -593,7 +669,7 @@ def test_funeral_total_sla_counts_the_external_step(seeded):
 
     maintenance = ServiceOffering.objects.get(name="Manutenção de espaço público")
     prepare = OfferingStep.objects.get(offering__name="Realizar um funeral", code="prepare")
-    assert prepare.is_external and prepare.responsible_role is None
+    assert prepare.is_external and prepare.responsible_role.code == "OPERATOR"
     assert prepare.sla_minutes == maintenance.sla_minutes == 2880  # 1d triage + 1d verify
     funeral = ServiceOffering.objects.get(name="Realizar um funeral")
     # validate 4h + assign 4h + prepare 2d + burial 0 + register 1d; notify branch excluded
@@ -623,3 +699,18 @@ def test_every_seeded_offering_has_its_sla_and_service_slas_remain(seeded):
         assert sla.target_minutes == offering.sla_minutes and sla.active
     # The service-level SLAs on Waste Management are still seeded.
     assert SLA.objects.filter(offering__isnull=True, service__name="Waste Management").count() == 2
+
+
+def test_demo_citizen_lives_in_matacaes_and_can_use_the_portal(seeded, client):
+    from django.urls import reverse
+
+    user = _user("joana.ribeiro@example.pt")
+    person = user.person
+    assert person.person_type == "CITIZEN"
+    assert person.home_organization.name == "Santa Maria, São Pedro e Matacães"
+    assert not person.memberships.exists()
+    assert client.login(username=user.username, password="cidadao123")
+    body = client.get(reverse("citizen:home")).content.decode()
+    assert "Santa Maria, São Pedro e Matacães" in body
+    call_command("seed_default_data", verbosity=0)  # idempotent
+    assert get_user_model().objects.filter(username=user.username).count() == 1

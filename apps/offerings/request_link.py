@@ -18,9 +18,12 @@ def request_status(execution):
         ExecutionStatus.FAILED: RequestStatus.FAILED,
         ExecutionStatus.CANCELLED: RequestStatus.CANCELLED,
     }
-    if execution.status == ExecutionStatus.WAITING and execution.tasks.filter(
-        step_id=execution.current_step_id, status=TaskStatus.BLOCKED
-    ).exists():
+    if (
+        execution.status == ExecutionStatus.WAITING
+        and execution.tasks.filter(
+            step_id=execution.current_step_id, status=TaskStatus.BLOCKED
+        ).exists()
+    ):
         return RequestStatus.FAILED
     try:
         return states[execution.status]

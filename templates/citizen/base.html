@@ -1,0 +1,51 @@
+{% load i18n ui %}<!doctype html>
+<html lang="{{ LANGUAGE_CODE }}" class="h-full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% translate 'Citizen Portal' %}{% endblock %} — {% translate 'Torres Vedras' %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <script>
+    tailwind.config = { theme: { extend: {
+      fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
+    }}};
+  </script>
+  <style>[x-cloak] { display: none !important; }</style>
+</head>
+<body class="flex min-h-full flex-col bg-slate-50 text-slate-900 antialiased">
+  {% include "include/toasts.html" %}
+  {% block header %}
+  <header class="border-b border-slate-200 bg-white" x-data="{ open: false }">
+    <div class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-3">
+      <a href="{% url 'citizen:home' %}" class="flex items-center gap-2">
+        <span class="grid size-9 place-items-center rounded-lg bg-teal-600 text-sm font-bold text-white">TV</span>
+        <span class="leading-tight">
+          <span class="block text-sm font-semibold">{% translate 'Citizen Portal' %}</span>
+          <span class="block text-xs text-slate-500">{% translate 'Torres Vedras' %}</span>
+        </span>
+      </a>
+      {% if user.is_authenticated %}
+      <button type="button" class="rounded-lg p-2 text-slate-600 sm:hidden" @click="open = !open" aria-label="{% translate 'Menu' %}">{% icon "menu" %}</button>
+      <nav class="hidden items-center gap-1 text-sm sm:flex" aria-label="{% translate 'Main' %}">
+        {% include "citizen/_nav_links.html" %}
+      </nav>
+      {% endif %}
+    </div>
+    {% if user.is_authenticated %}
+    <nav x-cloak x-show="open" class="grid gap-1 border-t border-slate-100 px-4 py-2 text-sm sm:hidden">
+      {% include "citizen/_nav_links.html" %}
+    </nav>
+    {% endif %}
+  </header>
+  {% endblock %}
+  <main class="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:py-8">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="border-t border-slate-200 bg-white">
+    <div class="mx-auto max-w-5xl px-4 py-4 text-xs text-slate-500">
+      {% translate 'Município de Torres Vedras — Citizen Portal' %}
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,80 @@
+{% extends "citizen/base.html" %}
+{% load i18n %}
+{% block title %}{% translate 'Home' %}{% endblock %}
+{% block content %}
+<section class="rounded-2xl bg-teal-700 px-6 py-8 text-white sm:px-8">
+  <p class="text-sm text-teal-100">{% translate 'Hello' %}{% if citizen %}, {{ citizen.full_name }}{% endif %}{% if citizen.home_organization %} · {{ citizen.home_organization.name }}{% endif %}</p>
+  <h1 class="mt-1 text-2xl font-semibold sm:text-3xl">{% translate 'What do you need?' %}</h1>
+  <form method="get" action="{% url 'citizen:services' %}" class="mt-5 flex flex-col gap-2 sm:flex-row">
+    <label for="home-search" class="sr-only">{% translate 'Search services' %}</label>
+    <input id="home-search" type="search" name="q" placeholder="{% translate 'e.g. street light, bulky waste, cemetery' %}"
+           class="w-full rounded-lg border-0 px-4 py-3 text-sm text-slate-900 outline-none ring-2 ring-transparent focus:ring-teal-300">
+    <button type="submit" class="rounded-lg bg-white px-5 py-3 text-sm font-semibold text-teal-800 hover:bg-teal-50">{% translate 'Search' %}</button>
+  </form>
+</section>
+
+<section class="mt-6 grid gap-3 sm:grid-cols-3">
+  <a href="{% url 'citizen:services' %}" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:border-teal-300">
+    <p class="font-semibold">{% translate 'Make a request' %}</p>
+    <p class="mt-1 text-sm text-slate-500">{% translate 'Browse the services of the municipality and parishes.' %}</p>
+  </a>
+  <a href="{% url 'citizen:requests' %}" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:border-teal-300">
+    <p class="font-semibold">{% translate 'My requests' %}</p>
+    <p class="mt-1 text-sm text-slate-500">{% blocktranslate count n=counts.open %}{{ n }} open request{% plural %}{{ n }} open requests{% endblocktranslate %}</p>
+  </a>
+  <a href="{% url 'citizen:profile' %}" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:border-teal-300">
+    <p class="font-semibold">{% translate 'My profile' %}</p>
+    <p class="mt-1 text-sm text-slate-500">{% translate 'Contact details and language.' %}</p>
+  </a>
+</section>
+
+{% if disrupted_services %}
+<section class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-5" aria-labelledby="disruptions">
+  <h2 id="disruptions" class="text-sm font-semibold text-amber-900">{% translate 'Service notices' %}</h2>
+  <ul class="mt-2 space-y-1 text-sm text-amber-900">
+    {% for service in disrupted_services %}
+    <li class="flex flex-wrap items-center gap-2">
+      <span class="font-medium">{{ service.name }}</span>
+      {% include "citizen/_status.html" with status=service.status label=service.get_status_display %}
+      <span class="text-amber-800">· {{ service.organization.name }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<div class="mt-6 grid gap-6 lg:grid-cols-2">
+  <section class="rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div class="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+      <h2 class="text-sm font-semibold">{% translate 'Requests in progress' %}</h2>
+      <a href="{% url 'citizen:requests' %}" class="text-sm text-teal-700 hover:underline">{% translate 'See all' %}</a>
+    </div>
+    <ul class="divide-y divide-slate-100">
+      {% for req in open_requests %}
+      <li><a href="{% url 'citizen:request_detail' req.pk %}" class="flex items-center justify-between gap-3 px-5 py-3 hover:bg-slate-50">
+        <span class="min-w-0"><span class="block truncate text-sm font-medium">#{{ req.pk }} {{ req.title }}</span><span class="block truncate text-xs text-slate-500">{{ req.service.name }} · {{ req.created_at|date:"SHORT_DATE_FORMAT" }}</span></span>
+        {% include "citizen/_status.html" with status=req.status label=req.get_status_display %}
+      </a></li>
+      {% empty %}
+      <li class="px-5 py-6 text-center text-sm text-slate-500">{% translate 'You have no requests in progress.' %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section class="rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div class="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+      <h2 class="text-sm font-semibold">{% translate 'Available services' %}</h2>
+      <a href="{% url 'citizen:services' %}" class="text-sm text-teal-700 hover:underline">{% translate 'Browse all' %}</a>
+    </div>
+    <ul class="divide-y divide-slate-100">
+      {% for offering in popular_offerings %}
+      <li><a href="{% url 'citizen:offering_detail' offering.pk %}" class="block px-5 py-3 hover:bg-slate-50">
+        <span class="block text-sm font-medium">{{ offering.name }}</span>
+        <span class="block text-xs text-slate-500">{{ offering.service.name }} · {{ offering.service.organization.name }}</span>
+      </a></li>
+      {% empty %}
+      <li class="px-5 py-6 text-center text-sm text-slate-500">{% translate 'No services are accepting requests right now.' %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}

@@ -4,15 +4,28 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('requests', '0005_alter_request_priority'),
+        ("requests", "0005_alter_request_priority"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='request',
-            name='status',
-            field=models.CharField(choices=[('NEW', 'New'), ('ASSESSING', 'Assessing'), ('IN_PROGRESS', 'In Progress'), ('WAITING', 'Waiting'), ('FAILED', 'Failed'), ('RESOLVED', 'Resolved'), ('CLOSED', 'Closed'), ('CANCELLED', 'Cancelled')], default='NEW', max_length=16, verbose_name='status'),
+            model_name="request",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("NEW", "New"),
+                    ("ASSESSING", "Assessing"),
+                    ("IN_PROGRESS", "In Progress"),
+                    ("WAITING", "Waiting"),
+                    ("FAILED", "Failed"),
+                    ("RESOLVED", "Resolved"),
+                    ("CLOSED", "Closed"),
+                    ("CANCELLED", "Cancelled"),
+                ],
+                default="NEW",
+                max_length=16,
+                verbose_name="status",
+            ),
         ),
     ]

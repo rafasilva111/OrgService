@@ -1,0 +1,35 @@
+{% extends "citizen/base.html" %}
+{% load i18n %}
+{% block title %}{{ offering.name }}{% endblock %}
+{% block content %}
+<a href="{% url 'citizen:service_detail' offering.service.pk %}" class="text-sm text-teal-700 hover:underline">← {{ offering.service.name }}</a>
+<div class="mt-3 grid gap-6 lg:grid-cols-[2fr_1fr]">
+  <div>
+    <h1 class="text-2xl font-semibold">{{ offering.name }}</h1>
+    <p class="mt-1 text-sm text-slate-500">{{ offering.service.name }} · {{ offering.service.organization.name }}{% if offering.offering_type %} · {{ offering.offering_type.name }}{% endif %}</p>
+    {% if offering.description %}<p class="mt-4 whitespace-pre-line text-sm text-slate-700">{{ offering.description }}</p>{% endif %}
+
+    {% if steps %}
+    <h2 class="mt-8 text-sm font-semibold">{% translate 'How it works' %}</h2>
+    <ol class="mt-3 space-y-2">
+      {% for step in steps %}
+      <li class="flex items-center gap-3 text-sm"><span class="grid size-7 shrink-0 place-items-center rounded-full bg-teal-50 text-xs font-semibold text-teal-800">{{ forloop.counter }}</span>{{ step.name }}</li>
+      {% endfor %}
+    </ol>
+    {% endif %}
+  </div>
+  <aside class="h-fit rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <h2 class="text-sm font-semibold">{% translate 'Before you start' %}</h2>
+    {% if documents %}
+    <p class="mt-2 text-sm text-slate-600">{% translate 'Have these documents ready:' %}</p>
+    <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+      {% for doc in documents %}<li>{{ doc.label }}{% if not doc.required %} <span class="text-slate-500">({% translate 'optional' %})</span>{% endif %}</li>{% endfor %}
+    </ul>
+    {% else %}
+    <p class="mt-2 text-sm text-slate-600">{% translate 'No documents are needed.' %}</p>
+    {% endif %}
+    <p class="mt-3 text-sm text-slate-600">{% blocktranslate count n=questions|length %}The form has {{ n }} question.{% plural %}The form has {{ n }} questions.{% endblocktranslate %}</p>
+    <a href="{% url 'citizen:request_create' %}?offering={{ offering.pk }}" class="mt-5 block rounded-lg bg-teal-600 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-teal-700">{% translate 'Request this service' %}</a>
+  </aside>
+</div>
+{% endblock %}

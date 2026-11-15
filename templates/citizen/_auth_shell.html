@@ -1,0 +1,12 @@
+{% extends "citizen/base.html" %}
+{% block header %}{% endblock %}
+{% block content %}
+<div class="mx-auto w-full max-w-sm py-6">
+  <div class="mb-6 flex flex-col items-center gap-2 text-center">
+    <span class="grid size-12 place-items-center rounded-xl bg-teal-600 text-lg font-bold text-white">TV</span>
+    <h1 class="text-xl font-semibold">{% block auth_title %}{% endblock %}</h1>
+    <p class="text-sm text-slate-500">{% block auth_subtitle %}{% endblock %}</p>
+  </div>
+  {% block auth_body %}{% endblock %}
+</div>
+{% endblock %}

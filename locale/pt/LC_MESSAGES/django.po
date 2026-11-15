@@ -16,6 +16,28 @@ msgstr ""
 msgid "Responsible role"
 msgstr "Grupo responsável"
 
+msgid "Scheduled service offerings"
+msgstr "Ofertas de serviço agendadas"
+
+msgid ""
+"Planned occurrences for %(service)s. Actual execution can be delayed by an "
+"earlier run."
+msgstr ""
+"Ocorrências planeadas para %(service)s. A execução pode ser adiada por uma "
+"execução anterior."
+
+msgid "The calendar could not be loaded. Please try again."
+msgstr "Não foi possível carregar o calendário. Tente novamente."
+
+msgid "Enable JavaScript to view the calendar."
+msgstr "Ative o JavaScript para ver o calendário."
+
+msgid "Select a service in the header to view its calendar."
+msgstr "Selecione um serviço no cabeçalho para ver o respetivo calendário."
+
+msgid "Select a valid calendar date range."
+msgstr "Selecione um intervalo de datas válido para o calendário."
+
 msgid "No role"
 msgstr "Sem grupo"
 
@@ -482,8 +504,12 @@ msgstr "Execução n.º %(number)s"
 msgid "Current step"
 msgstr "Passo atual"
 
-msgid "People shown are task assignees; completed actions are not recorded separately."
-msgstr "As pessoas apresentadas são as responsáveis pelas tarefas; as ações concluídas não são registadas separadamente."
+msgid ""
+"People shown are task assignees; completed actions are not recorded "
+"separately."
+msgstr ""
+"As pessoas apresentadas são as responsáveis pelas tarefas; as ações "
+"concluídas não são registadas separadamente."
 
 msgid "No task recorded for this step."
 msgstr "Não existe nenhuma tarefa registada para este passo."
@@ -500,14 +526,26 @@ msgstr "Ainda não existem notificações."
 msgid "Service tasks"
 msgstr "Tarefas dos serviços"
 
+msgid "Scheduled execution started: %(name)s"
+msgstr "Execução recorrente iniciada: %(name)s"
+
+msgid "Scheduled execution completed: %(name)s"
+msgstr "Execução recorrente concluída: %(name)s"
+
+msgid "The service has no active service manager to notify."
+msgstr "O serviço não tem um gestor ativo para notificar."
+
+msgid "A recurring execution must create at least one task."
+msgstr "Uma execução recorrente tem de criar pelo menos uma tarefa."
+
 msgid "Task view"
 msgstr "Vista de tarefas"
 
 msgid "My actionable tasks"
 msgstr "Tarefas que posso executar"
 
-msgid "All ongoing tasks in my services"
-msgstr "Todas as tarefas em curso nos meus serviços"
+msgid "All ongoing tasks in my service"
+msgstr "Todas as tarefas em curso no meu serviço"
 
 msgid "No active tasks in your services."
 msgstr "Não existem tarefas ativas nos seus serviços."
@@ -552,7 +590,8 @@ msgid "Notification sent"
 msgstr "Notificação enviada"
 
 msgid "Your account must be linked to a person to perform this action."
-msgstr "A sua conta tem de estar associada a uma pessoa para realizar esta ação."
+msgstr ""
+"A sua conta tem de estar associada a uma pessoa para realizar esta ação."
 
 msgid "This step has no valid transition for the chosen outcome."
 msgstr "Este passo não tem uma transição válida para o resultado escolhido."
@@ -1128,11 +1167,18 @@ msgstr "Página %(current_page)s de %(total_pages)s"
 msgid "Average active time"
 msgstr "Tempo médio ativo"
 
+msgid "Maximum time"
+msgstr "Tempo máximo"
+
 msgid "No reliable completed tasks"
 msgstr "Sem tarefas concluídas com tempos fiáveis"
 
-msgid "Average active time uses completed tasks in this offering version and excludes recorded pauses."
-msgstr "O tempo médio ativo usa tarefas concluídas desta versão da oferta e exclui as pausas registadas."
+msgid ""
+"Average active time uses completed tasks in this offering version and "
+"excludes recorded pauses."
+msgstr ""
+"O tempo médio ativo usa tarefas concluídas desta versão da oferta e exclui "
+"as pausas registadas."
 
 msgid "Step details"
 msgstr "Detalhes do passo"
@@ -1144,9 +1190,14 @@ msgid "Average paused time"
 msgstr "Tempo médio em pausa"
 
 msgid "Based on %(count)s reliable completed task in this offering version."
-msgid_plural "Based on %(count)s reliable completed tasks in this offering version."
-msgstr[0] "Com base em %(count)s tarefa concluída com tempos fiáveis nesta versão da oferta."
-msgstr[1] "Com base em %(count)s tarefas concluídas com tempos fiáveis nesta versão da oferta."
+msgid_plural ""
+"Based on %(count)s reliable completed tasks in this offering version."
+msgstr[0] ""
+"Com base em %(count)s tarefa concluída com tempos fiáveis nesta versão da "
+"oferta."
+msgstr[1] ""
+"Com base em %(count)s tarefas concluídas com tempos fiáveis nesta versão da "
+"oferta."
 
 msgid "Aggregate timings require access to this service and its offerings."
 msgstr "Os tempos agregados requerem acesso a este serviço e às suas ofertas."
@@ -1172,11 +1223,163 @@ msgstr "Não há pessoas elegíveis para executar este passo neste momento."
 msgid "Automatic steps do not have eligible executors."
 msgstr "Os passos automáticos não têm executores elegíveis."
 
-msgid "Completed tasks are counted by recorded assignee. Averages use reliable completed tasks for this step and offering version, excluding recorded pauses from active time."
-msgstr "As tarefas concluídas são contadas pela pessoa atribuída. As médias usam tarefas concluídas com tempos fiáveis deste passo e versão da oferta, excluindo as pausas registadas do tempo ativo."
+msgid ""
+"Completed tasks are counted by recorded assignee. Averages use reliable "
+"completed tasks for this step and offering version, excluding recorded "
+"pauses from active time."
+msgstr ""
+"As tarefas concluídas são contadas pela pessoa atribuída. As médias usam "
+"tarefas concluídas com tempos fiáveis deste passo e versão da oferta, "
+"excluindo as pausas registadas do tempo ativo."
 
-msgid "Tasks with reliable times"
-msgstr "Tarefas com tempos fiáveis"
+msgid ""
+"The count and averages use completed tasks with valid times, grouped by "
+"recorded assignee for this step and offering version. Active time excludes "
+"recorded pauses."
+msgstr ""
+"A contagem e as médias usam tarefas concluídas com tempos válidos, agrupadas"
+" pela pessoa atribuída para este passo e versão da oferta. O tempo ativo "
+"exclui as pausas registadas."
+
+msgid "Tasks"
+msgstr "Tarefas"
+
+msgid "Pause reasons"
+msgstr "Causas de pausa"
+
+msgid "Pause reason"
+msgstr "Causa de pausa"
+
+msgid "Pauses"
+msgstr "Pausas"
+
+msgid "Ongoing pauses"
+msgstr "Pausas em curso"
+
+msgid "Final deadline"
+msgstr "Prazo final"
+
+msgid "Above the SLA"
+msgstr "Acima do SLA"
+
+msgid "Close to the SLA (80% or more)"
+msgstr "Perto do SLA (80% ou mais)"
+
+msgid "Show latest tasks"
+msgstr "Ver últimas tarefas"
+
+msgid "Open profile"
+msgstr "Abrir perfil"
+
+#, python-format
+msgid "Open profile of %(name)s"
+msgstr "Abrir perfil de %(name)s"
+
+msgid "Show the longest tasks"
+msgstr "Ver as tarefas mais demoradas"
+
+msgid "Longest active time"
+msgstr "Maior tempo ativo"
+
+msgid "Longest elapsed time"
+msgstr "Maior tempo decorrido"
+
+msgid "Longest paused time"
+msgstr "Maior tempo em pausa"
+
+msgid "Latest tasks"
+msgstr "Últimas tarefas"
+
+msgid "The five most recent tasks of this person for this step and offering version."
+msgstr "As cinco tarefas mais recentes desta pessoa neste passo e versão da oferta."
+
+msgid "The five completed tasks with valid times that took longest, for this step and offering version."
+msgstr "As cinco tarefas concluídas com tempos válidos que demoraram mais, neste passo e versão da oferta."
+
+msgid "Close"
+msgstr "Fechar"
+
+msgid "Active time"
+msgstr "Tempo ativo"
+
+msgid "Elapsed time"
+msgstr "Tempo decorrido"
+
+msgid "Paused time"
+msgstr "Tempo em pausa"
+
+msgid "No tasks for this person on this step."
+msgstr "Sem tarefas desta pessoa neste passo."
+
+msgid "Show all tasks"
+msgstr "Ver todas as tarefas"
+
+msgid "Activity"
+msgstr "Atividade"
+
+msgid "Active tasks"
+msgstr "Tarefas ativas"
+
+msgid "All tasks"
+msgstr "Todas as tarefas"
+
+msgid "All tasks in my organization"
+msgstr "Todas as tarefas da minha organização"
+
+msgid "All ongoing tasks in my organization"
+msgstr "Todas as tarefas em curso da minha organização"
+
+msgid "All ongoing tasks"
+msgstr "Todas as tarefas em curso"
+
+msgid "All tasks in my service"
+msgstr "Todas as tarefas no meu serviço"
+
+msgid "Step history"
+msgstr "Histórico do passo"
+
+msgid "Pause history"
+msgstr "Histórico de pausas"
+
+msgid "Paused at"
+msgstr "Início da pausa"
+
+msgid "No matching tasks"
+msgstr "Sem tarefas correspondentes"
+
+msgid "No matching pauses"
+msgstr "Sem pausas correspondentes"
+
+msgid "Completed tasks with valid times for this step and offering version."
+msgstr ""
+"Tarefas concluídas com tempos válidos para este passo e versão da oferta."
+
+msgid "Individual pause events for this step and offering version."
+msgstr "Pausas individuais deste passo e versão da oferta."
+
+msgid "Total paused time"
+msgstr "Tempo total em pausa"
+
+msgid "No pauses recorded"
+msgstr "Sem pausas registadas"
+
+msgid "Recorded pauses for this step will appear here."
+msgstr "As pausas registadas para este passo aparecerão aqui."
+
+msgid "Select a step to see its pause reasons."
+msgstr "Selecione um passo para ver as suas causas de pausa."
+
+msgid "Other or unspecified"
+msgstr "Outra ou não especificada"
+
+msgid ""
+"Includes all tasks for this step and offering version, including ongoing "
+"pauses. The average above uses completed tasks only. A dash means at least "
+"one pause duration could not be calculated."
+msgstr ""
+"Inclui todas as tarefas deste passo e versão da oferta, incluindo pausas em "
+"curso. A média acima usa apenas tarefas concluídas. Um traço indica que não "
+"foi possível calcular a duração de pelo menos uma pausa."
 
 msgid "Parent"
 msgstr "Entidade Superior"
@@ -2023,8 +2226,12 @@ msgstr "Rascunho guardado."
 msgid "Edit"
 msgstr "Editar"
 
-msgid "Editing creates a new draft version; existing executions remain unchanged until and after publication."
-msgstr "Ao editar, é criada uma nova versão em rascunho; as execuções existentes permanecem inalteradas antes e depois da publicação."
+msgid ""
+"Editing creates a new draft version; existing executions remain unchanged "
+"until and after publication."
+msgstr ""
+"Ao editar, é criada uma nova versão em rascunho; as execuções existentes "
+"permanecem inalteradas antes e depois da publicação."
 
 msgid "Edit %(name)s v%(version)s"
 msgstr "Editar %(name)s v%(version)s"
@@ -2490,6 +2697,7 @@ msgstr "campos do formulário do pedido"
 
 msgid "size (bytes)"
 msgstr "tamanho (bytes)"
+
 msgid "Execution log"
 msgstr "Registo da execução"
 
@@ -2497,7 +2705,9 @@ msgid "System history, work notes and comments."
 msgstr "Histórico do sistema, notas de trabalho e comentários."
 
 msgid "Work Notes are internal. Comments are visible to the requester."
-msgstr "As notas de trabalho são internas. Os comentários são visíveis ao requerente."
+msgstr ""
+"As notas de trabalho são internas. Os comentários são visíveis ao "
+"requerente."
 
 msgid "Message type"
 msgstr "Tipo de mensagem"
@@ -2539,15 +2749,24 @@ msgid "Unknown actor"
 msgstr "Autor desconhecido"
 
 msgid "Notes are shared with the current task team when a task is active."
-msgstr "As notas são partilhadas com a equipa da tarefa atual quando existe uma tarefa ativa."
+msgstr ""
+"As notas são partilhadas com a equipa da tarefa atual quando existe uma "
+"tarefa ativa."
 
 msgid "Protected overview"
 msgstr "Visão geral protegida"
 
-msgid "Aggregate totals within your reporting scope. Small or overlapping groups are suppressed."
-msgstr "Totais agregados no seu âmbito de reporte. Grupos pequenos ou sobrepostos são ocultados."
+msgid ""
+"Aggregate totals within your reporting scope. Small or overlapping groups "
+"are suppressed."
+msgstr ""
+"Totais agregados no seu âmbito de reporte. Grupos pequenos ou sobrepostos "
+"são ocultados."
+
 msgid "Requests linked to executions cannot be closed independently."
-msgstr "Os pedidos associados a execuções não podem ser fechados de forma independente."
+msgstr ""
+"Os pedidos associados a execuções não podem ser fechados de forma "
+"independente."
 
 msgid "This request already has an execution."
 msgstr "Este pedido já tem uma execução."
@@ -2613,13 +2832,21 @@ msgid "All offerings"
 msgstr "Todas as ofertas"
 
 msgid "Compare and monitor the offerings you can access, across all versions."
-msgstr "Compare e monitorize as ofertas a que tem acesso, considerando todas as versões."
+msgstr ""
+"Compare e monitorize as ofertas a que tem acesso, considerando todas as "
+"versões."
 
 msgid "Period: %(start)s to %(end)s."
 msgstr "Período: %(start)s a %(end)s."
 
-msgid "Started and completed are counted by their respective dates. Current states refer to executions started in this period; failed includes blocked executions."
-msgstr "Os inícios e as conclusões são contados pelas respetivas datas. Os estados atuais referem-se às execuções iniciadas neste período; as falhas incluem execuções bloqueadas."
+msgid ""
+"Started and completed are counted by their respective dates. Current states "
+"refer to executions started in this period; failed includes blocked "
+"executions."
+msgstr ""
+"Os inícios e as conclusões são contados pelas respetivas datas. Os estados "
+"atuais referem-se às execuções iniciadas neste período; as falhas incluem "
+"execuções bloqueadas."
 
 msgid "No offerings in scope."
 msgstr "Não há ofertas no seu âmbito de acesso."
@@ -2627,8 +2854,12 @@ msgstr "Não há ofertas no seu âmbito de acesso."
 msgid "Completed tasks by assignee"
 msgstr "Tarefas concluídas por pessoa atribuída"
 
-msgid "Manual tasks completed in the period, grouped by their recorded assignee. Automatic notifications are excluded."
-msgstr "Tarefas manuais concluídas no período, agrupadas pela pessoa atribuída. As notificações automáticas são excluídas."
+msgid ""
+"Manual tasks completed in the period, grouped by their recorded assignee. "
+"Automatic notifications are excluded."
+msgstr ""
+"Tarefas manuais concluídas no período, agrupadas pela pessoa atribuída. As "
+"notificações automáticas são excluídas."
 
 msgid "Completed tasks"
 msgstr "Tarefas concluídas"
@@ -2642,8 +2873,238 @@ msgstr "Evolução diária das execuções"
 msgid "No execution activity in this period."
 msgstr "Não há atividade de execução neste período."
 
-msgid "Average execution time is not yet available because paused time is not excluded."
-msgstr "O tempo médio de execução ainda não está disponível, pois o tempo em pausa não é descontado."
+msgid ""
+"Average execution time is not yet available because paused time is not "
+"excluded."
+msgstr ""
+"O tempo médio de execução ainda não está disponível, pois o tempo em pausa "
+"não é descontado."
 
 msgid "Only days with execution activity are shown."
 msgstr "São apresentados apenas os dias com atividade de execução."
+
+msgid "A short summary of what you need."
+msgstr "Um resumo curto do que precisa."
+
+msgid "About your request"
+msgstr "Sobre o seu pedido"
+
+msgid "All areas"
+msgstr "Todas as áreas"
+
+msgid "All types"
+msgstr "Todos os tipos"
+
+msgid "Already have an account?"
+msgstr "Já tem conta?"
+
+msgid "An account with this email already exists."
+msgstr "Já existe uma conta com este email."
+
+msgid "Area"
+msgstr "Área"
+
+msgid "Available services"
+msgstr "Serviços disponíveis"
+
+msgid "Before you start"
+msgstr "Antes de começar"
+
+msgid "Browse all"
+msgstr "Ver todos"
+
+msgid "Browse the services of the municipality and parishes."
+msgstr "Consulte os serviços do município e das freguesias."
+
+msgid "Browser default"
+msgstr "Predefinição do navegador"
+
+msgid "Choose what you need and send a request to the right service."
+msgstr "Escolha o que precisa e envie o pedido ao serviço certo."
+
+msgid "Citizen Portal"
+msgstr "Portal do Munícipe"
+
+msgid "Contact details and language."
+msgstr "Contactos e idioma."
+
+msgid "Create account"
+msgstr "Criar conta"
+
+msgid "Create one"
+msgstr "Criar uma"
+
+msgid "Create your account"
+msgstr "Crie a sua conta"
+
+msgid "Current stage"
+msgstr "Fase atual"
+
+msgid "Details"
+msgstr "Detalhes"
+
+msgid "Filter"
+msgstr "Filtrar"
+
+msgid "Follow what you asked for."
+msgstr "Acompanhe o que pediu."
+
+msgid "Have these documents ready:"
+msgstr "Tenha estes documentos à mão:"
+
+msgid "Hello"
+msgstr "Olá"
+
+msgid "Home"
+msgstr "Início"
+
+msgid "How it works"
+msgstr "Como funciona"
+
+msgid "Incorrect email or password."
+msgstr "Email ou palavra-passe incorretos."
+
+msgid "Language"
+msgstr "Idioma"
+
+msgid "Main"
+msgstr "Principal"
+
+msgid "Make a request"
+msgstr "Fazer um pedido"
+
+msgid "Menu"
+msgstr "Menu"
+
+msgid "Message sent."
+msgstr "Mensagem enviada."
+
+msgid "Município de Torres Vedras — Citizen Portal"
+msgstr "Município de Torres Vedras — Portal do Munícipe"
+
+msgid "My requests"
+msgstr "Os meus pedidos"
+
+msgid "No account yet?"
+msgstr "Ainda não tem conta?"
+
+msgid "No additional details."
+msgstr "Sem detalhes adicionais."
+
+msgid "No documents are needed."
+msgstr "Não são necessários documentos."
+
+msgid "No requests here."
+msgstr "Sem pedidos."
+
+msgid "No services are accepting requests right now."
+msgstr "Nenhum serviço está a aceitar pedidos neste momento."
+
+msgid "No services match your search."
+msgstr "Nenhum serviço corresponde à sua pesquisa."
+
+msgid "Parish of residence"
+msgstr "Freguesia de residência"
+
+msgid "parish of residence"
+msgstr "freguesia de residência"
+
+msgid "Profile"
+msgstr "Perfil"
+
+msgid "Profile saved."
+msgstr "Perfil guardado."
+
+msgid "Request this service"
+msgstr "Pedir este serviço"
+
+msgid "Requests in progress"
+msgstr "Pedidos em curso"
+
+msgid "Search"
+msgstr "Pesquisar"
+
+msgid "Search services"
+msgstr "Pesquisar serviços"
+
+msgid "See all"
+msgstr "Ver todos"
+
+msgid "Select your parish"
+msgstr "Selecione a sua freguesia"
+
+msgid "Send message"
+msgstr "Enviar mensagem"
+
+msgid "Service notices"
+msgstr "Avisos dos serviços"
+
+msgid "Services use these details to contact you about your requests."
+msgstr "Os serviços usam estes dados para o contactar sobre os seus pedidos."
+
+msgid "Sign in to make and follow your requests."
+msgstr "Entre para fazer e acompanhar os seus pedidos."
+
+msgid "Submit request"
+msgstr "Enviar pedido"
+
+msgid "This request is closed."
+msgstr "Este pedido está fechado."
+
+msgid "This service is not accepting online requests."
+msgstr "Este serviço não aceita pedidos online."
+
+msgid "Torres Vedras"
+msgstr "Torres Vedras"
+
+msgid "Updates and messages"
+msgstr "Atualizações e mensagens"
+
+msgid "Welcome! Your account was created."
+msgstr "Bem-vindo! A sua conta foi criada."
+
+msgid "What do you need?"
+msgstr "Do que precisa?"
+
+msgid "What you can request"
+msgstr "O que pode pedir"
+
+msgid "You"
+msgstr "Você"
+
+msgid "You have no requests in progress."
+msgstr "Não tem pedidos em curso."
+
+msgid "You will sign in with your email."
+msgstr "Vai entrar com o seu email."
+
+msgid "Your account is not linked to a citizen profile."
+msgstr "A sua conta não está associada a um perfil de munícipe."
+
+msgid "Your answers"
+msgstr "As suas respostas"
+
+msgid "Your profile"
+msgstr "O seu perfil"
+
+msgid "Your request was submitted."
+msgstr "O seu pedido foi enviado."
+
+msgid "e.g. street light, bulky waste, cemetery"
+msgstr "ex.: iluminação pública, monos, cemitério"
+
+msgid "optional"
+msgstr "opcional"
+
+msgid "submitted"
+msgstr "enviado a"
+
+msgid "%(n)s open request"
+msgid_plural "%(n)s open requests"
+msgstr[0] "%(n)s pedido em curso"
+msgstr[1] "%(n)s pedidos em curso"
+
+msgid "The form has %(n)s question."
+msgid_plural "The form has %(n)s questions."
+msgstr[0] "O formulário tem %(n)s pergunta."
+msgstr[1] "O formulário tem %(n)s perguntas."

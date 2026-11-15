@@ -9,7 +9,14 @@
         <span class="grid size-7 shrink-0 place-items-center rounded-full bg-zinc-100 text-xs font-semibold text-zinc-600">{{ step.order }}</span>
         <div class="min-w-0 flex-1">
           <p class="text-sm font-medium text-zinc-800">{{ step.name }}</p>
-          {% if step.show_average_duration %}<p class="mt-1 text-xs text-zinc-500">{% translate 'Average active time' %}: {% if step.average_duration is not None %}{{ step.average_duration|format_duration }}{% else %}{% translate 'No reliable completed tasks' %}{% endif %}</p>{% endif %}
+          {% if step.show_average_duration %}
+          <p class="mt-1 text-xs text-zinc-500">{% translate 'Average active time' %}: {% if step.average_duration is not None %}{% include "offerings/_sla_duration.html" with duration=step.average_duration sla=step.sla_minutes %}{% else %}{% translate 'No reliable completed tasks' %}{% endif %}</p>
+          <p class="text-xs text-zinc-500">{% translate 'Maximum time' %}: {{ step.sla_minutes|minutes:3 }}</p>
+          {% endif %}
+          {% if step.show_execution_summary %}
+          <p class="mt-1 text-xs text-zinc-500">{% translate 'Average elapsed time' %}: {{ step.average_execution_elapsed|format_duration }}</p>
+          <p class="text-xs text-zinc-500">{% translate 'Total SLA' %}: {{ step.total_sla_minutes|minutes:3 }}</p>
+          {% endif %}
           {% for task in tasks %}
           <div class="mt-2 space-y-1">
             <p class="text-xs text-zinc-700">{{ task.title }} · {{ task.get_status_display }}</p>

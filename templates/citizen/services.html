@@ -1,0 +1,49 @@
+{% extends "citizen/base.html" %}
+{% load i18n %}
+{% block title %}{% translate 'Services' %}{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-semibold">{% translate 'Services' %}</h1>
+<p class="mt-1 text-sm text-slate-500">{% translate 'Choose what you need and send a request to the right service.' %}</p>
+
+<form method="get" class="mt-5 grid gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-[2fr_1fr_1fr_auto]">
+  <label class="sr-only" for="q">{% translate 'Search' %}</label>
+  <input id="q" type="search" name="q" value="{{ query }}" placeholder="{% translate 'Search services' %}" class="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-teal-600">
+  <label class="sr-only" for="organization">{% translate 'Area' %}</label>
+  <select id="organization" name="organization" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+    <option value="">{% translate 'All areas' %}</option>
+    {% for org in organizations %}<option value="{{ org.pk }}"{% if org.pk == selected_organization %} selected{% endif %}>{{ org.name }}</option>{% endfor %}
+  </select>
+  <label class="sr-only" for="type">{% translate 'Type' %}</label>
+  <select id="type" name="type" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+    <option value="">{% translate 'All types' %}</option>
+    {% for t in offering_types %}<option value="{{ t.pk }}"{% if t.pk == selected_type %} selected{% endif %}>{{ t.name }}</option>{% endfor %}
+  </select>
+  <button type="submit" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700">{% translate 'Filter' %}</button>
+</form>
+
+{% for organization, services in groups %}
+<section class="mt-8">
+  <h2 class="text-xs font-semibold uppercase tracking-wide text-slate-500">{{ organization.name }}</h2>
+  <div class="mt-3 grid gap-4 md:grid-cols-2">
+    {% for service in services %}
+    <article class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div class="flex items-start justify-between gap-3">
+        <h3 class="font-semibold"><a href="{% url 'citizen:service_detail' service.pk %}" class="hover:text-teal-700">{{ service.name }}</a></h3>
+        {% if service.status != "OPERATIONAL" %}{% include "citizen/_status.html" with status=service.status label=service.get_status_display %}{% endif %}
+      </div>
+      <ul class="mt-3 space-y-1">
+        {% for offering in service.public_offerings %}
+        <li><a href="{% url 'citizen:offering_detail' offering.pk %}" class="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+          <span>{{ offering.name }}</span>
+          {% if offering.offering_type %}<span class="text-xs text-slate-500">{{ offering.offering_type.name }}</span>{% endif %}
+        </a></li>
+        {% endfor %}
+      </ul>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% empty %}
+<p class="mt-8 rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">{% translate 'No services match your search.' %}</p>
+{% endfor %}
+{% endblock %}

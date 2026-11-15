@@ -29,7 +29,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 from django.core.management import call_command
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 from django.utils import timezone
 
@@ -127,6 +127,7 @@ class Command(BaseCommand):
         orgs = self._seed_org_tree()
         services = self._seed_services(orgs)
         people = self._seed_people(orgs, services)
+        self._seed_citizens(orgs)
         self._seed_offering_types()
         self._seed_skills()
         self._seed_offerings(services, people)
@@ -479,6 +480,8 @@ class Command(BaseCommand):
             ("Cemitérios", "p.nunes", role_op),
             ("Cemitérios", "a.santos", role_op),
             ("Cemitérios", "c.oliveira", role_op),
+            ("Espaço Público, Infraestruturas e Edifícios", "a.santos", role_op),
+            ("Limpeza Urbana e Espaços Verdes", "c.oliveira", role_op),
         ]
         for svc_name, username, role in extra_actors:
             ServiceActor.objects.get_or_create(
@@ -510,6 +513,45 @@ class Command(BaseCommand):
                 defaults={"active": True},
             )
         return people
+
+    def _seed_citizens(self, orgs):
+        """Citizen-portal demo accounts (/citizen/). The username is the email,
+        as for citizens who sign up; they get no OrganizationMembership — the
+        parish of residence is informational only."""
+        User = get_user_model()
+        demo = [
+            (
+                "joana.ribeiro@example.pt",
+                "Joana Ribeiro",
+                "+351 912 000 001",
+                "santa-maria-sao-pedro-matacaes",
+                "cidadao123",
+            ),
+        ]
+        for email, full_name, phone, parish_code, password in demo:
+            user, created = User.objects.get_or_create(
+                username=email, defaults={"email": email, "first_name": full_name[:150]}
+            )
+            if created:
+                user.set_password(password)
+                user.save()
+                self.stdout.write(
+                    self.style.WARNING(f"Created demo citizen '{email}' / '{password}'.")
+                )
+            person, _created = Person.objects.get_or_create(
+                email=email,
+                defaults={
+                    "full_name": full_name,
+                    "person_type": PersonType.CITIZEN,
+                    "user": user,
+                },
+            )
+            person.user = user
+            person.full_name = full_name
+            person.phone = phone
+            person.person_type = PersonType.CITIZEN
+            person.home_organization = orgs[parish_code]
+            person.save()
 
     def _service_by_name(self, name):
         return Service.objects.get(name=name)
@@ -645,7 +687,7 @@ class Command(BaseCommand):
         )
 
         # One default offering for every other service that receives requests.
-        def simple(name, service_name, description, work, manager, offering_type):
+        def simple(name, service_name, description, work, manager, offering_type, work_sla=None):
             build(
                 name,
                 services[service_name],
@@ -653,7 +695,7 @@ class Command(BaseCommand):
                 [
                     ("start", "Start", StepType.START, 10, None, [], None),
                     ("triage", "Triage", StepType.TASK, 20, role_sm, [], 1440),
-                    ("work", work, StepType.TASK, 30, role_op, [], None),
+                    ("work", work, StepType.TASK, 30, role_op, [], work_sla),
                     ("verify", "Verify", StepType.APPROVAL, 40, role_sm, [], 1440),
                     ("end", "End", StepType.END, 50, None, [], None),
                 ],
@@ -700,6 +742,7 @@ class Command(BaseCommand):
             "Executar limpeza",
             "p.lopes",
             "CLEANING",
+            work_sla=120,
         )
         simple(
             "Manutenção de espaço público",
@@ -843,8 +886,7 @@ class Command(BaseCommand):
                 step.service_offering = ServiceOffering.objects.get(
                     service=services[service_name], name=responsible_offering_name, version=1
                 )
-                # External step: no role of its own (type/SLA come from the offering).
-                step.responsible_role = None
+                step.responsible_role = role_op
                 step.save(update_fields=["service_offering", "responsible_role", "updated_at"])
 
         delegate(
@@ -1653,11 +1695,15 @@ class Command(BaseCommand):
             if execution is None:
                 continue
             with transaction.atomic():
-                request = Request.objects.select_for_update().filter(
-                    pk=execution.subject_id,
-                    offering_id=execution.offering_id,
-                    title=f"{name} — #{execution.pk}",
-                ).first()
+                request = (
+                    Request.objects.select_for_update()
+                    .filter(
+                        pk=execution.subject_id,
+                        offering_id=execution.offering_id,
+                        title=f"{name} — #{execution.pk}",
+                    )
+                    .first()
+                )
                 if request is None or request.form_data or request.attachments.exists():
                     continue
                 data = dict(answers)
@@ -1677,7 +1723,18 @@ class Command(BaseCommand):
                 request.save(update_fields=["form_data", "updated_at"])
 
     def _seed_cemetery_executions(self, service, manager):
+        from apps.offerings.execution import eligible_people
+
         system_person = get_system_person()
+
+        def assignee_for(step):
+            eligible = eligible_people(step)
+            if manager in eligible:
+                return manager
+            if not eligible:
+                raise CommandError(f"No eligible demo assignee for {step}.")
+            return eligible[0]
+
         samples = [
             (
                 "Limpar cemitério",
@@ -1802,11 +1859,12 @@ class Command(BaseCommand):
                         step = steps[code]
                         task = execution.tasks.filter(step=step).order_by("pk").first()
                         if task is None:
+                            assignee = assignee_for(step)
                             task = OfferingTask.objects.create(
                                 execution=execution,
                                 step=step,
                                 title=title if index == len(task_codes) - 1 else step.name,
-                                assigned_to=manager,
+                                assigned_to=assignee,
                                 status=TaskStatus.DONE,
                                 started_at=task_started,
                                 completed_at=task_completed,
@@ -1819,7 +1877,9 @@ class Command(BaseCommand):
                             task.started_at = task_started
                             task.completed_at = task_completed
                             task.save(update_fields=["started_at", "completed_at", "updated_at"])
-                        self._seed_completed_task_history(task, manager, system_person)
+                        self._seed_completed_task_history(
+                            task, task.assigned_to or manager, system_person
+                        )
                 else:
                     prior_codes = preceding_steps.get((name, current_code), ())
                     for index, code in enumerate(prior_codes):
@@ -1828,24 +1888,28 @@ class Command(BaseCommand):
                         step = steps[code]
                         task = execution.tasks.filter(step=step).order_by("pk").first()
                         if task is None:
+                            assignee = assignee_for(step)
                             task = OfferingTask.objects.create(
                                 execution=execution,
                                 step=step,
                                 title=step.name,
-                                assigned_to=manager,
+                                assigned_to=assignee,
                                 status=TaskStatus.DONE,
                                 started_at=task_started,
                                 completed_at=task_completed,
                             )
-                        self._seed_completed_task_history(task, manager, system_person)
+                        self._seed_completed_task_history(
+                            task, task.assigned_to or manager, system_person
+                        )
 
                     current_task = execution.tasks.filter(step=steps[current_code]).first()
                     if current_task is None:
+                        assignee = assignee_for(steps[current_code])
                         current_task = OfferingTask.objects.create(
                             execution=execution,
                             step=steps[current_code],
                             title=title,
-                            assigned_to=manager,
+                            assigned_to=assignee,
                             status=task_status,
                             started_at=started + timedelta(hours=len(prior_codes)),
                         )
@@ -1860,7 +1924,9 @@ class Command(BaseCommand):
                         current_task.started_at = started + timedelta(hours=len(prior_codes))
                         current_task.save(update_fields=["started_at", "updated_at"])
                     if current_task:
-                        self._seed_active_task_history(current_task, manager, system_person)
+                        self._seed_active_task_history(
+                            current_task, current_task.assigned_to or manager, system_person
+                        )
 
     @staticmethod
     def _seed_completed_task_history(task, manager, system_person):
@@ -1905,9 +1971,11 @@ class Command(BaseCommand):
             if not wf:
                 return
             steps = {s.code: s for s in wf.steps.all()}
-            existing = OfferingExecution.objects.filter(
-                offering=wf, tasks__title=task_title
-            ).order_by("pk").first()
+            existing = (
+                OfferingExecution.objects.filter(offering=wf, tasks__title=task_title)
+                .order_by("pk")
+                .first()
+            )
             if existing is not None:
                 return existing, steps
             execn, _created = OfferingExecution.objects.get_or_create(

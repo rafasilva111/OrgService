@@ -34,39 +34,22 @@ def _actor(user):
 
 
 def eligible_people(step):
-    from apps.common.authorization import membership_service_scope
-
     service = step.effective_service
     people = Person.objects.filter(active=True, deleted_at__isnull=True, user__is_active=True)
     if step.responsible_role_id:
         if not step.responsible_role.active or step.responsible_role.deleted_at is not None:
             return []
-        people = people.filter(models_role_filter(step, service)).distinct()
+        people = people.filter(
+            service_actor_links__service=service,
+            service_actor_links__role=step.responsible_role,
+            service_actor_links__active=True,
+        ).distinct()
     result = []
     for person in people.select_related("user").order_by("full_name"):
         if not user_has_scoped_permission(person.user, "offering.execute", service=service):
             continue
-        if step.responsible_role_id:
-            is_actor = person.service_actor_links.filter(
-                service=service, role=step.responsible_role, active=True
-            ).exists()
-            memberships = person.memberships.filter(role=step.responsible_role, active=True)
-            if not is_actor and not any(
-                service in membership_service_scope(membership) for membership in memberships
-            ):
-                continue
         result.append(person)
     return result
-
-
-def models_role_filter(step, service):
-    from django.db.models import Q
-
-    return Q(memberships__role=step.responsible_role, memberships__active=True) | Q(
-        service_actor_links__service=service,
-        service_actor_links__role=step.responsible_role,
-        service_actor_links__active=True,
-    )
 
 
 def _transition(step, outcome):
@@ -90,6 +73,18 @@ def _enter(execution, step, actor):
             execution.status = ExecutionStatus.COMPLETED
             execution.completed_at = timezone.now()
             execution.save(update_fields=["current_step", "status", "completed_at", "updated_at"])
+            if hasattr(execution, "scheduled_occurrence"):
+                from apps.offerings.scheduling import notify_managers
+
+                task = execution.tasks.order_by("-pk").first()
+                if task is None:
+                    raise ValidationError(_("A recurring execution must create at least one task."))
+                notify_managers(
+                    execution,
+                    task,
+                    _("Scheduled execution completed: %(name)s")
+                    % {"name": execution.offering.name},
+                )
             return
         if step.step_type in (StepType.START, StepType.NOTIFY):
             if step.pk in seen:
@@ -110,9 +105,14 @@ def _enter(execution, step, actor):
                     started_at=now,
                     completed_at=now,
                 )
-                Notification.objects.create(
-                    recipient=subject.requester, task=task, message=step.message
-                )
+                if hasattr(execution, "scheduled_occurrence"):
+                    from apps.offerings.scheduling import notify_managers
+
+                    notify_managers(execution, task, step.message)
+                else:
+                    Notification.objects.create(
+                        recipient=subject.requester, task=task, message=step.message
+                    )
                 _activity(task, None, "notified")
             step = _transition(step, TransitionOutcome.SUCCESS)
             continue
@@ -162,7 +162,9 @@ def start_request_execution(request_obj, actor):
 
 
 @transaction.atomic
-def task_action(task_id, user, action, *, assignee_id=None, outcome=None, reason=None, comment=None):
+def task_action(
+    task_id, user, action, *, assignee_id=None, outcome=None, reason=None, comment=None
+):
     task = OfferingTask.objects.select_related(
         "execution", "step__offering__service", "step__service_offering__service"
     ).get(pk=task_id)
@@ -178,9 +180,7 @@ def task_action(task_id, user, action, *, assignee_id=None, outcome=None, reason
     if not can_manage and not can_execute:
         raise PermissionDenied
     actor = _actor(user)
-    if action in ("pause", "resume") and (
-        action == "pause" or task.status == TaskStatus.PAUSED
-    ):
+    if action in ("pause", "resume") and (action == "pause" or task.status == TaskStatus.PAUSED):
         if not (can_manage or (can_execute and task.assigned_to_id == actor.pk)):
             raise PermissionDenied
     elif not (can_manage if action in ("assign", "retry", "branch", "resume") else can_execute):
@@ -220,14 +220,18 @@ def task_action(task_id, user, action, *, assignee_id=None, outcome=None, reason
         _activity(task, actor, "paused", reason)
         if comment:
             ExecutionNote.objects.create(
-                execution=execution, task=task, author=user, body=comment,
+                execution=execution,
+                task=task,
+                author=user,
+                body=comment,
                 kind=ExecutionNote.Kind.COMMENT,
             )
         execution.status = ExecutionStatus.WAITING
         execution.save(update_fields=["status", "updated_at"])
     elif action == "resume":
         if execution.status != ExecutionStatus.WAITING or task.status not in (
-            TaskStatus.PENDING, TaskStatus.PAUSED
+            TaskStatus.PENDING,
+            TaskStatus.PAUSED,
         ):
             raise ValidationError(_("This task cannot be resumed."))
         if task.status == TaskStatus.PAUSED:
@@ -263,9 +267,11 @@ def task_action(task_id, user, action, *, assignee_id=None, outcome=None, reason
         task.save(update_fields=["assigned_to", "status", "updated_at"])
         _activity(task, actor, "claimed")
     elif action == "start":
-        if task.status not in (TaskStatus.PENDING, TaskStatus.ASSIGNED) or (
-            task.assigned_to_id and task.assigned_to_id != actor.pk
-        ) or (task.step.responsible_role_id and not task.assigned_to_id):
+        if (
+            task.status not in (TaskStatus.PENDING, TaskStatus.ASSIGNED)
+            or (task.assigned_to_id and task.assigned_to_id != actor.pk)
+            or (task.step.responsible_role_id and not task.assigned_to_id)
+        ):
             raise ValidationError(_("This task cannot be started by you."))
         task.status = TaskStatus.IN_PROGRESS
         task.started_at = timezone.now()

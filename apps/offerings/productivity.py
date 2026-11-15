@@ -11,8 +11,10 @@ from apps.offerings.models import ExecutionStatus, OfferingTask, StepType, TaskS
 
 def period_start(period, now):
     today = timezone.localtime(now).date()
-    start = today.replace(month=1, day=1) if period == "year" else today - timedelta(
-        days=int(period) - 1
+    start = (
+        today.replace(month=1, day=1)
+        if period == "year"
+        else today - timedelta(days=int(period) - 1)
     )
     return timezone.make_aware(datetime.combine(start, time.min), timezone.get_current_timezone())
 
@@ -24,9 +26,7 @@ def offering_totals(executions, start, end):
         status=TaskStatus.BLOCKED,
     )
     started = Q(started_at__gte=start, started_at__lte=end)
-    completed = Q(
-        status=ExecutionStatus.COMPLETED, completed_at__gte=start, completed_at__lte=end
-    )
+    completed = Q(status=ExecutionStatus.COMPLETED, completed_at__gte=start, completed_at__lte=end)
     failed = Q(status=ExecutionStatus.FAILED) | Q(
         status=ExecutionStatus.WAITING, current_blocked=True
     )
@@ -37,9 +37,7 @@ def offering_totals(executions, start, end):
             started=Count("pk", filter=started),
             completed=Count("pk", filter=completed),
             running=Count("pk", filter=started & Q(status=ExecutionStatus.RUNNING)),
-            waiting=Count(
-                "pk", filter=started & Q(status=ExecutionStatus.WAITING) & ~failed
-            ),
+            waiting=Count("pk", filter=started & Q(status=ExecutionStatus.WAITING) & ~failed),
             failed=Count("pk", filter=started & failed),
         )
     )
@@ -77,8 +75,5 @@ def offering_detail(executions, start, end):
         days.setdefault(row["day"], {"started": 0, "completed": 0})["started"] = row["total"]
     for row in completed:
         days.setdefault(row["day"], {"started": 0, "completed": 0})["completed"] = row["total"]
-    timeline = [
-        {"day": day, **counts}
-        for day, counts in sorted(days.items())
-    ]
+    timeline = [{"day": day, **counts} for day, counts in sorted(days.items())]
     return list(tasks), timeline

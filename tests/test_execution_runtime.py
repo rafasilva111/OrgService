@@ -9,6 +9,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import close_old_connections
+from django.http import QueryDict
 from django.urls import reverse
 from django.utils import timezone
 
@@ -46,6 +47,7 @@ def flow(make_user, make_person, make_role, make_membership, org_tree, make_serv
     )
     make_membership(actor, org_tree["parish_a"], role)
     service = make_service(org_tree["parish_a"], "Cemetery")
+    ServiceActor.objects.create(service=service, role=role, person=actor)
     offering = ServiceOffering.objects.create(
         service=service, name="Funeral", status=OfferingStatus.ACTIVE
     )
@@ -102,9 +104,12 @@ def test_request_status_follows_failure_retry_and_terminal_states(flow):
         assert flow["request"].status == request_status
 
 
-def test_offering_productivity_periods_versions_statuses_and_assignees(flow, client, make_person,
-                                                                       make_user):
+def test_offering_productivity_periods_versions_statuses_and_assignees(
+    flow, client, make_person, make_user
+):
     from django.utils.timezone import localtime
+
+    from apps.offerings.productivity import offering_detail, offering_totals, period_start
 
     now = timezone.now()
     offering = flow["offering"]
@@ -112,19 +117,25 @@ def test_offering_productivity_periods_versions_statuses_and_assignees(flow, cli
         service=flow["service"], name=offering.name, version=2, status=OfferingStatus.ACTIVE
     )
     old = OfferingExecution.objects.create(
-        offering=offering, started_at=now - timedelta(days=20),
-        completed_at=now - timedelta(days=1), status=ExecutionStatus.COMPLETED,
+        offering=offering,
+        started_at=now - timedelta(days=20),
+        completed_at=now - timedelta(days=1),
+        status=ExecutionStatus.COMPLETED,
     )
     running = OfferingExecution.objects.create(
         offering=v2, started_at=now - timedelta(days=1), status=ExecutionStatus.RUNNING
     )
     waiting = OfferingExecution.objects.create(
-        offering=offering, started_at=now - timedelta(days=2),
-        status=ExecutionStatus.WAITING, current_step=flow["work"],
+        offering=offering,
+        started_at=now - timedelta(days=2),
+        status=ExecutionStatus.WAITING,
+        current_step=flow["work"],
     )
     blocked = OfferingExecution.objects.create(
-        offering=offering, started_at=now - timedelta(days=2),
-        status=ExecutionStatus.WAITING, current_step=flow["work"],
+        offering=offering,
+        started_at=now - timedelta(days=2),
+        status=ExecutionStatus.WAITING,
+        current_step=flow["work"],
     )
     OfferingTask.objects.create(execution=blocked, step=flow["work"], status=TaskStatus.BLOCKED)
     OfferingExecution.objects.create(
@@ -132,39 +143,44 @@ def test_offering_productivity_periods_versions_statuses_and_assignees(flow, cli
     )
     worker = make_person(make_user(), name="Assignee")
     OfferingTask.objects.create(
-        execution=old, step=flow["work"], status=TaskStatus.DONE,
-        assigned_to=worker, completed_at=now - timedelta(hours=2),
+        execution=old,
+        step=flow["work"],
+        status=TaskStatus.DONE,
+        assigned_to=worker,
+        completed_at=now - timedelta(hours=2),
     )
     old.tasks.get().activities.create(actor=flow["actor"], action="completed")
     OfferingTask.objects.create(
-        execution=running, step=flow["work"], status=TaskStatus.DONE,
+        execution=running,
+        step=flow["work"],
+        status=TaskStatus.DONE,
         completed_at=now - timedelta(hours=3),
     )
     OfferingTask.objects.create(
-        execution=waiting, step=flow["notify"], status=TaskStatus.DONE,
-        assigned_to=worker, completed_at=now - timedelta(hours=1),
+        execution=waiting,
+        step=flow["notify"],
+        status=TaskStatus.DONE,
+        assigned_to=worker,
+        completed_at=now - timedelta(hours=1),
     )
-    client.force_login(flow["user"])
-    url = reverse("offerings:productivity")
-    response = client.get(url, {"offering": offering.pk})
-    assert response.status_code == 200
-    assert response.context["period"] == "7"
-    row = response.context["rows"][0]
-    assert row["offering"] == v2
-    assert {k: row["counts"][k] for k in ("started", "completed", "running", "waiting", "failed")} == {
-        "started": 3, "completed": 1, "running": 1, "waiting": 1, "failed": 1,
+    executions = OfferingExecution.objects.filter(offering__service=flow["service"])
+    row = offering_totals(executions, period_start("7", now), now).get()
+    assert {k: row[k] for k in ("started", "completed", "running", "waiting", "failed")} == {
+        "started": 3,
+        "completed": 1,
+        "running": 1,
+        "waiting": 1,
+        "failed": 1,
     }
-    people = response.context["people"]
+    people, timeline = offering_detail(executions, period_start("7", now), now)
     assert {(p["assigned_to__full_name"], p["total"]) for p in people} == {
-        ("Assignee", 1), (None, 1),
+        ("Assignee", 1),
+        (None, 1),
     }
-    assert sum(day["started"] for day in response.context["timeline"]) == 3
-    assert sum(day["completed"] for day in response.context["timeline"]) == 1
-    assert all(day["day"] <= localtime(now).date() for day in response.context["timeline"])
-    assert client.get(url, {"period": "30"}).context["rows"][0]["counts"]["started"] == 5
-    assert client.get(url, {"period": "bad"}).status_code == 400
-    assert client.get(url, {"offering": "invalid"}).status_code == 404
-    assert client.get(url, {"offering": "999999999999999999999999"}).status_code == 404
+    assert sum(day["started"] for day in timeline) == 3
+    assert sum(day["completed"] for day in timeline) == 1
+    assert all(day["day"] <= localtime(now).date() for day in timeline)
+    assert offering_totals(executions, period_start("30", now), now).get()["started"] == 5
 
 
 def test_offering_step_eligible_people_table_pagination_and_scope(
@@ -181,6 +197,7 @@ def test_offering_step_eligible_people_table_pagination_and_scope(
     for i in range(12):
         person = make_person(make_user(), name=f"Worker {i:02d}")
         make_membership(person, org_tree["parish_b"], role)
+        ServiceActor.objects.create(service=service, role=role, person=person)
         workers.append(person)
     outsider = make_person(make_user(), name="Not eligible")
     make_membership(outsider, org_tree["parish_a"], role)
@@ -192,26 +209,45 @@ def test_offering_step_eligible_people_table_pagination_and_scope(
     start = timezone.now() - timedelta(hours=8)
     for worker, hours in ((workers[0], 5), (workers[0], 1), (workers[10], 2)):
         task = OfferingTask.objects.create(
-            execution=execution, step=step, assigned_to=worker, title="Completed",
-            status=TaskStatus.DONE, started_at=start, completed_at=start + timedelta(hours=hours),
+            execution=execution,
+            step=step,
+            assigned_to=worker,
+            title="Completed",
+            status=TaskStatus.DONE,
+            started_at=start,
+            completed_at=start + timedelta(hours=hours),
         )
         if hours == 5:
             for action, offset in (("paused", 1), ("resumed", 2), ("paused", 3), ("resumed", 4)):
                 event = task.activities.create(action=action)
-                type(event).objects.filter(pk=event.pk).update(created_at=start + timedelta(hours=offset))
+                type(event).objects.filter(pk=event.pk).update(
+                    created_at=start + timedelta(hours=offset)
+                )
     OfferingTask.objects.create(
-        execution=execution, step=step, assigned_to=workers[0], title="Missing timestamps",
+        execution=execution,
+        step=step,
+        assigned_to=workers[0],
+        title="Missing timestamps",
         status=TaskStatus.DONE,
     )
     invalid = OfferingTask.objects.create(
-        execution=execution, step=step, assigned_to=workers[0], title="Invalid history",
-        status=TaskStatus.DONE, started_at=start, completed_at=start + timedelta(hours=6),
+        execution=execution,
+        step=step,
+        assigned_to=workers[0],
+        title="Invalid history",
+        status=TaskStatus.DONE,
+        started_at=start,
+        completed_at=start + timedelta(hours=6),
     )
     event = invalid.activities.create(action="paused")
     type(event).objects.filter(pk=event.pk).update(created_at=start + timedelta(hours=1))
     OfferingTask.objects.create(
-        execution=execution, step=step, assigned_to=workers[0], title="Running",
-        status=TaskStatus.IN_PROGRESS, started_at=start,
+        execution=execution,
+        step=step,
+        assigned_to=workers[0],
+        title="Running",
+        status=TaskStatus.IN_PROGRESS,
+        started_at=start,
     )
     other_version = ServiceOffering.objects.create(
         service=flow["service"], name=flow["offering"].name, version=2
@@ -221,8 +257,12 @@ def test_offering_step_eligible_people_table_pagination_and_scope(
     )
     other_execution = OfferingExecution.objects.create(offering=other_version)
     OfferingTask.objects.create(
-        execution=other_execution, step=other_step, assigned_to=workers[0],
-        status=TaskStatus.DONE, started_at=start, completed_at=start + timedelta(hours=8),
+        execution=other_execution,
+        step=other_step,
+        assigned_to=workers[0],
+        status=TaskStatus.DONE,
+        started_at=start,
+        completed_at=start + timedelta(hours=8),
     )
 
     client.force_login(flow["user"])
@@ -234,32 +274,96 @@ def test_offering_step_eligible_people_table_pagination_and_scope(
     body = response.content.decode()
     assert "Eligible people · Work" in body
     assert "Worker 00" in body and "Worker 09" in body
+    assert f'href="{reverse("people:detail", args=[workers[0].pk])}"' in body
+    assert f"?step={step.pk}&person={workers[0].pk}" in body
+    assert f"?step={step.pk}&person={workers[0].pk}&order=elapsed" in body
+    assert 'id="person-tasks-panel"' in body
+    # A second click on the same name or average closes the panel (matching keys).
+    assert f'data-panel-key="{workers[0].pk}-recent"' in body
+    assert f'data-panel-key="{workers[0].pk}-elapsed"' in body
     alice = response.context["actors_context"]["object_list"][0]
-    assert alice.completed_task_count == 4
     assert alice.average_sample_count == 2
+    task_history = client.get(alice.task_history_url)
+    assert task_history.status_code == 200
+    # The history link lists every completed task for this step and version
+    # (not only the samples behind the averages); running tasks and other
+    # versions stay out.
+    assert {task.title for task in task_history.context["object_list"]} == {
+        "Completed",
+        "Missing timestamps",
+        "Invalid history",
+    }
+    assert task_history.context["paginator"].count == 4
+    assert all(task.status == TaskStatus.DONE for task in task_history.context["object_list"])
     assert alice.average_duration == timedelta(hours=2)
     assert alice.average_elapsed_duration == timedelta(hours=3)
     assert alice.average_pause_duration == timedelta(hours=1)
     empty_person = response.context["actors_context"]["object_list"][1]
-    assert empty_person.completed_task_count == 0
+    assert empty_person.average_sample_count == 0
     assert empty_person.average_duration is None
-    assert all(header in body for header in (
-        "Completed tasks", "Tasks with reliable times", "Average active time",
-        "Average elapsed time", "Average paused time"
-    ))
+    assert all(
+        header in body
+        for header in (
+            "Tasks",
+            "Average active time",
+            "Average elapsed time",
+            "Average paused time",
+        )
+    )
     first_row = body.split(">Worker 00</a>", 1)[1].split("</tr>", 1)[0]
-    assert all(value in first_row for value in ("4", "2", "2h 0m 0s", "3h 0m 0s", "1h 0m 0s"))
+    assert all(value in first_row for value in ("2", "2h 0m 0s", "3h 0m 0s", "1h 0m 0s"))
+    assert ">Completed tasks</" not in body
+    assert ">4</td>" not in first_row
     empty_row = body.split(">Worker 01</a>", 1)[1].split("</tr>", 1)[0]
     assert empty_row.count("—") == 3
     assert "Worker 10" not in body and "Not eligible" not in body and "Inactive" not in body
     assert reverse("people:detail", args=[flow["actor"].pk]) not in body
+
+    def person_tasks(**params):
+        response = client.get(
+            url, {"step": step.pk, "person": workers[0].pk, **params}, HTTP_HX_REQUEST="true"
+        )
+        assert response.status_code == 200
+        return [task.title for task in response.context["tasks"]]
+
+    # Clicking the name lists the latest tasks (any status, at most five).
+    assert person_tasks() == [
+        "Running",
+        "Invalid history",
+        "Missing timestamps",
+        "Completed",
+        "Completed",
+    ]
+    # Clicking an average lists the measured tasks, longest first.
+    longest = client.get(
+        url,
+        {"step": step.pk, "person": workers[0].pk, "order": "elapsed"},
+        HTTP_HX_REQUEST="true",
+    ).context["tasks"]
+    assert [task.elapsed_duration for task in longest] == [
+        timedelta(hours=5),
+        timedelta(hours=1),
+    ]
+    assert [task.paused_duration for task in longest] == [timedelta(hours=2), timedelta()]
+    assert person_tasks(order="paused") == ["Completed", "Completed"]
+    full_page = client.get(url, {"step": step.pk, "person": workers[0].pk}).content.decode()
+    assert "Latest tasks · Worker 00" in full_page
+    assert f'data-panel-key="{workers[0].pk}-recent">' in full_page
+    for params in ({"order": "slowest"}, {"person": "x"}, {"person": flow["actor"].pk}):
+        assert (
+            client.get(
+                url, {"step": step.pk, "person": workers[0].pk, **params}, HTTP_HX_REQUEST="true"
+            ).status_code
+            == 404
+        )
     assert "Page 1 of 2" in body
-    assert f'page=2&step={step.pk}' in body
+    assert f"page=2&step={step.pk}" in body
     second_page = client.get(url, {"step": step.pk, "page": 2})
     assert second_page.context["actors_context"]["page_obj"].number == 2
     assert "Worker 10" in second_page.content.decode()
     page_worker = second_page.context["actors_context"]["object_list"][0]
-    assert page_worker.completed_task_count == 1
+    assert page_worker.average_sample_count == 1
+    assert client.get(page_worker.task_history_url).context["paginator"].count == 1
     assert page_worker.average_duration == timedelta(hours=2)
     assert page_worker.average_pause_duration == timedelta()
     partial = client.get(url, {"step": step.pk, "page": 2}, HTTP_HX_REQUEST="true")
@@ -268,10 +372,19 @@ def test_offering_step_eligible_people_table_pagination_and_scope(
     assert "Worker 10" in partial.content.decode() and "Worker 11" in partial.content.decode()
     assert "2h 0m 0s" in partial.content.decode()
     assert "Page 2 of 2" in partial.content.decode()
+    translated = client.get(url, {"step": step.pk}, HTTP_ACCEPT_LANGUAGE="pt").content.decode()
+    assert "Tarefas com tempos" not in translated
+    assert response.context["actors_context"]["config"].columns[1].key == "average_sample_count"
+    from django.utils.translation import override
+
+    with override("pt"):
+        assert str(response.context["actors_context"]["config"].columns[1].label) == "Tarefas"
+    assert "A contagem e as médias usam tarefas concluídas com tempos válidos" in translated
     assert 'id="eligible_actors-wrap"' in partial.content.decode()
-    assert "Automatic steps do not have eligible executors." in client.get(
-        url, {"step": flow["start"].pk}, HTTP_HX_REQUEST="true"
-    ).content.decode()
+    assert (
+        "Automatic steps do not have eligible executors."
+        in client.get(url, {"step": flow["start"].pk}, HTTP_HX_REQUEST="true").content.decode()
+    )
     foreign_step = OfferingStep.objects.create(
         offering=delegated, code="other", name="Other", order=1
     )
@@ -279,11 +392,12 @@ def test_offering_step_eligible_people_table_pagination_and_scope(
         assert client.get(url, {"step": invalid}, HTTP_HX_REQUEST="true").status_code == 404
 
 
-def test_offering_productivity_period_boundaries_and_future_records(flow, client, monkeypatch):
+def test_offering_productivity_period_boundaries_and_future_records(flow):
     from datetime import UTC, datetime
 
+    from apps.offerings.productivity import offering_totals, period_start
+
     now = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
-    monkeypatch.setattr("apps.offerings.views.timezone.now", lambda: now)
     for started in (
         datetime(2026, 11, 6, 23, 59, tzinfo=UTC),
         datetime(2026, 11, 7, 0, 0, tzinfo=UTC),
@@ -292,34 +406,21 @@ def test_offering_productivity_period_boundaries_and_future_records(flow, client
         OfferingExecution.objects.create(
             offering=flow["offering"], started_at=started, status=ExecutionStatus.RUNNING
         )
-    client.force_login(flow["user"])
-    url = reverse("offerings:productivity")
+    executions = OfferingExecution.objects.filter(offering=flow["offering"])
     with timezone.override("UTC"):
-        assert client.get(url, {"period": "7"}).context["rows"][0]["counts"]["started"] == 1
-        assert client.get(url, {"period": "30"}).context["rows"][0]["counts"]["started"] == 2
-        assert client.get(url, {"period": "90"}).context["rows"][0]["counts"]["started"] == 2
-        assert client.get(url, {"period": "year"}).context["rows"][0]["counts"]["started"] == 2
+        for period, count in (("7", 1), ("30", 2), ("90", 2), ("year", 2)):
+            assert (
+                offering_totals(executions, period_start(period, now), now).get()["started"]
+                == count
+            )
 
 
-def test_offering_productivity_enforces_scoped_access(flow, client, make_service, make_user,
-                                                     make_person, make_role, make_membership):
-    hidden_service = make_service(flow["org_tree"]["parish_b"], "Hidden")
-    hidden = ServiceOffering.objects.create(service=hidden_service, name="Secret")
-    OfferingExecution.objects.create(offering=hidden, status=ExecutionStatus.RUNNING,
-                                     started_at=timezone.now())
+def test_offering_productivity_view_removed(flow, client):
     client.force_login(flow["user"])
-    url = reverse("offerings:productivity")
-    response = client.get(url)
-    assert response.status_code == 200
-    assert "Secret" not in response.content.decode()
-    assert client.get(url, {"offering": hidden.pk}).status_code == 404
-    viewer = make_user()
-    role = make_role(permissions=["request.view"])
-    make_membership(make_person(viewer), flow["org_tree"]["parish_a"], role)
-    client.force_login(viewer)
-    assert client.get(url).status_code == 403
-    client.logout()
-    assert client.get(url).status_code == 302
+    assert client.get("/service-offerings/productivity/").status_code == 404
+    assert "Offering productivity" not in client.get(reverse("offerings:index")).content.decode()
+    detail = client.get(reverse("offerings:detail", args=[flow["offering"].pk])).content.decode()
+    assert "Offering productivity" not in detail
 
 
 def test_pause_and_resume_preserve_task_history_and_request_state(flow, client):
@@ -334,10 +435,18 @@ def test_pause_and_resume_preserve_task_history_and_request_state(flow, client):
     action_url = reverse("offerings:task_action", args=[task.pk])
     body = client.get(url).content.decode()
     assert 'value="pause"' in body and "Waiting for vendor" in body
-    assert client.post(action_url, {
-        "action": "pause", "reason": PauseReason.COMMENT,
-        "comment": "Waiting for the document.", "next": url,
-    }).url == url
+    assert (
+        client.post(
+            action_url,
+            {
+                "action": "pause",
+                "reason": PauseReason.COMMENT,
+                "comment": "Waiting for the document.",
+                "next": url,
+            },
+        ).url
+        == url
+    )
     task.refresh_from_db()
     execution.refresh_from_db()
     flow["request"].refresh_from_db()
@@ -371,20 +480,23 @@ def test_pause_and_resume_preserve_task_history_and_request_state(flow, client):
     assert flow["request"].status == RequestStatus.IN_PROGRESS
     task_action(task.pk, flow["user"], "pause", reason=PauseReason.VENDOR)
     task_action(task.pk, flow["user"], "resume")
-    assert list(task.activities.filter(action__in=["paused", "resumed"]).values_list(
-        "action", flat=True
-    )) == ["paused", "resumed", "paused", "resumed"]
+    assert list(
+        task.activities.filter(action__in=["paused", "resumed"]).values_list("action", flat=True)
+    ) == ["paused", "resumed", "paused", "resumed"]
     task_action(task.pk, flow["user"], "complete")
     execution.refresh_from_db()
     assert execution.status == ExecutionStatus.COMPLETED
 
 
-@pytest.mark.parametrize("reason,comment", [
-    ("", "text"),
-    ("invalid", "text"),
-    (PauseReason.COMMENT, "  "),
-    (PauseReason.VENDOR, "x" * 4001),
-])
+@pytest.mark.parametrize(
+    "reason,comment",
+    [
+        ("", "text"),
+        ("invalid", "text"),
+        (PauseReason.COMMENT, "  "),
+        (PauseReason.VENDOR, "x" * 4001),
+    ],
+)
 def test_pause_rejects_invalid_input_without_side_effects(flow, reason, comment):
     execution = start_request_execution(flow["request"], flow["actor"])
     task = execution.tasks.get()
@@ -399,8 +511,9 @@ def test_pause_rejects_invalid_input_without_side_effects(flow, reason, comment)
     assert not execution.notes.exists()
 
 
-def test_pause_permissions_for_assignee_and_manager(flow, make_user, make_person, make_role,
-                                                   make_membership, client):
+def test_pause_permissions_for_assignee_and_manager(
+    flow, make_user, make_person, make_role, make_membership, client
+):
     executor_role = make_role(permissions=["service.view", "offering.view", "offering.execute"])
     worker = make_person(make_user(), name="Assignee")
     other = make_person(make_user(), name="Other worker")
@@ -413,9 +526,12 @@ def test_pause_permissions_for_assignee_and_manager(flow, make_user, make_person
     with pytest.raises(PermissionDenied):
         task_action(task.pk, other.user, "pause", reason=PauseReason.APPROVAL)
     client.force_login(other.user)
-    assert "Pause task" not in client.get(
-        reverse("offerings:execution_detail", args=[execution.pk])
-    ).content.decode()
+    assert (
+        "Pause task"
+        not in client.get(
+            reverse("offerings:execution_detail", args=[execution.pk])
+        ).content.decode()
+    )
     task_action(task.pk, worker.user, "pause", reason=PauseReason.APPROVAL)
     with pytest.raises(PermissionDenied):
         task_action(task.pk, other.user, "resume")
@@ -485,12 +601,107 @@ def test_rebuild_requests_preserves_executions_tasks_and_other_subjects(flow):
 
 
 def test_request_and_execution_detail_links_respect_permissions(flow, client):
-    execution = start_request_execution(flow["request"], flow["actor"])
     client.force_login(flow["user"])
     request_url = reverse("requests:detail", args=[flow["request"].pk])
+    no_execution = client.get(request_url).content.decode()
+    assert 'class="space-y-6 xl:w-[calc((100%-1.5rem)/2)]"' in no_execution
+    execution = start_request_execution(flow["request"], flow["actor"])
     execution_url = reverse("offerings:execution_detail", args=[execution.pk])
-    assert execution_url in client.get(request_url).content.decode()
+    with_execution = client.get(request_url).content.decode()
+    assert execution_url in with_execution
+    assert "grid items-start gap-6 xl:grid-cols-2" in with_execution
+    assert 'class="space-y-6 xl:w-[calc((100%-1.5rem)/2)]"' not in with_execution
     assert request_url in client.get(execution_url).content.decode()
+
+
+def test_request_detail_shows_execution_final_deadline_when_available(flow, client):
+    from django.utils.formats import date_format
+
+    client.force_login(flow["user"])
+    url = reverse("requests:detail", args=[flow["request"].pk])
+    assert "Final deadline" not in client.get(url).content.decode()
+
+    execution = start_request_execution(flow["request"], flow["actor"])
+    response = client.get(url)
+    deadline = execution.started_at + timedelta(hours=1)
+    assert response.context["final_deadline"] == deadline
+    header = response.content.decode().split('<dl class="grid gap-x-8', 1)[1].split("</dl>", 1)[0]
+    assert "Final deadline" in header
+    assert date_format(timezone.localtime(deadline), "SHORT_DATETIME_FORMAT") in header
+    execution_response = client.get(reverse("offerings:execution_detail", args=[execution.pk]))
+    assert execution_response.context["final_deadline"] == deadline
+    assert "Prazo final" in client.get(url, HTTP_ACCEPT_LANGUAGE="pt").content.decode()
+
+    flow["work"].sla_minutes = None
+    flow["work"].save(update_fields=["sla_minutes"])
+    response = client.get(url)
+    assert response.context["final_deadline"] is None
+    assert "Final deadline" not in response.content.decode()
+    flow["work"].sla_minutes = 60
+    flow["work"].save(update_fields=["sla_minutes"])
+    execution.started_at = None
+    execution.save(update_fields=["started_at"])
+    assert "Final deadline" not in client.get(url).content.decode()
+
+
+def test_end_step_shows_completed_execution_elapsed_average_and_complete_sla(flow, client):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    client.force_login(flow["user"])
+    urls = (
+        reverse("offerings:execution_detail", args=[execution.pk]),
+        reverse("requests:detail", args=[flow["request"].pk]),
+    )
+
+    def end_section(url, **extra):
+        body = client.get(url, **extra).content.decode()
+        return body.split(">End</p>", 1)[1].split("</li>", 1)[0]
+
+    assert "Average elapsed time: —" in end_section(urls[0])
+    assert "Total SLA: 1h" in end_section(urls[0])
+
+    start = timezone.now() - timedelta(days=2)
+    for hours in (2, 6):
+        OfferingExecution.objects.create(
+            offering=flow["offering"],
+            status=ExecutionStatus.COMPLETED,
+            started_at=start,
+            completed_at=start + timedelta(hours=hours),
+        )
+    for status, started, completed in (
+        (ExecutionStatus.COMPLETED, None, start),
+        (ExecutionStatus.COMPLETED, start, start - timedelta(hours=1)),
+        (ExecutionStatus.RUNNING, start, start + timedelta(hours=20)),
+    ):
+        OfferingExecution.objects.create(
+            offering=flow["offering"], status=status, started_at=started, completed_at=completed
+        )
+    other_version = ServiceOffering.objects.create(
+        service=flow["service"], name=flow["offering"].name, version=2
+    )
+    OfferingExecution.objects.create(
+        offering=other_version,
+        status=ExecutionStatus.COMPLETED,
+        started_at=start,
+        completed_at=start + timedelta(hours=100),
+    )
+    for url in urls:
+        section = end_section(url)
+        assert "Average elapsed time: 4h 0m 0s" in section
+        assert "Total SLA: 1h" in section
+        pt_body = client.get(url, HTTP_ACCEPT_LANGUAGE="pt").content.decode()
+        assert "Tempo médio decorrido: 4h 0m 0s" in pt_body
+        assert "SLA total: 1h" in pt_body
+
+    flow["work"].sla_minutes = 0
+    flow["work"].save(update_fields=["sla_minutes"])
+    assert "Total SLA: 0min" in end_section(urls[0])
+    flow["work"].sla_minutes = None
+    flow["work"].save(update_fields=["sla_minutes"])
+    assert "Total SLA: —" in end_section(urls[0])
+    flow["work"].sla_minutes = 60
+    flow["work"].save(update_fields=["sla_minutes"])
+    OfferingTransition.objects.filter(from_step=flow["notify"]).delete()
+    assert "Total SLA: —" in end_section(urls[0])
 
 
 def test_only_requester_in_request_header_links_to_person(flow, client):
@@ -603,9 +814,10 @@ def test_request_execution_log_displays_activities_and_posts_notes(flow, client)
     assert note.task == task and note.author == flow["user"]
     body = client.get(url).content.decode()
     assert "A request note &lt;script&gt;" in body
-    assert "A request note &lt;script&gt;" in client.get(
-        reverse("offerings:execution_detail", args=[execution.pk])
-    ).content.decode()
+    assert (
+        "A request note &lt;script&gt;"
+        in client.get(reverse("offerings:execution_detail", args=[execution.pk])).content.decode()
+    )
 
 
 def test_request_execution_log_keeps_existing_request_comments(flow, client):
@@ -677,10 +889,13 @@ def test_request_without_visible_execution_cannot_post_note(flow, client, make_u
     person.active = False
     person.save(update_fields=["active"])
     client.force_login(viewer)
-    assert client.post(
-        reverse("requests:detail", args=[flow["request"].pk]),
-        {"kind": "COMMENT", "body": "No"},
-    ).status_code == 404
+    assert (
+        client.post(
+            reverse("requests:detail", args=[flow["request"].pk]),
+            {"kind": "COMMENT", "body": "No"},
+        ).status_code
+        == 404
+    )
     assert not execution.notes.exists()
 
 
@@ -700,6 +915,7 @@ def test_request_view_permission_alone_does_not_expose_execution_log(
     header = body.split('<dl class="grid gap-x-8', 1)[1].split("</dl>", 1)[0]
     assert "Current step</dt>" in header and ">—</dd>" in header
     assert ">Work</dd>" not in header
+    assert "Final deadline" not in header
     assert client.post(url, {"kind": "COMMENT", "body": "No access"}).status_code == 404
     assert not execution.notes.exists()
 
@@ -713,7 +929,9 @@ def test_incident_detail_shows_existing_execution_steps_and_actions(flow, client
     flow["role"].permissions.add(perm, through_defaults={"active": True})
     incident = Incident.objects.create(service=flow["service"], title="Incident")
     execution = OfferingExecution.objects.create(
-        offering=flow["offering"], subject=incident, current_step=flow["work"],
+        offering=flow["offering"],
+        subject=incident,
+        current_step=flow["work"],
         status=ExecutionStatus.RUNNING,
     )
     task = OfferingTask.objects.create(execution=execution, step=flow["work"], title="Repair")
@@ -721,10 +939,15 @@ def test_incident_detail_shows_existing_execution_steps_and_actions(flow, client
     url = reverse("incidents:detail", args=[incident.pk])
     body = client.get(url).content.decode()
     assert "Repair" in body
+    assert "grid items-start gap-6 xl:grid-cols-2" in body
     assert "Average active time: No reliable completed tasks" in body
+    assert "Maximum time: 1h" in body
     request_execution = start_request_execution(flow["request"], flow["actor"])
-    request_body = client.get(reverse("requests:detail", args=[flow["request"].pk])).content.decode()
+    request_body = client.get(
+        reverse("requests:detail", args=[flow["request"].pk])
+    ).content.decode()
     assert request_execution and "Average active time: No reliable completed tasks" in request_body
+    assert "Maximum time: 1h" in request_body
     assert 'value="start"' in body
     response = client.post(
         reverse("offerings:task_action", args=[task.pk]), {"action": "start", "next": url}
@@ -733,14 +956,12 @@ def test_incident_detail_shows_existing_execution_steps_and_actions(flow, client
     task.refresh_from_db()
     assert task.status == TaskStatus.IN_PROGRESS
     other = Incident.objects.create(service=flow["service"], title="No execution")
-    assert "Task history records the people" not in client.get(
-        reverse("incidents:detail", args=[other.pk])
-    ).content.decode()
+    other_body = client.get(reverse("incidents:detail", args=[other.pk])).content.decode()
+    assert "Task history records the people" not in other_body
+    assert 'class="space-y-6 xl:w-[calc((100%-1.5rem)/2)]"' in other_body
 
 
-def test_requester_sees_steps_but_cannot_operate_tasks(
-    flow, client, make_user, make_person
-):
+def test_requester_sees_steps_but_cannot_operate_tasks(flow, client, make_user, make_person):
     requester = make_person(make_user(), name="Requester")
     flow["request"].requester = requester
     flow["request"].save(update_fields=["requester"])
@@ -751,8 +972,15 @@ def test_requester_sees_steps_but_cannot_operate_tasks(
     body = client.get(url).content.decode()
     assert ">Work</p>" in body
     assert "Average active time" not in body
+    assert "Average elapsed time" not in body
+    assert "Total SLA" not in body
     assert 'value="start"' not in body
-    assert client.post(reverse("offerings:task_action", args=[task.pk]), {"action": "start"}).status_code == 403
+    assert (
+        client.post(
+            reverse("offerings:task_action", args=[task.pk]), {"action": "start"}
+        ).status_code
+        == 403
+    )
 
 
 def test_task_action_rejects_external_redirect(flow, client):
@@ -773,7 +1001,9 @@ def test_incident_viewer_without_execution_access_does_not_see_steps(
 
     incident = Incident.objects.create(service=flow["service"], title="Incident")
     execution = OfferingExecution.objects.create(
-        offering=flow["offering"], subject=incident, current_step=flow["work"],
+        offering=flow["offering"],
+        subject=incident,
+        current_step=flow["work"],
         status=ExecutionStatus.RUNNING,
     )
     OfferingTask.objects.create(execution=execution, step=flow["work"], title="Private work")
@@ -799,9 +1029,12 @@ def test_request_detail_hides_completion_when_task_assigned_to_another_person(
     body = client.get(reverse("requests:detail", args=[flow["request"].pk])).content.decode()
     assert ">Work</p>" in body
     assert 'value="complete"' not in body
-    assert client.post(
-        reverse("offerings:task_action", args=[task.pk]), {"action": "complete"}
-    ).status_code == 302
+    assert (
+        client.post(
+            reverse("offerings:task_action", args=[task.pk]), {"action": "complete"}
+        ).status_code
+        == 302
+    )
     task.refresh_from_db()
     assert task.status == TaskStatus.IN_PROGRESS
 
@@ -847,7 +1080,9 @@ def test_group_claim_controls_and_lifecycle(
     url = reverse("offerings:execution_detail", args=[execution.pk])
     body = client.get(url).content.decode()
     assert ">Claim task</button>" in body
-    controls = body.split('<div class="flex flex-wrap items-center gap-2">')[-1].split("</div>", 1)[0]
+    controls = body.split('<div class="flex flex-wrap items-center gap-2">')[-1].split("</div>", 1)[
+        0
+    ]
     assert 'name="assignee" required' in controls
     assert 'value="assign"' in controls and 'value="claim"' in controls
     assert controls.count("<form ") == 2
@@ -889,6 +1124,73 @@ def test_service_actor_can_claim_with_scoped_execution_permission(
     assert worker not in eligible_people(task.step)
 
 
+def test_group_requires_direct_actor_but_preserves_existing_assignment(
+    flow, make_user, make_person, make_role, make_membership, make_service
+):
+    service = make_service(flow["org_tree"]["parish_a"], "Delegated")
+    delegated = ServiceOffering.objects.create(service=service, name="Delegated")
+    role = make_role(permissions=["service.view", "offering.execute"])
+    worker = make_person(make_user(), name="Member only")
+    make_membership(worker, flow["org_tree"]["parish_a"], role)
+    step = flow["work"]
+    step.service_offering = delegated
+    step.responsible_role = role
+    step.save(update_fields=["service_offering", "responsible_role"])
+    task = start_request_execution(flow["request"], flow["actor"]).tasks.get()
+
+    assert worker not in eligible_people(step)
+    assert not actionable_tasks(worker.user).filter(pk=task.pk).exists()
+    with pytest.raises(PermissionDenied):
+        task_action(task.pk, worker.user, "claim")
+    with pytest.raises(ValidationError, match="eligible"):
+        task_action(task.pk, flow["user"], "assign", assignee_id=worker.pk)
+
+    link = ServiceActor.objects.create(service=service, role=role, person=worker)
+    assert worker in eligible_people(step)
+    assert actionable_tasks(worker.user).filter(pk=task.pk).exists()
+    task_action(task.pk, worker.user, "claim")
+    link.active = False
+    link.save(update_fields=["active"])
+    assert worker not in eligible_people(step)
+    assert actionable_tasks(worker.user).filter(pk=task.pk).exists()
+    task_action(task.pk, worker.user, "start")
+    task_action(task.pk, worker.user, "complete")
+
+
+def test_group_actor_requires_matching_role_service_and_active_permission(
+    flow, make_user, make_person, make_role, make_membership, make_service
+):
+    role = make_role(permissions=["offering.execute"])
+    other_role = make_role()
+    other_service = make_service(flow["org_tree"]["parish_a"], "Other")
+    worker = make_person(make_user(), name="Worker")
+    membership = make_membership(worker, flow["org_tree"]["parish_a"], role)
+    step = flow["work"]
+    step.responsible_role = role
+    step.save(update_fields=["responsible_role"])
+    ServiceActor.objects.create(service=other_service, role=role, person=worker)
+    ServiceActor.objects.create(service=flow["service"], role=other_role, person=worker)
+    assert worker not in eligible_people(step)
+    link = ServiceActor.objects.create(service=flow["service"], role=role, person=worker)
+    assert worker in eligible_people(step)
+    for obj, field in (
+        (link, "active"),
+        (worker, "active"),
+        (worker.user, "is_active"),
+        (role, "active"),
+        (membership, "active"),
+    ):
+        setattr(obj, field, False)
+        obj.save(update_fields=[field])
+        assert worker not in eligible_people(step)
+        setattr(obj, field, True)
+        obj.save(update_fields=[field])
+    step.responsible_role = None
+    link.active = False
+    link.save(update_fields=["active"])
+    assert worker in eligible_people(step)
+
+
 def test_service_manager_execution_grant_stays_scoped(make_service, org_tree):
     from django.apps import apps
 
@@ -897,9 +1199,7 @@ def test_service_manager_execution_grant_stays_scoped(make_service, org_tree):
     assert base.rolepermissions.filter(permission__code="offering.execute", active=True).exists()
     service = make_service(org_tree["parish_a"])
     clone = Role.objects.create(code="SERVICE_MANAGER_TEST", name="Scoped", is_system=True)
-    unscoped = Role.objects.create(
-        code="SERVICE_MANAGER_NO_SCOPE", name="Unscoped", is_system=True
-    )
+    unscoped = Role.objects.create(code="SERVICE_MANAGER_NO_SCOPE", name="Unscoped", is_system=True)
     view_grant = RolePermission.objects.create(
         role=clone, permission=Permission.objects.get(code="service.view")
     )
@@ -1073,13 +1373,17 @@ def test_requester_can_see_own_execution_and_notes_but_not_operate_tasks(
     assert [value for value, _ in response.context["note_form"].fields["kind"].choices] == [
         ExecutionNote.Kind.COMMENT
     ]
-    assert client.post(
-        execution_url, {"kind": "WORK_NOTE", "body": "Requester private note"}
-    ).status_code == 400
+    assert (
+        client.post(
+            execution_url, {"kind": "WORK_NOTE", "body": "Requester private note"}
+        ).status_code
+        == 400
+    )
     assert not ExecutionNote.objects.filter(body="Requester private note").exists()
-    assert client.post(
-        execution_url, {"kind": "COMMENT", "body": "Requester comment"}
-    ).status_code == 302
+    assert (
+        client.post(execution_url, {"kind": "COMMENT", "body": "Requester comment"}).status_code
+        == 302
+    )
     requester_body = client.get(execution_url).content.decode()
     assert "Requester comment" in requester_body
     assert "Internal note" not in requester_body
@@ -1249,6 +1553,7 @@ def test_delegated_worker_sees_only_current_task(
     worker_person = make_person(worker, name="External worker")
     role = make_role(permissions=["offering.execute", "organization.view"])
     make_membership(worker_person, org_tree["parish_b"], role)
+    ServiceActor.objects.create(service=external_service, role=role, person=worker_person)
     flow["work"].responsible_role = role
     flow["work"].save(update_fields=["responsible_role"])
     client.force_login(worker)
@@ -1256,9 +1561,7 @@ def test_delegated_worker_sees_only_current_task(
     task = execution.tasks.get()
     client.force_login(flow["user"])
     detail_url = reverse("offerings:execution_detail", args=[execution.pk])
-    assert client.post(
-        detail_url, {"kind": "COMMENT", "body": "Owner message"}
-    ).status_code == 302
+    assert client.post(detail_url, {"kind": "COMMENT", "body": "Owner message"}).status_code == 302
     assert ExecutionNote.objects.get(body="Owner message").task == task
     old_task = OfferingTask.objects.create(
         execution=execution, step=flow["notify"], title="Private step", status=TaskStatus.DONE
@@ -1291,25 +1594,28 @@ def test_delegated_worker_sees_only_current_task(
     assert "Average active time" not in body
     request_viewer = make_role(permissions=["request.view"])
     make_membership(worker_person, org_tree["parish_a"], request_viewer)
-    request_body = client.get(reverse("requests:detail", args=[flow["request"].pk])).content.decode()
+    request_body = client.get(
+        reverse("requests:detail", args=[flow["request"].pk])
+    ).content.decode()
     assert ">Work</p>" in request_body
     assert "Average active time" not in request_body
+    assert "Maximum time" not in request_body
     assert "Private step" not in request_body
     assert ">Notify</p>" not in request_body
+    assert "Final deadline" not in request_body
     assert ">Claim task</button>" in request_body
     log = request_body.split('id="execution-log"', 1)[1]
     assert "Owner message" in log
     assert "Private old note" not in log and "Private general note" not in log
     request_url = reverse("requests:detail", args=[flow["request"].pk])
-    assert client.post(
-        request_url, {"kind": "WORK_NOTE", "body": "Request team message"}
-    ).url == (
+    assert client.post(request_url, {"kind": "WORK_NOTE", "body": "Request team message"}).url == (
         f"{request_url}#execution-log"
     )
     assert ExecutionNote.objects.get(body="Request team message").task == task
-    assert client.post(
-        detail_url, {"kind": "WORK_NOTE", "body": "Related team message"}
-    ).status_code == 302
+    assert (
+        client.post(detail_url, {"kind": "WORK_NOTE", "body": "Related team message"}).status_code
+        == 302
+    )
     assert ExecutionNote.objects.get(body="Related team message").task == task
     assert "Related team message" in client.get(detail_url).content.decode()
     client.force_login(flow["user"])
@@ -1318,6 +1624,63 @@ def test_delegated_worker_sees_only_current_task(
     assert ">Claim task</button>" in client.get(detail_url).content.decode()
     task_action(task.pk, worker, "claim")
     task_action(task.pk, worker, "start")
+
+
+def test_service_task_assignee_and_role_filters(
+    flow, client, make_user, make_person, make_role, make_service, org_tree
+):
+    worker = make_person(make_user(), name="Second worker")
+    other_role = make_role()
+    flow["work"].responsible_role = flow["role"]
+    flow["work"].save(update_fields=["responsible_role"])
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    task.assigned_to = flow["actor"]
+    task.save(update_fields=["assigned_to"])
+    other_step = OfferingStep.objects.create(
+        offering=flow["offering"], code="other", name="Other", responsible_role=other_role
+    )
+    other_execution = OfferingExecution.objects.create(
+        offering=flow["offering"], current_step=other_step, status=ExecutionStatus.RUNNING
+    )
+    other_task = OfferingTask.objects.create(
+        execution=other_execution, step=other_step, assigned_to=worker
+    )
+    inaccessible_service = make_service(org_tree["parish_b"], "Hidden")
+    hidden_offering = ServiceOffering.objects.create(service=inaccessible_service, name="Hidden")
+    hidden_role = make_role()
+    hidden_step = OfferingStep.objects.create(
+        offering=hidden_offering, responsible_role=hidden_role
+    )
+    hidden_execution = OfferingExecution.objects.create(
+        offering=hidden_offering, current_step=hidden_step, status=ExecutionStatus.RUNNING
+    )
+    OfferingTask.objects.create(execution=hidden_execution, step=hidden_step, assigned_to=worker)
+    client.force_login(flow["user"])
+    url = reverse("offerings:tasks")
+    response = client.get(url, {"scope": "service"})
+    assert set(response.context["object_list"]) == {task, other_task}
+    filters = {item["param"]: item for item in response.context["table_filters"]}
+    assert {str(flow["actor"].pk), str(worker.pk)} <= {
+        key for key, _ in filters["assignee"]["choices"]
+    }
+    assert str(hidden_role.pk) not in {key for key, _ in filters["role"]["choices"]}
+    assert list(
+        client.get(url, {"scope": "service", "assignee": worker.pk}).context["object_list"]
+    ) == [other_task]
+    assert list(
+        client.get(url, {"scope": "service", "role": flow["role"].pk}).context["object_list"]
+    ) == [task]
+    assert not list(
+        client.get(url, {"scope": "service", "role": hidden_role.pk}).context["object_list"]
+    )
+    assert not list(
+        client.get(
+            url, {"scope": "service", "assignee": worker.pk, "role": flow["role"].pk}
+        ).context["object_list"]
+    )
+    assert client.get(url, {"scope": "service", "role": "bad"}).status_code == 404
+    assert any(item["param"] == "role" for item in client.get(url).context["table_filters"])
 
 
 def test_task_table_navigation_search_filters_sort_and_pagination(
@@ -1378,8 +1741,7 @@ def test_task_table_navigation_search_filters_sort_and_pagination(
 
 
 def test_task_table_can_show_all_ongoing_tasks_in_authorized_services(
-    flow, client, make_user, make_person, make_role, make_membership,
-    make_service, org_tree
+    flow, client, make_user, make_person, make_role, make_membership, make_service, org_tree
 ):
     execution = start_request_execution(flow["request"], flow["actor"])
     task = execution.tasks.get()
@@ -1407,9 +1769,12 @@ def test_task_table_can_show_all_ongoing_tasks_in_authorized_services(
     mine = client.get(url)
     assert mine.status_code == 200
     assert mine.context["paginator"].count == 0
-    assert "All ongoing tasks in my services" in mine.content.decode()
+    assert "All ongoing tasks in my service" in mine.content.decode()
 
-    service_tasks = client.get(url, {"scope": "service"})
+    # The header's service pre-fills the filter, so the delegated task only
+    # appears once the user widens the Service filter to "All".
+    assert not list(client.get(url, {"scope": "service"}).context["object_list"])
+    service_tasks = client.get(url, {"scope": "service", "service": ""})
     assert service_tasks.status_code == 200
     assert list(service_tasks.context["object_list"]) == [task]
     assert service_tasks.context["task_scope"] == "service"
@@ -1430,6 +1795,62 @@ def test_backfill_does_not_infer_completion(flow):
     assert execution.status == ExecutionStatus.RUNNING
 
 
+def test_recurring_execution_waits_for_previous_and_notifies_manager(flow):
+    from datetime import date
+
+    from apps.offerings.models import ScheduledOccurrence
+    from apps.offerings.scheduling import process_offering
+    from apps.people.models import PersonType
+
+    offering = flow["offering"]
+    offering.on_schedule = True
+    offering.recurrence_frequency = "MONTHLY"
+    offering.recurrence_interval = 1
+    offering.recurrence_month_day = 1
+    offering.recurrence_start = date(2026, 1, 1)
+    offering.save()
+    manager_role = Role.objects.create(code="SERVICE_MANAGER", name="Service Manager")
+    ServiceActor.objects.create(service=flow["service"], person=flow["actor"], role=manager_role)
+
+    first = process_offering(offering.pk, date(2026, 1, 1))
+    assert first.subject.requester.person_type == PersonType.SYSTEM
+    assert first.created_by.person_type == PersonType.SYSTEM
+    assert Notification.objects.filter(task__execution=first, recipient=flow["actor"]).count() == 1
+    assert process_offering(offering.pk, date(2026, 1, 1)) is None
+    assert process_offering(offering.pk, date(2026, 2, 1)) is None
+    assert ScheduledOccurrence.objects.filter(execution__isnull=True).count() == 1
+    assert process_offering(offering.pk, date(2026, 3, 1)) is None
+    assert ScheduledOccurrence.objects.filter(execution__isnull=True).count() == 1
+
+    task = first.tasks.get()
+    task_action(task.pk, flow["user"], "start")
+    task_action(task.pk, flow["user"], "complete")
+    first.refresh_from_db()
+    assert first.status == ExecutionStatus.COMPLETED
+    assert Notification.objects.filter(task__execution=first, recipient=flow["actor"]).count() == 3
+    second = process_offering(offering.pk, date(2026, 3, 1))
+    assert second is not None
+    assert ScheduledOccurrence.objects.get(execution=second).scheduled_date == date(2026, 2, 1)
+    assert process_offering(offering.pk, date(2026, 3, 1)) is None
+    assert ScheduledOccurrence.objects.count() == 2
+
+
+def test_recurring_execution_does_not_backfill_missed_dates(flow):
+    from datetime import date
+
+    from apps.offerings.models import ScheduledOccurrence
+    from apps.offerings.scheduling import process_offering
+
+    offering = flow["offering"]
+    offering.on_schedule = True
+    offering.recurrence_frequency = "MONTHLY"
+    offering.recurrence_month_day = 1
+    offering.recurrence_start = date(2026, 1, 1)
+    offering.save()
+    assert process_offering(offering.pk, date(2026, 1, 2)) is None
+    assert not ScheduledOccurrence.objects.exists()
+
+
 @pytest.mark.django_db(transaction=True)
 def test_concurrent_claim_and_start_create_only_one_activity(
     flow, make_user, make_person, make_membership
@@ -1438,6 +1859,7 @@ def test_concurrent_claim_and_start_create_only_one_activity(
     flow["work"].save(update_fields=["responsible_role"])
     other = make_person(make_user(), name="Other worker")
     make_membership(other, flow["org_tree"]["parish_a"], flow["role"])
+    ServiceActor.objects.create(service=flow["service"], role=flow["role"], person=other)
     task = start_request_execution(flow["request"], flow["actor"]).tasks.get()
     barrier = Barrier(2)
 
@@ -1475,3 +1897,149 @@ def test_concurrent_claim_and_start_create_only_one_activity(
         results = list(pool.map(start, range(2)))
     assert sorted(results) == ["rejected", "started"]
     assert task.activities.filter(action="started").count() == 1
+
+
+def test_task_table_mine_scope_filters(flow, client, make_role):
+    flow["work"].responsible_role = flow["role"]
+    flow["work"].save(update_fields=["responsible_role"])
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    task.assigned_to = flow["actor"]
+    task.save(update_fields=["assigned_to"])
+    other_role = make_role()
+    client.force_login(flow["user"])
+
+    url = reverse("offerings:tasks")
+    mine = [item["param"] for item in client.get(url).context["table_filters"]]
+    service = [
+        item["param"] for item in client.get(url, {"scope": "service"}).context["table_filters"]
+    ]
+    assert "assignee" not in mine
+    assert [param for param in service if param != "assignee"] == mine
+    for scope in ({}, {"scope": "mine"}):
+
+        def tasks(**filters):
+            return list(client.get(url, {**scope, **filters}).context["object_list"])
+
+        assert tasks(service=flow["service"].pk) == [task]
+        assert tasks(role=flow["role"].pk) == [task]
+        assert tasks(role=other_role.pk) == []
+        assert tasks(status=TaskStatus.DONE) == []
+
+
+def test_task_tables_prefill_header_service_and_organization(
+    flow, client, make_service, make_role, make_membership, org_tree
+):
+    org_viewer = make_role(permissions=["organization.view"])
+    make_membership(flow["actor"], flow["service"].organization, org_viewer)
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    task.assigned_to = flow["actor"]
+    task.save(update_fields=["assigned_to"])
+    other_service = make_service(flow["service"].organization, "Other header service")
+    client.force_login(flow["user"])
+    url = reverse("offerings:tasks")
+
+    session = client.session
+    session["service_context"] = {"pk": flow["service"].pk, "role": flow["role"].code}
+    session.save()
+    for params in ({}, {"scope": "mine"}):
+        response = client.get(url, params)
+        drawer = {item["param"]: item["value"] for item in response.context["table_filters"]}
+        assert drawer["service"] == str(flow["service"].pk)
+        assert drawer["organization"] == str(flow["service"].organization.pk)
+        assert "assignee" not in drawer
+        assert list(response.context["object_list"]) == [task]
+
+    session["service_context"] = {"pk": other_service.pk, "role": flow["role"].code}
+    session.save()
+    assert list(client.get(url).context["object_list"]) == []
+    # Choosing "All" in the drawer opts out of the header selection.
+    assert list(client.get(url, {"service": ""}).context["object_list"]) == [task]
+    # "All tasks in my service" is pre-filled the same way.
+    session["service_context"] = {"pk": flow["service"].pk, "role": flow["role"].code}
+    session.save()
+    service_view = client.get(url, {"scope": "service"})
+    assert list(service_view.context["object_list"]) == [task]
+    drawer = {item["param"]: item["value"] for item in service_view.context["table_filters"]}
+    assert drawer["service"] == str(flow["service"].pk)
+    assert drawer["organization"] == str(flow["service"].organization.pk)
+    session["service_context"] = {"pk": other_service.pk, "role": flow["role"].code}
+    session.save()
+    assert list(client.get(url, {"scope": "service"}).context["object_list"]) == []
+    assert list(client.get(url, {"scope": "service", "service": ""}).context["object_list"]) == [
+        task
+    ]
+
+
+def test_task_tabs_nest_and_prefill_header_per_tab(
+    flow, client, make_user, make_person, make_role, make_membership, make_service, org_tree
+):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    other_service = make_service(flow["service"].organization, "Other header service")
+    viewer = make_user()
+    viewer_person = make_person(viewer, name="Offering viewer")
+    make_membership(
+        viewer_person,
+        flow["service"].organization,
+        make_role(permissions=["service.view", "offering.view", "organization.view"]),
+    )
+    client.force_login(viewer)
+    url = reverse("offerings:tasks")
+
+    def tasks(**params):
+        return list(client.get(url, {"activity": "all", **params}).context["object_list"])
+
+    # Only allowed to view offerings: nothing to execute, yet the task is
+    # listed under "my organization" and "all tasks".
+    assert tasks(scope="mine") == [] and tasks(scope="service") == []
+    assert tasks(scope="organization") == [task]
+    assert tasks(scope="all") == [task]
+
+    session = client.session
+    session["service_context"] = {"pk": other_service.pk, "role": "x"}
+    session.save()
+
+    def drawer(scope):
+        response = client.get(url, {"scope": scope, "activity": "all"})
+        return {item["param"]: item["value"] for item in response.context["table_filters"]}
+
+    # The organization tab ignores the header's service pick; "all" ignores both.
+    assert drawer("service")["service"] == str(other_service.pk)
+    assert drawer("organization")["service"] == ""
+    assert drawer("all")["service"] == "" and drawer("all")["organization"] == ""
+    assert tasks(scope="organization") == [task]
+    assert tasks(scope="all") == [task]
+
+
+def test_step_drill_down_uses_all_tasks_tab_filters(flow, client):
+    execution = start_request_execution(flow["request"], flow["actor"])
+    task = execution.tasks.get()
+    task.assigned_to = flow["actor"]
+    task.status = TaskStatus.DONE
+    task.save(update_fields=["assigned_to", "status"])
+    client.force_login(flow["user"])
+    response = client.get(
+        reverse("offerings:detail", args=[flow["offering"].pk]), {"step": flow["work"].pk}
+    )
+    person = next(
+        person
+        for person in response.context["actors_context"]["object_list"]
+        if person.pk == flow["actor"].pk
+    )
+    query = QueryDict(person.task_history_url.split("?", 1)[1])
+    assert query.dict() == {
+        "scope": "all",
+        "activity": "all",
+        "organization": str(flow["service"].organization_id),
+        "service": str(flow["service"].pk),
+        "step": str(flow["work"].pk),
+        "status": TaskStatus.DONE,
+        "assignee": str(flow["actor"].pk),
+    }
+    history = client.get(person.task_history_url)
+    assert list(history.context["object_list"]) == [task]
+    drawer = {item["param"]: item for item in history.context["table_filters"]}
+    assert drawer["step"]["value"] == str(flow["work"].pk)
+    assert (str(flow["work"].pk), "Funeral v1 · Work") in drawer["step"]["choices"]

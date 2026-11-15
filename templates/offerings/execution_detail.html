@@ -5,7 +5,7 @@
 {% block header_title %}{% translate 'Execution' %} #{{ execution.pk }}{% endblock %}
 
 {% block content %}
-<div class="max-w-4xl space-y-6">
+<div class="space-y-6 xl:w-[calc((100%-1.5rem)/2)]">
   <div class="flex flex-wrap items-end justify-between gap-3">
     <div class="space-y-3">
       <div class="flex flex-wrap items-center gap-2">
@@ -19,7 +19,7 @@
         {% if linked_request %}<div><dt class="inline text-zinc-500">{% translate 'Request' %}:</dt> <dd class="inline"><a href="{% url 'requests:detail' linked_request.pk %}" class="font-medium text-indigo-600 hover:text-indigo-800">#{{ linked_request.pk }} · {{ linked_request.title }}</a></dd></div>{% endif %}
         {% if execution.created_by %}<div><dt class="inline text-zinc-500">{% translate 'Started by' %}:</dt> <dd class="inline text-zinc-800">{{ execution.created_by }}</dd></div>{% endif %}
         <div><dt class="inline text-zinc-500">{% translate 'Current step' %}:</dt> <dd class="inline text-zinc-800">{{ execution.current_step.name|default:"—" }}</dd></div>
-        {% if execution.started_at %}<div><dt class="inline text-zinc-500">{% translate 'Started' %}:</dt> <dd class="inline text-zinc-800">{{ execution.started_at|date:"SHORT_DATETIME_FORMAT" }}</dd></div>{% endif %}
+        {% if execution.started_at %}<div class="flex flex-wrap gap-x-8 gap-y-1 sm:col-span-2"><span><dt class="inline text-zinc-500">{% translate 'Started' %}:</dt> <dd class="inline text-zinc-800">{{ execution.started_at|date:"SHORT_DATETIME_FORMAT" }}</dd></span>{% if final_deadline %}<span><dt class="inline text-zinc-500">{% translate 'Final deadline' %}:</dt> <dd class="inline text-zinc-800">{{ final_deadline|date:"SHORT_DATETIME_FORMAT" }}</dd></span>{% endif %}</div>{% endif %}
         {% if execution.completed_at %}<div><dt class="inline text-zinc-500">{% translate 'Completed' %}:</dt> <dd class="inline text-zinc-800">{{ execution.completed_at|date:"SHORT_DATETIME_FORMAT" }}</dd></div>{% endif %}
         {% endif %}
       </dl>

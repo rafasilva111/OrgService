@@ -4,15 +4,27 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('offerings', '0012_executionnote_kind'),
+        ("offerings", "0012_executionnote_kind"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='offeringtask',
-            name='status',
-            field=models.CharField(choices=[('PENDING', 'Pending'), ('ASSIGNED', 'Assigned'), ('IN_PROGRESS', 'In Progress'), ('PAUSED', 'Paused'), ('DONE', 'Done'), ('BLOCKED', 'Blocked'), ('CANCELLED', 'Cancelled')], default='PENDING', max_length=16, verbose_name='status'),
+            model_name="offeringtask",
+            name="status",
+            field=models.CharField(
+                choices=[
+                    ("PENDING", "Pending"),
+                    ("ASSIGNED", "Assigned"),
+                    ("IN_PROGRESS", "In Progress"),
+                    ("PAUSED", "Paused"),
+                    ("DONE", "Done"),
+                    ("BLOCKED", "Blocked"),
+                    ("CANCELLED", "Cancelled"),
+                ],
+                default="PENDING",
+                max_length=16,
+                verbose_name="status",
+            ),
         ),
     ]

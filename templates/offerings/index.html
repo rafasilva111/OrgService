@@ -12,7 +12,7 @@
       <p class="mt-1 text-sm text-zinc-500">{% translate 'Versioned definitions describing how work is performed.' %}</p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-    <a href="{% url 'offerings:productivity' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50">{% translate 'Offering productivity' %}</a>
+    <a href="{% url 'offerings:calendar' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50">{% translate 'Scheduled service offerings' %}</a>
     {% if request.user|has_perm:"offering.manage" %}
     <a href="{% url 'offerings:create' %}"
        class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700">

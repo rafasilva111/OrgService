@@ -18,6 +18,13 @@ from pathlib import Path
 from .env import get_str
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+CELERY_BROKER_URL = get_str("CELERY_BROKER_URL", "redis://localhost:6379/0")
+CELERY_BEAT_SCHEDULE = {
+    "process-recurring-offerings": {
+        "task": "apps.offerings.tasks.process_recurring_offerings",
+        "schedule": 60.0,
+    },
+}
 
 # --- Application definition -------------------------------------------------
 
@@ -35,6 +42,7 @@ INSTALLED_APPS = [
     "apps.access",
     "apps.audit",
     "apps.changes",
+    "apps.citizen",
     "apps.common",
     "apps.dashboard",
     "apps.events",

@@ -1,0 +1,18 @@
+{% extends "citizen/base.html" %}
+{% load i18n ui %}
+{% block title %}{% translate 'Profile' %}{% endblock %}
+{% block content %}
+<div class="mx-auto max-w-xl">
+  <h1 class="text-2xl font-semibold">{% translate 'Your profile' %}</h1>
+  <p class="mt-1 text-sm text-slate-500">{% translate 'Services use these details to contact you about your requests.' %}</p>
+  <form method="post" class="mt-6 grid gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    {% csrf_token %}
+    {% apex_field form.full_name autocomplete="name" %}
+    {% apex_field form.email autocomplete="email" %}
+    {% apex_field form.phone autocomplete="tel" %}
+    {% apex_field form.home_organization %}
+    {% apex_field form.language %}
+    <div><button type="submit" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700">{% translate 'Save' %}</button></div>
+  </form>
+</div>
+{% endblock %}

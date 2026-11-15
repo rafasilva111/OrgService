@@ -116,7 +116,7 @@ class TableConfig:
     columns: list[Column]
     bulk_actions: list[BulkAction] = field(default_factory=list)
     default_sort: str | None = None
-    page_size: int = 25
+    page_size: int = 10
     caption: str = ""
     empty_headline: str = "Nothing here yet"
     empty_body: str = ""

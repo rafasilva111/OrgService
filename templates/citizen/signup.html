@@ -1,0 +1,19 @@
+{% extends "citizen/_auth_shell.html" %}
+{% load i18n ui %}
+{% block title %}{% translate 'Create account' %}{% endblock %}
+{% block auth_title %}{% translate 'Create your account' %}{% endblock %}
+{% block auth_subtitle %}{% translate 'You will sign in with your email.' %}{% endblock %}
+{% block auth_body %}
+<form method="post" class="grid gap-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm" novalidate>
+  {% csrf_token %}
+  {% for error in form.non_field_errors %}<p class="text-sm text-red-600">{{ error }}</p>{% endfor %}
+  {% apex_field form.full_name autocomplete="name" %}
+  {% apex_field form.email autocomplete="email" %}
+  {% apex_field form.phone autocomplete="tel" %}
+  {% apex_field form.home_organization %}
+  {% apex_field form.password1 autocomplete="new-password" %}
+  {% apex_field form.password2 autocomplete="new-password" %}
+  <button type="submit" class="w-full rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-teal-700">{% translate 'Create account' %}</button>
+</form>
+<p class="mt-6 text-center text-sm text-slate-600">{% translate 'Already have an account?' %} <a href="{% url 'citizen:login' %}" class="font-medium text-teal-700 hover:underline">{% translate 'Sign in' %}</a></p>
+{% endblock %}

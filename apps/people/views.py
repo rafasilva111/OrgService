@@ -141,12 +141,7 @@ class PersonDirectoryView(BreadcrumbsMixin, PermissionRequiredMixin, TableView):
         ).distinct()
 
     def resolve_organization_path(self, pk: int) -> str | None:
-        return (
-            Organization.objects.alive()
-            .filter(pk=pk)
-            .values_list("path", flat=True)
-            .first()
-        )
+        return Organization.objects.alive().filter(pk=pk).values_list("path", flat=True).first()
 
     def get_base_queryset(self):
         return _base_person_queryset(self.request.user).prefetch_related(

@@ -1,0 +1,30 @@
+{% extends "citizen/base.html" %}
+{% load i18n %}
+{% block title %}{% translate 'My requests' %}{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <h1 class="text-2xl font-semibold">{% translate 'My requests' %}</h1>
+    <p class="mt-1 text-sm text-slate-500">{% translate 'Follow what you asked for.' %}</p>
+  </div>
+  <a href="{% url 'citizen:services' %}" class="rounded-lg bg-teal-600 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700">{% translate 'New request' %}</a>
+</div>
+<nav class="mt-5 flex gap-1 text-sm" aria-label="{% translate 'Filter' %}">
+  <a href="?state=open" class="rounded-lg px-3 py-1.5 {% if state == 'open' %}bg-teal-50 font-medium text-teal-800{% else %}text-slate-600 hover:bg-slate-100{% endif %}">{% translate 'Open' %} ({{ counts.open }})</a>
+  <a href="?state=closed" class="rounded-lg px-3 py-1.5 {% if state == 'closed' %}bg-teal-50 font-medium text-teal-800{% else %}text-slate-600 hover:bg-slate-100{% endif %}">{% translate 'Closed' %} ({{ counts.closed }})</a>
+  <a href="?state=all" class="rounded-lg px-3 py-1.5 {% if state == 'all' %}bg-teal-50 font-medium text-teal-800{% else %}text-slate-600 hover:bg-slate-100{% endif %}">{% translate 'All' %}</a>
+</nav>
+<ul class="mt-4 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white shadow-sm">
+  {% for req in requests %}
+  <li><a href="{% url 'citizen:request_detail' req.pk %}" class="flex items-center justify-between gap-3 px-5 py-4 hover:bg-slate-50">
+    <span class="min-w-0">
+      <span class="block truncate text-sm font-medium">#{{ req.pk }} {{ req.title }}</span>
+      <span class="block truncate text-xs text-slate-500">{{ req.offering.name|default:req.service.name }} · {{ req.service.organization.name }} · {{ req.created_at|date:"SHORT_DATE_FORMAT" }}</span>
+    </span>
+    {% include "citizen/_status.html" with status=req.status label=req.get_status_display %}
+  </a></li>
+  {% empty %}
+  <li class="px-5 py-8 text-center text-sm text-slate-500">{% translate 'No requests here.' %}</li>
+  {% endfor %}
+</ul>
+{% endblock %}

@@ -222,13 +222,33 @@ def test_offering_priority_can_be_set_and_edited(ctx):
     offering = ServiceOffering.objects.get(name="Realizar um funeral")
     assert offering.default_priority == Priority.HIGH
     detail = ctx["client"].get(reverse("offerings:detail", args=[offering.pk])).content.decode()
-    assert "Default priority: High" in detail
+    assert 'Default priority: <span class="rounded-full' in detail
+    assert 'bg-amber-50 text-amber-700 ring-amber-600/20">High</span>' in detail
     response = _post(
         ctx, reverse("offerings:edit", args=[offering.pk]), _plan(ctx), default_priority="LOW"
     )
     assert response.status_code == 302
     offering.refresh_from_db()
     assert offering.default_priority == Priority.LOW
+
+
+@pytest.mark.parametrize(
+    "priority,label,colors",
+    [
+        (Priority.VERY_LOW, "Very low", "bg-zinc-100 text-zinc-600 ring-zinc-500/20"),
+        (Priority.LOW, "Low", "bg-zinc-100 text-zinc-600 ring-zinc-500/20"),
+        (Priority.MEDIUM, "Medium", "bg-blue-50 text-blue-700 ring-blue-600/20"),
+        (Priority.HIGH, "High", "bg-amber-50 text-amber-700 ring-amber-600/20"),
+        (Priority.URGENT, "Urgent", "bg-orange-50 text-orange-700 ring-orange-600/20"),
+        (Priority.CRITICAL, "Critical", "bg-red-50 text-red-700 ring-red-600/20"),
+    ],
+)
+def test_offering_detail_priority_badge(ctx, priority, label, colors):
+    offering = ServiceOffering.objects.create(
+        service=ctx["cemetery"], name="Priority", default_priority=priority
+    )
+    body = ctx["client"].get(reverse("offerings:detail", args=[offering.pk])).content.decode()
+    assert f'{colors}">{label}</span>' in body
 
 
 def test_offering_rejects_invalid_priority(ctx):
@@ -238,7 +258,9 @@ def test_offering_rejects_invalid_priority(ctx):
 
 
 def test_offering_priority_labels_are_translated(ctx):
-    body = ctx["client"].get(reverse("offerings:create"), HTTP_ACCEPT_LANGUAGE="pt").content.decode()
+    body = (
+        ctx["client"].get(reverse("offerings:create"), HTTP_ACCEPT_LANGUAGE="pt").content.decode()
+    )
     assert "Prioridade predefinida" in body
     assert "Muito baixa" in body
 
@@ -503,6 +525,196 @@ def test_recurrence_summary_and_next_runs():
     ]
 
 
+@pytest.mark.parametrize(
+    "fields,start,end",
+    [
+        ({"recurrence_frequency": "DAILY", "recurrence_interval": 3}, "2027-01-01", "2027-03-01"),
+        (
+            {
+                "recurrence_frequency": "WEEKLY",
+                "recurrence_interval": 2,
+                "recurrence_weekdays": [0, 3],
+            },
+            "2027-01-01",
+            "2027-03-01",
+        ),
+        ({"recurrence_month_day": 31, "recurrence_interval": 2}, "2027-01-01", "2027-12-01"),
+        (
+            {"recurrence_frequency": "YEARLY", "recurrence_month": 2, "recurrence_month_day": 29},
+            "2027-01-01",
+            "2031-01-01",
+        ),
+    ],
+)
+def test_occurrences_between_agrees_with_existing_recurrence(fields, start, end):
+    from datetime import date
+
+    from apps.offerings.recurrence import occurrences_between
+
+    offering = _schedule(**fields)
+    start, end = date.fromisoformat(start), date.fromisoformat(end)
+    expected = [day for day in offering.next_occurrences(500, after=start) if day < end]
+    assert occurrences_between(offering, start, end) == expected
+
+
+def test_calendar_events_follow_selected_service_and_schedule(ctx):
+    from datetime import date
+
+    def create(name, service, **fields):
+        return ServiceOffering.objects.create(
+            name=name,
+            service=service,
+            status=fields.pop("status", OfferingStatus.ACTIVE),
+            on_schedule=fields.pop("on_schedule", True),
+            recurrence_start=date(2000, 1, 1),
+            recurrence_frequency="DAILY",
+            **fields,
+        )
+
+    daily = create("Daily cleaning", ctx["cemetery"], sla_minutes=90)
+    create("Zero SLA", ctx["cemetery"], sla_minutes=0, recurrence_end=date(2026, 12, 1))
+    create("No SLA", ctx["cemetery"], sla_minutes=None, recurrence_end=date(2026, 12, 1))
+    create("Draft", ctx["cemetery"], status=OfferingStatus.DRAFT)
+    create("On request", ctx["cemetery"], on_schedule=False)
+    create("Other service", ctx["cleaning"].service)
+    create("Outside", ctx["outside"])
+    url = reverse("offerings:calendar_events")
+    params = {"start": "2026-12-01T00:00:00+00:00", "end": "2026-12-04T00:00:00+00:00"}
+    assert ctx["client"].get(url, params).json() == []
+    session = ctx["client"].session
+    session["service_context"] = {"pk": ctx["cemetery"].pk, "role": ctx["role"].code}
+    session.save()
+    events = ctx["client"].get(url, {**params, "service": ctx["outside"].pk}).json()
+    assert [(e["title"], e["start"]) for e in events] == [
+        ("Daily cleaning", "2026-12-01"),
+        ("Daily cleaning", "2026-12-02"),
+        ("Daily cleaning", "2026-12-03"),
+        ("No SLA", "2026-12-01"),
+        ("Zero SLA", "2026-12-01"),
+    ]
+    assert events[0]["url"] == reverse("offerings:detail", args=[daily.pk])
+    assert events[0]["end"] == "2026-12-02"
+    assert events[0]["extendedProps"]["sla"] == "1h 30min"
+    assert events[3]["end"] == "2026-12-02"
+    assert events[3]["extendedProps"]["sla"] == "—"
+    assert events[4]["end"] == "2026-12-02"
+    assert events[4]["extendedProps"]["sla"] == "0min"
+    session = ctx["client"].session
+    session["service_context"] = {"pk": ctx["outside"].pk, "role": ctx["role"].code}
+    session.save()
+    assert ctx["client"].get(url, params).json() == []
+
+
+def test_calendar_event_sla_duration_and_range_overlap(ctx):
+    from datetime import date
+
+    def create(name, start, sla):
+        return ServiceOffering.objects.create(
+            name=name,
+            service=ctx["cemetery"],
+            status=OfferingStatus.ACTIVE,
+            on_schedule=True,
+            recurrence_start=start,
+            recurrence_end=start,
+            recurrence_frequency="DAILY",
+            sla_minutes=sla,
+        )
+
+    create("Four days", date(2026, 11, 29), 4 * 24 * 60)
+    create("Just outside", date(2026, 11, 27), 4 * 24 * 60)
+    create("Partial day", date(2026, 12, 3), 24 * 60 + 1)
+    create("At exclusive end", date(2026, 12, 4), 4 * 24 * 60)
+    session = ctx["client"].session
+    session["service_context"] = {"pk": ctx["cemetery"].pk, "role": ctx["role"].code}
+    session.save()
+    response = ctx["client"].get(
+        reverse("offerings:calendar_events"), {"start": "2026-12-01", "end": "2026-12-04"}
+    )
+    assert response.status_code == 200
+    assert [(e["title"], e["start"], e["end"]) for e in response.json()] == [
+        ("Four days", "2026-11-29", "2026-12-03"),
+        ("Partial day", "2026-12-03", "2026-12-05"),
+    ]
+
+
+def test_calendar_event_sla_clamps_to_representable_dates(ctx):
+    from datetime import date
+
+    ServiceOffering.objects.create(
+        name="Long SLA",
+        service=ctx["cemetery"],
+        status=OfferingStatus.ACTIVE,
+        on_schedule=True,
+        recurrence_start=date(9998, 12, 1),
+        recurrence_frequency="YEARLY",
+        sla_minutes=2_147_483_647,
+    )
+    session = ctx["client"].session
+    session["service_context"] = {"pk": ctx["cemetery"].pk, "role": ctx["role"].code}
+    session.save()
+    response = ctx["client"].get(
+        reverse("offerings:calendar_events"), {"start": "9998-12-01", "end": "9998-12-31"}
+    )
+    assert response.status_code == 200
+    assert [(e["start"], e["end"]) for e in response.json()] == [("9998-12-01", "9999-12-31")]
+
+
+@pytest.mark.parametrize(
+    "start,end",
+    [
+        ("", "2027-01-01"),
+        ("bad", "2027-01-01"),
+        ("2026-02-30", "2027-01-01"),
+        ("2027-01-01", "2027-01-01"),
+        ("2026-01-01", "2026-04-01"),
+    ],
+)
+def test_calendar_rejects_invalid_ranges(ctx, start, end):
+    response = ctx["client"].get(reverse("offerings:calendar_events"), {"start": start, "end": end})
+    assert response.status_code == 400
+    assert response.json()["error"]
+
+
+def test_calendar_page_requires_selected_service(ctx):
+    client = ctx["client"]
+    list_body = client.get(reverse("offerings:index")).content.decode()
+    assert reverse("offerings:calendar") in list_body
+    assert 'id="offering-calendar"' not in list_body
+    body = client.get(reverse("offerings:calendar")).content.decode()
+    assert reverse("offerings:index") in body
+    assert "Select a service in the header" in body
+    assert 'id="offering-calendar"' not in body
+    session = client.session
+    session["service_context"] = {"pk": ctx["cemetery"].pk, "role": ctx["role"].code}
+    session.save()
+    response = client.get(reverse("offerings:calendar"))
+    assert response.status_code == 200
+    assert response.context["calendar_service"] == ctx["cemetery"]
+    body = response.content.decode()
+    assert 'id="offering-calendar"' in body
+    assert reverse("offerings:calendar_events") in body
+    assert "Actual execution can be delayed" in body
+    session["service_context"] = {"pk": ctx["outside"].pk, "role": ctx["role"].code}
+    session.save()
+    response = client.get(reverse("offerings:calendar"))
+    assert response.context["calendar_service"] is None
+    assert 'id="offering-calendar"' not in response.content.decode()
+
+
+def test_calendar_requires_offering_view_permission(
+    client, make_user, make_person, make_role, make_membership, org_tree
+):
+    user = make_user()
+    make_membership(
+        make_person(user), org_tree["parish_a"], make_role(permissions=["service.view"])
+    )
+    client.force_login(user)
+    assert client.get(reverse("offerings:calendar")).status_code == 403
+    assert client.get(reverse("offerings:calendar_events")).status_code == 403
+    client.logout()
+    assert client.get(reverse("offerings:calendar")).status_code == 302
+
+
 def test_offering_detail_shows_availability_in_description_without_sla_link(ctx):
     _post(
         ctx,
@@ -518,10 +730,10 @@ def test_offering_detail_shows_availability_in_description_without_sla_link(ctx)
     )[0]
     assert "How it starts" in header and "On request" in header
     assert "Total SLA" not in header
-    assert f'{reverse("metrics:slas")}?service={offering.service_id}' not in body
+    assert f"{reverse('metrics:slas')}?service={offering.service_id}" not in body
     assert "Total SLA" not in body
     assert "SLA 2h" not in body
-    assert ">SLA</dt><dd class=\"font-medium text-zinc-800\">2h</dd>" in body
+    assert '>SLA</dt><dd class="font-medium text-zinc-800">2h</dd>' in body
     assert body.count("How it starts") == 1
 
 
@@ -784,9 +996,9 @@ def test_roles_are_scoped_to_the_effective_service_in_editor_and_save(ctx, make_
     response = ctx["client"].get(reverse("offerings:create"))
     assert response.status_code == 200
     assert "rolesFor(step)" in response.content.decode()
-    assert [ctx["role"].pk, ctx["role"].name] in response.context["editor_options"][
-        "serviceRoles"
-    ][str(ctx["cemetery"].pk)]
+    assert [ctx["role"].pk, ctx["role"].name] in response.context["editor_options"]["serviceRoles"][
+        str(ctx["cemetery"].pk)
+    ]
     assert str(ctx["outside"].pk) not in response.context["editor_options"]["serviceRoles"]
 
     plan = [{"key": "validate", "name": "Validar requerimento", "role": other_role.pk}]
@@ -809,19 +1021,26 @@ def test_delegated_role_must_belong_to_delegated_service(ctx, make_role):
     ServiceActor.objects.create(
         service=ctx["cemetery"], role=own_role, person=ctx["cemetery"].actors.first().person
     )
-    plan = [{
-        "key": "work", "name": "Work", "role": own_role.pk,
-        "service_offering": ctx["cleaning"].pk,
-    }]
+    plan = [
+        {
+            "key": "work",
+            "name": "Work",
+            "role": own_role.pk,
+            "service_offering": ctx["cleaning"].pk,
+        }
+    ]
     response = _post(ctx, reverse("offerings:create"), plan)
     assert response.status_code == 200
     assert "The role is not available for the responsible service." in response.content.decode()
     plan[0]["role"] = ctx["role"].pk
     response = _post(ctx, reverse("offerings:create"), plan)
     assert response.status_code == 302
-    assert ServiceOffering.objects.get(name="Realizar um funeral").steps.get(
-        code="work"
-    ).responsible_role == ctx["role"]
+    assert (
+        ServiceOffering.objects.get(name="Realizar um funeral")
+        .steps.get(code="work")
+        .responsible_role
+        == ctx["role"]
+    )
 
 
 def test_inactive_service_actor_role_is_not_available(ctx, make_role):
@@ -863,9 +1082,9 @@ def test_total_sla_follows_the_normal_path_only(ctx):
     assert "SLA 2h" not in detail
     assert "SLA 1d" not in detail
     assert "SLA 3d" not in detail
-    assert ">SLA</dt><dd class=\"font-medium text-zinc-800\">2h</dd>" in detail
-    assert ">SLA</dt><dd class=\"font-medium text-zinc-800\">1d</dd>" in detail
-    assert ">SLA</dt><dd class=\"font-medium text-zinc-800\">3d</dd>" in detail
+    assert '>SLA</dt><dd class="font-medium text-zinc-800">2h</dd>' in detail
+    assert '>SLA</dt><dd class="font-medium text-zinc-800">1d</dd>' in detail
+    assert '>SLA</dt><dd class="font-medium text-zinc-800">3d</dd>' in detail
     listing = ctx["client"].get(reverse("offerings:index")).content.decode()
     assert "1d 2h" in listing
 
@@ -893,7 +1112,9 @@ def test_preview_total_sla_and_editor_rows_carry_service_sla_and_type(ctx):
         .content.decode()
     )
     assert "Total SLA" in body and "8h" in body
-    end_row = body.split('<p class="truncate text-sm font-medium text-zinc-800">End</p>')[1].split("</li>")[0]
+    end_row = body.split('<p class="truncate text-sm font-medium text-zinc-800">End</p>')[1].split(
+        "</li>"
+    )[0]
     assert end_row.index("Total SLA: 8h") < end_row.index(">End</span>")
 
     editor = ctx["client"].get(reverse("offerings:create")).content.decode()

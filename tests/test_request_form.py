@@ -349,7 +349,7 @@ def test_request_details_show_empty_fields_without_editing(world):
     detail = world["client"].get(reverse("requests:detail", args=[req.pk])).content.decode()
     assert "Nome do falecido" in detail and "&lt;Sensitive input&gt;" in detail
     assert "Data do óbito" in detail and "Certidão de óbito" in detail
-    assert "<dt class=\"text-zinc-500\">Confirmed</dt>" in detail
+    assert '<dt class="text-zinc-500">Confirmed</dt>' in detail
     assert ">No</dd>" in detail
     assert "Legacy description" not in detail
     assert 'name="q_nome"' not in detail

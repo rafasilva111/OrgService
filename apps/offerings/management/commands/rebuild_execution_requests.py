@@ -18,7 +18,9 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         if not options["confirm_delete_all_requests"]:
-            raise CommandError("Pass --confirm-delete-all-requests to confirm irreversible deletion.")
+            raise CommandError(
+                "Pass --confirm-delete-all-requests to confirm irreversible deletion."
+            )
         request_type = ContentType.objects.get_for_model(Request)
         executions = OfferingExecution.objects.select_for_update().filter(subject_type=request_type)
         count = executions.update(subject_type=None, subject_id=None)

@@ -46,6 +46,16 @@ class Person(SoftDeleteModel, ActiveModel):
         default=PersonType.CITIZEN,
         db_index=True,
     )
+    # Where a citizen lives (usually a parish). Informational only: it grants
+    # no access — authorization comes from OrganizationMembership.
+    home_organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="residents",
+        verbose_name=_("parish of residence"),
+    )
 
     class Meta:
         verbose_name = _("person")

@@ -495,6 +495,28 @@ class OfferingExecution(TimeStampedModel):
                 sync_request_status(self)
 
 
+class ScheduledOccurrence(TimeStampedModel):
+    offering = models.ForeignKey(
+        ServiceOffering, on_delete=models.PROTECT, related_name="occurrences"
+    )
+    scheduled_date = models.DateField()
+    covered_through = models.DateField()
+    execution = models.OneToOneField(
+        OfferingExecution,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="scheduled_occurrence",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["offering", "scheduled_date"], name="offering_occurrence_date"
+            ),
+        ]
+
+
 class TaskStatus(models.TextChoices):
     PENDING = "PENDING", _("Pending")
     ASSIGNED = "ASSIGNED", _("Assigned")
@@ -613,7 +635,7 @@ class Notification(TimeStampedModel):
     recipient = models.ForeignKey(
         "people.Person", on_delete=models.CASCADE, related_name="notifications"
     )
-    task = models.OneToOneField(OfferingTask, on_delete=models.CASCADE, related_name="notification")
+    task = models.ForeignKey(OfferingTask, on_delete=models.CASCADE, related_name="notifications")
     message = models.TextField(_("message"))
     read_at = models.DateTimeField(_("read at"), null=True, blank=True)
 

@@ -1,0 +1,66 @@
+{% extends "layouts/dashboard.html" %}
+{% load i18n %}
+
+{% block title %}{% translate 'Scheduled service offerings' %} — {% translate 'OrgService Platform' %}{% endblock %}
+{% block header_title %}{% translate 'Scheduled service offerings' %}{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Scheduled service offerings' %}</h1>
+    <a href="{% url 'offerings:index' %}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50">← {% translate 'Service Offerings' %}</a>
+  </div>
+  <section class="rounded-xl border border-zinc-200 bg-white p-4 sm:p-6">
+    {% if calendar_service %}
+    <p class="text-sm text-zinc-500">{% blocktranslate with service=calendar_service.name %}Planned occurrences for {{ service }}. Actual execution can be delayed by an earlier run.{% endblocktranslate %}</p>
+    <div id="offering-calendar-error" class="mt-4 text-sm text-red-700" role="alert" hidden>{% translate 'The calendar could not be loaded. Please try again.' %}</div>
+    <noscript><p class="mt-4 text-sm text-red-700">{% translate 'Enable JavaScript to view the calendar.' %}</p></noscript>
+    <div class="mt-4 overflow-x-auto"><div id="offering-calendar" class="min-w-[640px]"></div></div>
+    {% else %}
+    <p class="text-sm text-zinc-500">{% translate 'Select a service in the header to view its calendar.' %}</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock content %}
+
+{% block extra_js %}
+{% if calendar_service %}
+<style>
+  #offering-calendar .fc-button { background: white; color: #3f3f46; border: 1px solid #d4d4d8; font-size: .875rem; }
+  #offering-calendar .fc-button:hover { background: #f4f4f5; }
+  #offering-calendar .fc-toolbar-title { font-size: 1.125rem; font-weight: 600; }
+  #offering-calendar .fc-event { cursor: pointer; white-space: normal; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales-all.global.min.js"></script>
+<script>
+  (() => {
+    const root = document.getElementById("offering-calendar");
+    const error = document.getElementById("offering-calendar-error");
+    if (typeof FullCalendar === "undefined") {
+      error.hidden = false;
+      return;
+    }
+    const calendar = new FullCalendar.Calendar(root, {
+      initialView: "dayGridMonth",
+      locale: "{{ LANGUAGE_CODE|escapejs }}",
+      height: "auto",
+      headerToolbar: { left: "prev,next today", center: "title", right: "" },
+      events: "{% url 'offerings:calendar_events' %}",
+      eventSourceSuccess: () => { error.hidden = true; },
+      eventSourceFailure: () => { error.hidden = false; },
+      eventContent: (info) => {
+        const label = document.createElement("span");
+        label.textContent = info.event.title + " · {% translate 'SLA' as sla_label %}{{ sla_label|escapejs }} " + info.event.extendedProps.sla;
+        return { domNodes: [label] };
+      },
+    });
+    calendar.render();
+    root.querySelectorAll(".fc-icon").forEach((icon) => {
+      icon.setAttribute("aria-hidden", "true");
+      icon.removeAttribute("role");
+    });
+  })();
+</script>
+{% endif %}
+{% endblock extra_js %}

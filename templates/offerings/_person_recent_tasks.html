@@ -1,0 +1,45 @@
+{% load i18n ui %}
+<div class="overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm" data-panel-key="{{ person.pk }}-{{ order }}">
+  <div class="flex items-start gap-2 border-b border-zinc-100 p-4">
+    <div class="min-w-0 flex-1">
+      <h2 class="text-sm font-semibold text-zinc-800">
+        {% if order == "active" %}{% translate 'Longest active time' %}{% elif order == "elapsed" %}{% translate 'Longest elapsed time' %}{% elif order == "paused" %}{% translate 'Longest paused time' %}{% else %}{% translate 'Latest tasks' %}{% endif %} · {{ person.full_name }}
+      </h2>
+      <p class="text-xs text-zinc-500">{% if order == "recent" %}{% translate 'The five most recent tasks of this person for this step and offering version.' %}{% else %}{% translate 'The five completed tasks with valid times that took longest, for this step and offering version.' %}{% endif %}</p>
+    </div>
+    <button type="button" onclick="document.getElementById('person-tasks-panel').innerHTML = ''" class="grid size-7 place-items-center rounded-lg text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700" aria-label="{% translate 'Close' %}">&times;</button>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-full border-collapse text-left">
+      <thead class="bg-zinc-50/70 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+        <tr>
+          <th class="px-4 py-3 whitespace-nowrap">{% translate 'Task' %}</th>
+          <th class="px-4 py-3 whitespace-nowrap">{% translate 'Status' %}</th>
+          <th class="px-4 py-3 whitespace-nowrap">{% translate 'Started' %}</th>
+          <th class="px-4 py-3 whitespace-nowrap">{% translate 'Completed' %}</th>
+          <th class="px-4 py-3 whitespace-nowrap{% if order == 'active' %} text-indigo-600{% endif %}">{% translate 'Active time' %}</th>
+          <th class="px-4 py-3 whitespace-nowrap{% if order == 'elapsed' %} text-indigo-600{% endif %}">{% translate 'Elapsed time' %}</th>
+          <th class="px-4 py-3 whitespace-nowrap{% if order == 'paused' %} text-indigo-600{% endif %}">{% translate 'Paused time' %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for task in tasks %}
+        <tr class="border-b border-zinc-100 last:border-0 hover:bg-zinc-50/60">
+          <td class="px-4 py-3 text-sm"><a href="{% url 'offerings:execution_detail' task.execution_id %}" class="font-medium text-indigo-600 transition hover:text-indigo-800">#{{ task.execution_id }}{% if task.title %} · {{ task.title }}{% endif %}</a></td>
+          <td class="px-4 py-3 text-sm">{% include "offerings/task_status.html" with record=task value=task.status %}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-sm text-zinc-700">{{ task.started_at|date:"M j, Y H:i"|default:"—" }}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-sm text-zinc-700">{{ task.completed_at|date:"M j, Y H:i"|default:"—" }}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-sm text-zinc-700">{% if task.active_duration is not None %}{% include "offerings/_sla_duration.html" with duration=task.active_duration sla=sla_minutes %}{% else %}—{% endif %}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-sm text-zinc-700">{% if task.elapsed_duration is not None %}{% include "offerings/_sla_duration.html" with duration=task.elapsed_duration sla=sla_minutes %}{% else %}—{% endif %}</td>
+          <td class="px-4 py-3 whitespace-nowrap text-sm text-zinc-700">{{ task.paused_duration|format_duration }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="px-4 py-8 text-center text-sm text-zinc-500">{% translate 'No tasks for this person on this step.' %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="border-t border-zinc-100 px-4 py-3">
+    <a href="{{ all_tasks_url }}" class="text-xs font-medium text-indigo-600 hover:text-indigo-800">{% translate 'Show all tasks' %} &rarr;</a>
+  </div>
+</div>

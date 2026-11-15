@@ -1,6 +1,9 @@
 """Service Offerings: definitions, details and executions."""
 
 import json
+from dataclasses import replace
+from datetime import date, timedelta
+from urllib.parse import urlencode
 
 from django import forms
 from django.contrib import messages
@@ -9,18 +12,31 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import F, Q
+from django.db.models import (
+    Avg,
+    Case,
+    CharField,
+    DurationField,
+    Exists,
+    F,
+    OuterRef,
+    Q,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import npgettext
-from django.views.generic import DetailView, FormView, View
+from django.views.generic import DetailView, FormView, TemplateView, View
 
 from apps.common.breadcrumbs import BreadcrumbsMixin
+from apps.common.durations import humanize_minutes
 from apps.common.mixins import (
     CreatePermissionMixin,
     PermissionRequiredMixin,
@@ -67,6 +83,7 @@ from apps.offerings.models import (
     TaskActivity,
     TaskStatus,
 )
+from apps.offerings.recurrence import occurrences_between
 from apps.offerings.request_form import (
     RequestAnswersForm,
     answers_form_for,
@@ -124,6 +141,12 @@ class ServiceOfferingListView(BreadcrumbsMixin, PermissionRequiredMixin, TableVi
                 template="partials/pill.html",
             ),
             Column("sla_minutes", _("SLA"), sortable=True, template="offerings/_sla_cell.html"),
+            Column(
+                "average_elapsed_duration",
+                _("Average elapsed time"),
+                sortable=True,
+                template="offerings/_duration_cell.html",
+            ),
             Column("version", _("Version"), sortable=True),
             Column("updated_at", _("Updated"), sortable=True, filter=Filter(FilterKind.DATERANGE)),
         ],
@@ -138,84 +161,91 @@ class ServiceOfferingListView(BreadcrumbsMixin, PermissionRequiredMixin, TableVi
     organization_filter_fields = ("service__organization",)
 
     def get_base_queryset(self):
-        return ServiceOffering.objects.visible_to(
-            self.request.user, "offering.view"
-        ).select_related("service", "offering_type")
+        return (
+            ServiceOffering.objects.visible_to(self.request.user, "offering.view")
+            .select_related("service", "offering_type")
+            .annotate(
+                average_elapsed_duration=Avg(
+                    F("executions__completed_at") - F("executions__created_at"),
+                    filter=Q(
+                        service__in=visible_services(self.request.user),
+                        executions__status=ExecutionStatus.COMPLETED,
+                        executions__completed_at__gte=F("executions__created_at"),
+                    ),
+                    output_field=DurationField(),
+                )
+            )
+        )
 
 
-class OfferingProductivityView(BreadcrumbsMixin, PermissionRequiredMixin, View):
+class OfferingCalendarView(BreadcrumbsMixin, PermissionRequiredMixin, TemplateView):
     platform_codes = ("offering.view",)
-    breadcrumb_title = _("Offering productivity")
+    template_name = "offerings/calendar.html"
+    breadcrumb_title = _("Scheduled service offerings")
     breadcrumb_parent = (_("Service Offerings"), "offerings:index")
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        pk = selected_service_pk(self.request.user, self.request.session)
+        context["calendar_service"] = visible_services(self.request.user).filter(pk=pk).first()
+        return context
+
+
+class OfferingCalendarEventsView(PermissionRequiredMixin, View):
+    platform_codes = ("offering.view",)
+
     def get(self, request):
-        from apps.offerings.productivity import offering_detail, offering_totals, period_start
-
-        periods = (
-            ("7", _("Last 7 days")),
-            ("30", _("Last 30 days")),
-            ("90", _("Last 90 days")),
-            ("year", _("This year")),
-        )
-        period = request.GET.get("period", "7")
-        if period not in dict(periods):
-            return render(
-                request, "offerings/productivity.html",
-                {"periods": periods, "period_error": _("Select a valid period."),
-                 "breadcrumbs": self.get_breadcrumbs()},
-                status=400,
-            )
-        offerings = ServiceOffering.objects.filter(
-            service__in=execution_visible_services(request.user)
-        ).select_related("service").order_by("service__name", "name", "-version", "-pk")
-        selected = None
-        if request.GET.get("offering"):
+        def date_param(key):
+            value = request.GET.get(key, "")
             try:
-                offering_id = int(request.GET["offering"])
-            except ValueError as exc:
-                raise Http404 from exc
-            if not 0 < offering_id <= 9223372036854775807:
-                raise Http404
-            selected = get_object_or_404(offerings, pk=offering_id)
+                parsed = parse_datetime(value)
+                return parsed.date() if parsed else parse_date(value)
+            except ValueError:
+                return None
 
-        now = timezone.now()
-        start = period_start(period, now)
-        executions = OfferingExecution.objects.filter(
-            offering__service__in=execution_visible_services(request.user)
+        start, end = date_param("start"), date_param("end")
+        if (
+            not start
+            or not end
+            or start < date(1900, 1, 1)
+            or end > date(9998, 12, 31)
+            or not 0 < (end - start).days <= 62
+        ):
+            return JsonResponse(
+                {"error": str(_("Select a valid calendar date range."))}, status=400
+            )
+
+        service_pk = selected_service_pk(request.user, request.session)
+        if service_pk is None:
+            return JsonResponse([], safe=False)
+        offerings = (
+            ServiceOffering.objects.visible_to(request.user, "offering.view")
+            .filter(service_id=service_pk, status=OfferingStatus.ACTIVE, on_schedule=True)
+            .filter(recurrence_start__lt=end)
+            .order_by("name", "pk")
         )
-        totals = {
-            (row["offering__service_id"], row["offering__name"]): row
-            for row in offering_totals(executions, start, now)
-        }
-        rows = []
-        seen = set()
+        events = []
         for offering in offerings:
-            key = (offering.service_id, offering.name)
-            if key not in seen:
-                seen.add(key)
-                rows.append({
-                    "offering": offering,
-                    "counts": totals.get(key, {
-                        "started": 0, "completed": 0, "running": 0, "waiting": 0, "failed": 0,
-                    }),
-                })
-        context = {
-            "periods": periods,
-            "period": period,
-            "rows": rows,
-            "selected": selected,
-            "start": start,
-            "end": now,
-            "breadcrumbs": self.get_breadcrumbs(),
-        }
-        if selected:
-            selected_executions = executions.filter(
-                offering__service_id=selected.service_id, offering__name=selected.name
-            )
-            context["people"], context["timeline"] = offering_detail(
-                selected_executions, start, now
-            )
-        return render(request, "offerings/productivity.html", context)
+            duration_days = max(1, ((offering.sla_minutes or 0) + 1439) // 1440)
+            lookback = min(duration_days - 1, (start - date.min).days)
+            first_start = start - timedelta(days=lookback)
+            for occurrence in occurrences_between(offering, first_start, end):
+                event_end = occurrence + timedelta(
+                    days=min(duration_days, (date.max - occurrence).days)
+                )
+                events.append(
+                    {
+                        "title": offering.name,
+                        "start": occurrence.isoformat(),
+                        "end": event_end.isoformat(),
+                        "allDay": True,
+                        "url": reverse("offerings:detail", args=[offering.pk]),
+                        "extendedProps": {
+                            "sla": humanize_minutes(offering.sla_minutes, max_parts=3)
+                        },
+                    }
+                )
+        return JsonResponse(events, safe=False)
 
 
 class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
@@ -233,7 +263,26 @@ class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
     def get(self, request, *args, **kwargs):
         self.object = self.get_object()
         if request.headers.get("HX-Request") and request.GET.get("step"):
-            return render(request, "core/tables/_table.html", self.get_actors_context())
+            if request.GET.get("person"):
+                actors = self.get_actors_context()
+                return render(
+                    request,
+                    "offerings/_person_recent_tasks.html",
+                    self.get_person_tasks_context(actors["selected_step"]),
+                )
+            actors = self.get_actors_context()
+            if request.headers.get("HX-Target") == "eligible_actors-wrap" or request.GET.get(
+                "page"
+            ):
+                return render(request, "core/tables/_table.html", actors)
+            return render(
+                request,
+                "offerings/_step_insights.html",
+                {
+                    "actors_context": actors,
+                    "pause_context": self.get_pause_context(actors["selected_step"]),
+                },
+            )
         context = self.get_context_data(object=self.object)
         return self.render_to_response(context)
 
@@ -241,7 +290,11 @@ class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
         from apps.offerings.execution import eligible_people
         from apps.offerings.step_duration import MANUAL_STEPS, add_person_step_statistics
 
-        if not execution_visible_services(self.request.user).filter(pk=self.object.service_id).exists():
+        if (
+            not execution_visible_services(self.request.user)
+            .filter(pk=self.object.service_id)
+            .exists()
+        ):
             raise Http404
         try:
             step_id = int(self.request.GET.get("step", ""))
@@ -261,15 +314,38 @@ class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
         paginator = Paginator(people, 10)
         page = paginator.get_page(self.request.GET.get("page"))
         add_person_step_statistics(page.object_list, step)
+        history_url = reverse("offerings:tasks")
+        history_filters = {**step_task_filters(step), "status": TaskStatus.DONE}
+        for person in page.object_list:
+            person.sla_minutes = step.sla_minutes
+            person.step_pk = step.pk
+            person.task_history_url = (
+                f"{history_url}?{urlencode({**history_filters, 'assignee': person.pk})}"
+            )
         config = TableConfig(
             key="eligible_actors",
             columns=[
-                Column("full_name", _("Name")),
-                Column("completed_task_count", _("Completed tasks"), template="offerings/_count_cell.html"),
-                Column("average_sample_count", _("Tasks with reliable times"), template="offerings/_sample_count_cell.html"),
-                Column("average_duration", _("Average active time"), template="offerings/_duration_cell.html"),
-                Column("average_elapsed_duration", _("Average elapsed time"), template="offerings/_duration_cell.html"),
-                Column("average_pause_duration", _("Average paused time"), template="offerings/_duration_cell.html"),
+                Column("full_name", _("Name"), template="offerings/_eligible_person_cell.html"),
+                Column(
+                    "average_sample_count",
+                    _("Tasks"),
+                    template="offerings/_sample_count_cell.html",
+                ),
+                Column(
+                    "average_duration",
+                    _("Average active time"),
+                    template="offerings/_duration_cell.html",
+                ),
+                Column(
+                    "average_elapsed_duration",
+                    _("Average elapsed time"),
+                    template="offerings/_duration_cell.html",
+                ),
+                Column(
+                    "average_pause_duration",
+                    _("Average paused time"),
+                    template="offerings/_duration_cell.html",
+                ),
             ],
             page_size=10,
             caption=_("Eligible people") + f" · {step.name}",
@@ -292,9 +368,99 @@ class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
             "query_without_sort": f"step={step.pk}",
             "selected_step": step,
             "table_description": _(
-                "Completed tasks are counted by recorded assignee. Averages use reliable "
-                "completed tasks for this step and offering version, excluding recorded pauses "
-                "from active time."
+                "The count and averages use completed tasks with valid times, grouped by "
+                "recorded assignee for this step and offering version. Active time excludes "
+                "recorded pauses."
+            ),
+        }
+
+    PERSON_TASK_ORDERS = ("recent", "active", "elapsed", "paused")
+
+    def get_person_tasks_context(self, step):
+        """Five tasks of one eligible person on this step and offering version.
+
+        ``order=recent`` (default) lists the latest tasks; ``active``,
+        ``elapsed`` and ``paused`` list the longest ones by that time, so a
+        click on an average shows the tasks behind it.
+        """
+        from apps.offerings.execution import eligible_people
+        from apps.offerings.step_duration import MANUAL_STEPS, pause_prefetch, reliable_sample
+
+        try:
+            person_id = int(self.request.GET.get("person", ""))
+        except ValueError as exc:
+            raise Http404 from exc
+        order = self.request.GET.get("order") or "recent"
+        if order not in self.PERSON_TASK_ORDERS:
+            raise Http404
+        people = eligible_people(step) if step.step_type in MANUAL_STEPS else []
+        person = next((person for person in people if person.pk == person_id), None)
+        if person is None:
+            raise Http404
+        tasks = OfferingTask.objects.filter(
+            execution__offering=step.offering, step=step, assigned_to=person
+        ).order_by("-created_at", "-pk")
+        if order == "recent":
+            tasks = tasks[:5]
+        tasks = list(tasks.prefetch_related(pause_prefetch()))
+        for task in tasks:
+            sample = reliable_sample(task) if task.status == TaskStatus.DONE else None
+            task.active_duration, task.elapsed_duration = sample or (None, None)
+            task.paused_duration = (
+                task.elapsed_duration - task.active_duration if sample is not None else None
+            )
+        if order != "recent":
+            attribute = f"{order}_duration"
+            measured = [task for task in tasks if getattr(task, attribute) is not None]
+            tasks = sorted(measured, key=lambda task: getattr(task, attribute), reverse=True)[:5]
+        filters = {**step_task_filters(step), "assignee": person.pk}
+        return {
+            "person": person,
+            "step": step,
+            "tasks": tasks,
+            "order": order,
+            "sla_minutes": step.sla_minutes,
+            "all_tasks_url": f"{reverse('offerings:tasks')}?{urlencode(filters)}",
+        }
+
+    def get_pause_context(self, step):
+        from apps.offerings.pause_statistics import step_pause_summaries
+
+        rows = step_pause_summaries(step)
+        history_url = reverse("offerings:tasks")
+        for row in rows:
+            filters = {**step_task_filters(step), "pause_reason": row.key}
+            row.history_url = f"{history_url}?{urlencode(filters)}"
+            row.ongoing_url = f"{history_url}?{urlencode({**filters, 'status': TaskStatus.PAUSED})}"
+        config = TableConfig(
+            key="pause_reasons",
+            columns=[
+                Column("reason", _("Pause reason")),
+                Column("count", _("Pauses"), template="offerings/_pause_count_cell.html"),
+                Column(
+                    "ongoing_count",
+                    _("Ongoing pauses"),
+                    template="offerings/_pause_ongoing_cell.html",
+                ),
+                Column(
+                    "total_duration",
+                    _("Total paused time"),
+                    template="offerings/_pause_total_cell.html",
+                ),
+            ],
+            caption=_("Pause reasons") + f" · {step.name}",
+            empty_headline=_("No pauses recorded"),
+            empty_body=_("Recorded pauses for this step will appear here."),
+            searchable=False,
+        )
+        return {
+            "config": config,
+            "visible_columns": config.columns,
+            "object_list": rows,
+            "table_description": _(
+                "Includes all tasks for this step and offering version, including ongoing pauses. "
+                "The average above uses completed tasks only. A dash means at least one pause "
+                "duration could not be calculated."
             ),
         }
 
@@ -323,6 +489,9 @@ class ServiceOfferingDetailView(BreadcrumbsMixin, ScopedDetailView):
         if self.request.GET.get("step"):
             ctx["actors_context"] = self.get_actors_context()
             ctx["selected_step"] = ctx["actors_context"]["selected_step"]
+            ctx["pause_context"] = self.get_pause_context(ctx["selected_step"])
+            if self.request.GET.get("person"):
+                ctx["person_tasks_context"] = self.get_person_tasks_context(ctx["selected_step"])
         return ctx
 
 
@@ -332,6 +501,7 @@ class OfferingExecutionListView(BreadcrumbsMixin, PermissionRequiredMixin, Table
     platform_codes = ("offering.view",)
     table_config = TableConfig(
         key="offerings_executions",
+        page_size=10,
         columns=[
             Column("offering.name", _("Service Offering"), sortable=True, searchable=True),
             organization_column(
@@ -393,6 +563,45 @@ def task_services(user):
     )
 
 
+TASK_SCOPES = ("mine", "service", "organization", "all")
+
+
+def member_organizations(user):
+    """Organizations (with their subtrees) where the user holds an active membership."""
+    from apps.organizations.models import Organization, OrganizationMembership
+
+    if getattr(user, "is_superuser", False):
+        return Organization.objects.alive()
+    paths = OrganizationMembership.objects.filter(
+        person__user=user,
+        person__active=True,
+        person__deleted_at__isnull=True,
+        active=True,
+        organization__active=True,
+        organization__deleted_at__isnull=True,
+    ).values_list("organization__path", flat=True)
+    subtree = Q(pk__in=[])
+    for path in set(paths):
+        subtree |= Q(path__descendants=path)
+    return Organization.objects.alive().filter(subtree)
+
+
+def pause_reason_choices():
+    return [*PauseReason.choices, ("OTHER", _("Other or unspecified"))]
+
+
+def step_task_filters(step):
+    """Task list filters that drill down from a step page to its tasks."""
+    service = step.service_offering.service if step.service_offering_id else step.offering.service
+    return {
+        "scope": "all",
+        "activity": "all",
+        "organization": service.organization_id,
+        "service": service.pk,
+        "step": step.pk,
+    }
+
+
 def task_service_choices(view):
     return [
         (str(service.pk), service.name)
@@ -401,7 +610,6 @@ def task_service_choices(view):
 
 
 def actionable_tasks(user):
-    from apps.common.authorization import membership_service_scope
     from apps.people.models import Person
     from apps.services.models import Service, ServiceActor
 
@@ -426,22 +634,12 @@ def actionable_tasks(user):
                 role__deleted_at__isnull=True,
             ).values_list("service_id", "role_id")
         )
-        for membership in person.memberships.filter(
-            active=True, role__active=True, role__deleted_at__isnull=True
-        ).select_related("organization", "role"):
-            groups.update(
-                (service.pk, membership.role_id)
-                for service in membership_service_scope(membership)
-                if service.pk in executable_ids
-            )
         visible |= service_filter(executable) & (
-            Q(assigned_to=person)
-            | Q(assigned_to__isnull=True, step__responsible_role__isnull=True)
+            Q(assigned_to=person) | Q(assigned_to__isnull=True, step__responsible_role__isnull=True)
         )
         for service_id, role_id in groups:
-            visible |= (
-                service_filter([service_id])
-                & Q(step__responsible_role_id=role_id, assigned_to__isnull=True)
+            visible |= service_filter([service_id]) & Q(
+                step__responsible_role_id=role_id, assigned_to__isnull=True
             )
     return ongoing_service_tasks(user).filter(visible)
 
@@ -462,6 +660,49 @@ def ongoing_service_tasks(user):
             TaskStatus.BLOCKED,
         ),
     ).filter(service_filter)
+
+
+def task_assignee_choices(view):
+    from apps.people.models import Person
+
+    return [
+        (str(pk), name)
+        for pk, name in Person.objects.filter(
+            pk__in=view.get_base_queryset().values("assigned_to_id")
+        )
+        .order_by("full_name", "pk")
+        .values_list("pk", "full_name")
+    ]
+
+
+def task_step_choices(view):
+    """Steps of the listed tasks, labelled "<offering> v<version> · <step>".
+
+    A delegated step is labelled with its delegated offering: the workers it is
+    delegated to must not learn the parent offering's name.
+    """
+    steps = OfferingStep.objects.filter(
+        pk__in=view.get_base_queryset().values("step_id")
+    ).select_related("offering", "service_offering")
+    choices = []
+    for step in steps:
+        offering = step.service_offering or step.offering
+        label = f"{offering.name} v{step.offering.version} · {step.name}"
+        choices.append((str(step.pk), label, (offering.name.casefold(), step.order, step.pk)))
+    return [(pk, label) for pk, label, _key in sorted(choices, key=lambda choice: choice[2])]
+
+
+def task_role_choices(view):
+    from apps.access.models import Role
+
+    return [
+        (str(pk), name)
+        for pk, name in Role.objects.filter(
+            pk__in=view.get_base_queryset().values("step__responsible_role_id")
+        )
+        .order_by("name", "pk")
+        .values_list("pk", "name")
+    ]
 
 
 class OfferingTaskListView(LoginRequiredMixin, BreadcrumbsMixin, TableView):
@@ -511,40 +752,182 @@ class OfferingTaskListView(LoginRequiredMixin, BreadcrumbsMixin, TableView):
     )
     service_filter_field = "responsible_service"
 
-    def get_queryset(self):
-        self.task_scope = (
-            "service" if self.request.GET.get("scope") == "service" else "mine"
+    def get_table_config(self):
+        config = super().get_table_config()
+        if getattr(self, "task_scope", None) not in TASK_SCOPES:
+            return config
+        # "My actionable tasks" are already narrowed to what I can execute, so
+        # an assignee filter only makes sense on the wider tabs.
+        assignee_columns = (
+            [
+                Column(
+                    "assigned_to_id",
+                    _("Assigned to"),
+                    visible=False,
+                    filter=Filter(
+                        FilterKind.CHOICE,
+                        param="assignee",
+                        choices_callable=task_assignee_choices,
+                    ),
+                )
+            ]
+            if self.task_scope != "mine"
+            else []
         )
-        if self.task_scope == "service":
-            self.use_header_scope = False
+        columns = [
+            *config.columns,
+            *assignee_columns,
+            Column(
+                "step.responsible_role_id",
+                _("Responsible role"),
+                visible=False,
+                filter=Filter(
+                    FilterKind.CHOICE,
+                    param="role",
+                    choices_callable=task_role_choices,
+                ),
+            ),
+            Column(
+                "step_id",
+                _("Step"),
+                visible=False,
+                filter=Filter(
+                    FilterKind.CHOICE,
+                    param="step",
+                    choices_callable=task_step_choices,
+                ),
+            ),
+            Column(
+                "pause_reason_match",
+                _("Pause reason"),
+                visible=False,
+                filter=Filter(
+                    FilterKind.CHOICE,
+                    param="pause_reason",
+                    choices_callable=lambda view: pause_reason_choices(),
+                ),
+            ),
+        ]
+        return replace(config, columns=columns)
+
+    def get_queryset(self):
+        requested_scope = self.request.GET.get("scope")
+        self.task_scope = requested_scope if requested_scope in TASK_SCOPES else "mine"
+        self.task_activity = self.request.GET.get("activity", "active") or "active"
+        if self.task_activity not in ("active", "all"):
+            raise Http404
+        pause_reason = self.request.GET.get("pause_reason", "")
+        if pause_reason and pause_reason not in dict(pause_reason_choices()):
+            raise Http404
+        for key in ("assignee", "role", "step"):
+            value = self.request.GET.get(key, "")
+            if value:
+                try:
+                    if not 0 < int(value) <= 9223372036854775807:
+                        raise ValueError
+                except ValueError as exc:
+                    raise Http404 from exc
+        # The header's selection pre-fills the filter drawer (choosing "All"
+        # there opts out; explicit ?service=/?organization= links override it):
+        # the personal and service tabs take service and organization, the
+        # organization tab only the organization, and "All tasks" neither.
+        self.use_header_scope = self.task_scope != "all"
+        self.use_header_service_scope = self.task_scope in ("mine", "service")
         return super().get_queryset()
 
-    def get_base_queryset(self):
-        tasks = (
-            ongoing_service_tasks(self.request.user)
-            if self.task_scope == "service"
-            else actionable_tasks(self.request.user)
+    def scope_tasks(self, scope):
+        """Tasks behind a tab, before the activity filter narrows them.
+
+        Each wider tab contains the narrower ones: "All tasks" is everything I
+        may view plus my service and personal tasks, and "my organization"
+        narrows that to my organizations' subtrees.
+        """
+        user = self.request.user
+        viewable = OfferingTask.objects.filter(
+            execution__offering__in=ServiceOffering.objects.visible_to(user, "offering.view"),
+            execution__offering__service__in=execution_visible_services(user),
         )
-        return (
-            tasks
-            .annotate(
-                responsible_service_id=Coalesce(
-                    "step__service_offering__service_id", "step__offering__service_id"
-                ),
-                responsible_service_name=Coalesce(
-                    "step__service_offering__service__name", "step__offering__service__name"
-                ),
-                responsible_organization_name=Coalesce(
-                    "step__service_offering__service__organization__name",
-                    "step__offering__service__organization__name",
-                ),
-                responsible_organization_path=Coalesce(
-                    "step__service_offering__service__organization__path",
-                    "step__offering__service__organization__path",
+        if scope == "all":
+            return OfferingTask.objects.filter(
+                Q(pk__in=viewable)
+                | Q(pk__in=self.scope_tasks("service"))
+                | Q(pk__in=self.scope_tasks("mine"))
+            )
+        if scope == "organization":
+            organizations = member_organizations(user)
+            return self.scope_tasks("all").filter(
+                Q(step__service_offering__service__organization__in=organizations)
+                | Q(
+                    step__service_offering__isnull=True,
+                    step__offering__service__organization__in=organizations,
+                )
+            )
+        tasks = ongoing_service_tasks(user) if scope == "service" else actionable_tasks(user)
+        if self.task_activity == "all":
+            if scope == "mine":
+                history = viewable.filter(assigned_to__user=user)
+            else:
+                services = task_services(user)
+                history = viewable.filter(
+                    Q(step__service_offering__service__in=services)
+                    | Q(
+                        step__service_offering__isnull=True,
+                        step__offering__service__in=services,
+                    )
+                )
+            tasks = OfferingTask.objects.filter(Q(pk__in=tasks) | Q(pk__in=history))
+        return tasks
+
+    def get_base_queryset(self):
+        tasks = self.scope_tasks(self.task_scope)
+        # "Paused at least once for <reason>": the annotation equals the
+        # requested reason on matching tasks, so the drawer's choice filter can
+        # select them. "OTHER" covers pauses without a known reason.
+        pause_reason = self.request.GET.get("pause_reason", "")
+        if pause_reason in dict(pause_reason_choices()):
+            paused = TaskActivity.objects.filter(task=OuterRef("pk"), action="paused")
+            paused = (
+                paused.exclude(detail__in=PauseReason.values)
+                if pause_reason == "OTHER"
+                else paused.filter(detail=pause_reason)
+            )
+            tasks = tasks.annotate(
+                pause_reason_match=Case(
+                    When(Exists(paused), then=Value(pause_reason)),
+                    default=Value(""),
+                    output_field=CharField(),
+                )
+            )
+        else:
+            tasks = tasks.annotate(pause_reason_match=Value("", output_field=CharField()))
+        if self.task_activity == "active":
+            tasks = tasks.filter(
+                execution__status__in=(ExecutionStatus.RUNNING, ExecutionStatus.WAITING),
+                execution__current_step_id=F("step_id"),
+                status__in=(
+                    TaskStatus.PENDING,
+                    TaskStatus.ASSIGNED,
+                    TaskStatus.IN_PROGRESS,
+                    TaskStatus.PAUSED,
+                    TaskStatus.BLOCKED,
                 ),
             )
-            .select_related("assigned_to")
-        )
+        return tasks.annotate(
+            responsible_service_id=Coalesce(
+                "step__service_offering__service_id", "step__offering__service_id"
+            ),
+            responsible_service_name=Coalesce(
+                "step__service_offering__service__name", "step__offering__service__name"
+            ),
+            responsible_organization_name=Coalesce(
+                "step__service_offering__service__organization__name",
+                "step__offering__service__organization__name",
+            ),
+            responsible_organization_path=Coalesce(
+                "step__service_offering__service__organization__path",
+                "step__offering__service__organization__path",
+            ),
+        ).select_related("assigned_to")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -552,7 +935,19 @@ class OfferingTaskListView(LoginRequiredMixin, BreadcrumbsMixin, TableView):
         query.pop("scope", None)
         query.pop("page", None)
         context["task_scope"] = getattr(self, "task_scope", "mine")
+        context["task_activity"] = self.task_activity
         context["task_scope_query"] = query.urlencode()
+        context["task_preserved_filters"] = [
+            (key, self.request.GET[key])
+            for key in ("scope", "activity")
+            if self.request.GET.get(key)
+        ]
+        context["task_activity_query"] = [
+            (key, value)
+            for key, values in self.request.GET.lists()
+            if key not in ("activity", "page")
+            for value in values
+        ]
         return context
 
 
@@ -626,9 +1021,25 @@ def execution_step_tasks(execution, user, delegated_only):
         tasks = tasks.filter(pk__in=actionable_tasks(user).values("pk"))
         steps = [execution.current_step] if execution.current_step else []
     if execution_visible_services(user).filter(pk=execution.offering.service_id).exists():
+        from apps.offerings.deadlines import complete_path_sla_minutes
         from apps.offerings.step_duration import add_step_averages
 
         add_step_averages(steps, execution.offering)
+        end_steps = [step for step in steps if step.step_type == StepType.END]
+        if end_steps:
+            average = OfferingExecution.objects.filter(
+                offering=execution.offering,
+                status=ExecutionStatus.COMPLETED,
+                started_at__isnull=False,
+                completed_at__gte=F("started_at"),
+            ).aggregate(
+                average=Avg(F("completed_at") - F("started_at"), output_field=DurationField())
+            )["average"]
+            total_sla = complete_path_sla_minutes(execution.offering)
+            for step in end_steps:
+                step.show_execution_summary = True
+                step.average_execution_elapsed = average
+                step.total_sla_minutes = total_sla
     tasks_by_step = {step.pk: [] for step in steps}
     for task in tasks:
         if task.step_id not in tasks_by_step:
@@ -642,19 +1053,12 @@ def execution_step_tasks(execution, user, delegated_only):
         task.can_execute = user_has_scoped_permission(
             user, "offering.execute", service=service
         ) and (not task.assigned_to_id or task.assigned_to_id == actor_id)
-        task.can_manage = user_has_scoped_permission(
-            user, "offering.manage", service=service
-        )
+        task.can_manage = user_has_scoped_permission(user, "offering.manage", service=service)
         task.can_pause_resume = task.can_manage or (
-            task.can_execute and task.assigned_to_id is not None
-            and task.assigned_to_id == actor_id
+            task.can_execute and task.assigned_to_id is not None and task.assigned_to_id == actor_id
         )
         task.eligible = (
-            [
-                person
-                for person in eligible_people(task.step)
-                if person.pk != task.assigned_to_id
-            ]
+            [person for person in eligible_people(task.step) if person.pk != task.assigned_to_id]
             if task.can_manage
             else []
         )
@@ -674,9 +1078,11 @@ def execution_step_tasks(execution, user, delegated_only):
 
 
 def execution_subject_context(user, subject, return_url, *, include_log=False):
-    execution = visible_executions(user).filter(
-        subject_type=ContentType.objects.get_for_model(subject), subject_id=subject.pk
-    ).first()
+    execution = (
+        visible_executions(user)
+        .filter(subject_type=ContentType.objects.get_for_model(subject), subject_id=subject.pk)
+        .first()
+    )
     if execution is None:
         return {}
     delegated_only = execution_delegated_only(execution, user)
@@ -687,7 +1093,8 @@ def execution_subject_context(user, subject, return_url, *, include_log=False):
             for step, tasks in step_tasks
             if step.pk == execution.current_step_id
             for task in tasks
-            if task.status in (
+            if task.status
+            in (
                 TaskStatus.PENDING,
                 TaskStatus.ASSIGNED,
                 TaskStatus.IN_PROGRESS,
@@ -799,16 +1206,21 @@ class OfferingExecutionDetailView(LoginRequiredMixin, BreadcrumbsMixin, DetailVi
         return visible_executions(self.request.user)
 
     def get_context_data(self, **kwargs):
+        from apps.offerings.deadlines import execution_final_deadline
         from apps.requests.models import Request
         from apps.requests.views import visible_requests
 
         ctx = super().get_context_data(**kwargs)
         ctx["delegated_only"] = execution_delegated_only(self.object, self.request.user)
+        if not ctx["delegated_only"]:
+            ctx["final_deadline"] = execution_final_deadline(self.object)
         if self.object.subject_type_id == ContentType.objects.get_for_model(Request).pk:
-            ctx["linked_request"] = visible_requests(self.request.user).filter(
-                pk=self.object.subject_id
-            ).first()
-        ctx["step_tasks"] = execution_step_tasks(self.object, self.request.user, ctx["delegated_only"])
+            ctx["linked_request"] = (
+                visible_requests(self.request.user).filter(pk=self.object.subject_id).first()
+            )
+        ctx["step_tasks"] = execution_step_tasks(
+            self.object, self.request.user, ctx["delegated_only"]
+        )
         ctx["show_step_averages"] = any(
             getattr(step, "show_average_duration", False) for step, _ in ctx["step_tasks"]
         )

@@ -3,6 +3,13 @@ from django.core.paginator import Paginator
 from django.template.loader import render_to_string
 from django.utils import translation
 
+from apps.common.tables.config import TableConfig
+
+
+def test_table_page_size_defaults_to_ten_and_accepts_override():
+    assert TableConfig(key="default", columns=[]).page_size == 10
+    assert TableConfig(key="custom", columns=[], page_size=25).page_size == 25
+
 
 @pytest.mark.parametrize(
     ("language", "number", "expected"),
@@ -25,4 +32,3 @@ def test_pagination_displays_current_and_total_pages(language, number, expected)
             },
         )
     assert expected in rendered
-

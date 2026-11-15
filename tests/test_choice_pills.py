@@ -20,7 +20,10 @@ def test_request_list_renders_translated_choice_labels_and_keeps_raw_filters(
     make_membership(person, org_tree["parish_a"], role)
     service = make_service(org_tree["parish_a"])
     Request.objects.create(
-        service=service, title="Example", status=RequestStatus.IN_PROGRESS, priority=Priority.VERY_LOW
+        service=service,
+        title="Example",
+        status=RequestStatus.IN_PROGRESS,
+        priority=Priority.VERY_LOW,
     )
     client.force_login(user)
     client.cookies["django_language"] = "pt"
@@ -53,7 +56,13 @@ def test_shared_pill_renders_other_models_choices_and_fallback(make_service, org
         assert ">A investigar</span>" in html
         assert field_display({"nested": incident}, "nested.status") == incident.get_status_display()
     fallback = template.render(
-        Context({"record": {"label": "some_value"}, "value": "some_value", "column": Column("label", "")})
+        Context(
+            {
+                "record": {"label": "some_value"},
+                "value": "some_value",
+                "column": Column("label", ""),
+            }
+        )
     )
     assert ">Some_Value</span>" in fallback
     assert field_display({"nested": None}, "nested.status") == ""

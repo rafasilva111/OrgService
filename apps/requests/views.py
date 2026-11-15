@@ -442,6 +442,7 @@ class RequestDetailView(BreadcrumbsMixin, LoginRequiredMixin, DetailView):
         )
 
     def get_context_data(self, **kwargs):
+        from apps.offerings.deadlines import execution_final_deadline
         from apps.offerings.views import execution_subject_context
 
         ctx = super().get_context_data(**kwargs)
@@ -452,6 +453,8 @@ class RequestDetailView(BreadcrumbsMixin, LoginRequiredMixin, DetailView):
                 self.request.user, self.object, self.request.path, include_log=True
             )
         )
+        if ctx.get("execution") and not ctx["delegated_only"]:
+            ctx["final_deadline"] = execution_final_deadline(ctx["execution"])
         if "note_form" in kwargs:
             ctx["note_form"] = kwargs["note_form"]
         return ctx
@@ -469,9 +472,13 @@ class RequestDetailView(BreadcrumbsMixin, LoginRequiredMixin, DetailView):
         )
 
         self.object = self.get_object()
-        execution = visible_executions(request.user).filter(
-            subject_type=ContentType.objects.get_for_model(Request), subject_id=self.object.pk
-        ).first()
+        execution = (
+            visible_executions(request.user)
+            .filter(
+                subject_type=ContentType.objects.get_for_model(Request), subject_id=self.object.pk
+            )
+            .first()
+        )
         if execution is None:
             raise Http404
         form = ExecutionNoteForm(

@@ -5,11 +5,10 @@
 {% block header_title %}{{ offering.name }}{% endblock %}
 
 {% block content %}
-<div class="space-y-6">
+<div class="space-y-6{% if not can_view_executions %} xl:w-[calc((100%-1.5rem)/2)]{% endif %}">
   <div class="flex flex-wrap items-end justify-between gap-3">
     <div class="space-y-3">
       <div class="flex flex-wrap items-center gap-2">
-        <a href="{% url 'offerings:productivity' %}?offering={{ offering.pk }}" class="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-600 hover:bg-zinc-50">{% translate 'Offering productivity' %}</a>
         <h1 class="text-lg font-semibold text-zinc-900">{{ offering.name }}</h1>
         <span class="rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset {{ offering.status|pill_class }}">{{ offering.get_status_display }}</span>
         <span class="rounded-full bg-zinc-100 px-2.5 py-0.5 font-mono text-xs font-medium text-zinc-600">v{{ offering.version }}</span>
@@ -19,7 +18,7 @@
       </p>
       <p class="max-w-2xl text-sm text-zinc-600">{% if offering.description %}{{ offering.description }}{% else %}{% translate 'No description provided.' %}{% endif %}</p>
       {% include "offerings/_availability.html" with inline=True %}
-      <p class="text-sm text-zinc-600">{% translate 'Default priority' %}: {{ offering.get_default_priority_display }}</p>
+      <p class="text-sm text-zinc-600">{% translate 'Default priority' %}: <span class="rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset {{ offering.default_priority|pill_class }}">{{ offering.get_default_priority_display }}</span></p>
     </div>
     <div class="flex flex-wrap items-center gap-2">
       {% if can_manage %}
@@ -64,11 +63,17 @@
     {% if can_view_executions %}
     <aside id="eligible-actors-panel" class="min-w-0 xl:col-start-2 xl:row-span-2 xl:row-start-1" aria-live="polite">
       {% if actors_context %}
-      {% include "core/tables/_table.html" with config=actors_context.config visible_columns=actors_context.visible_columns object_list=actors_context.object_list paginator=actors_context.paginator page_obj=actors_context.page_obj is_paginated=actors_context.is_paginated query_without_sort=actors_context.query_without_sort table_description=actors_context.table_description %}
+      {% include "offerings/_step_insights.html" %}
       {% else %}
-      <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-        <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Eligible people' %}</h2>
-        <p class="mt-2 text-sm text-zinc-500">{% translate 'Select a step to see its eligible people.' %}</p>
+      <div class="space-y-6">
+        <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Eligible people' %}</h2>
+          <p class="mt-2 text-sm text-zinc-500">{% translate 'Select a step to see its eligible people.' %}</p>
+        </div>
+        <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+          <h2 class="text-sm font-semibold text-zinc-800">{% translate 'Pause reasons' %}</h2>
+          <p class="mt-2 text-sm text-zinc-500">{% translate 'Select a step to see its pause reasons.' %}</p>
+        </div>
       </div>
       {% endif %}
     </aside>

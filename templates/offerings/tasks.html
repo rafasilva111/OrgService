@@ -5,6 +5,15 @@
 {% block content %}
 <div class="space-y-6">
   <h1 class="text-xl font-semibold text-zinc-900">{% translate 'Service tasks' %}</h1>
+  <form method="get" class="flex items-center gap-2">
+    {% for key, value in task_activity_query %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    <label for="task-activity" class="text-sm font-medium text-zinc-700">{% translate 'Activity' %}</label>
+    <select id="task-activity" name="activity" onchange="this.form.submit()" class="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm">
+      <option value="active" {% if task_activity == "active" %}selected{% endif %}>{% translate 'Active tasks' %}</option>
+      <option value="all" {% if task_activity == "all" %}selected{% endif %}>{% translate 'All tasks' %}</option>
+    </select>
+    <noscript><button type="submit">{% translate 'Apply' %}</button></noscript>
+  </form>
   <nav class="flex flex-wrap gap-2" aria-label="{% translate 'Task view' %}">
     <a href="?{% if task_scope_query %}{{ task_scope_query }}&{% endif %}scope=mine"
        class="rounded-lg border px-3 py-2 text-sm font-medium {% if task_scope == 'mine' %}border-indigo-600 bg-indigo-50 text-indigo-700{% else %}border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50{% endif %}">
@@ -12,7 +21,15 @@
     </a>
     <a href="?{% if task_scope_query %}{{ task_scope_query }}&{% endif %}scope=service"
        class="rounded-lg border px-3 py-2 text-sm font-medium {% if task_scope == 'service' %}border-indigo-600 bg-indigo-50 text-indigo-700{% else %}border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50{% endif %}">
-      {% translate 'All ongoing tasks in my services' %}
+      {% if task_activity == 'all' %}{% translate 'All tasks in my service' %}{% else %}{% translate 'All ongoing tasks in my service' %}{% endif %}
+    </a>
+    <a href="?{% if task_scope_query %}{{ task_scope_query }}&{% endif %}scope=organization"
+       class="rounded-lg border px-3 py-2 text-sm font-medium {% if task_scope == 'organization' %}border-indigo-600 bg-indigo-50 text-indigo-700{% else %}border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50{% endif %}">
+      {% if task_activity == 'all' %}{% translate 'All tasks in my organization' %}{% else %}{% translate 'All ongoing tasks in my organization' %}{% endif %}
+    </a>
+    <a href="?{% if task_scope_query %}{{ task_scope_query }}&{% endif %}scope=all"
+       class="rounded-lg border px-3 py-2 text-sm font-medium {% if task_scope == 'all' %}border-indigo-600 bg-indigo-50 text-indigo-700{% else %}border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-50{% endif %}">
+      {% if task_activity == 'all' %}{% translate 'All tasks' %}{% else %}{% translate 'All ongoing tasks' %}{% endif %}
     </a>
   </nav>
   {% include "core/tables/_table.html" %}
