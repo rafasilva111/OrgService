@@ -1707,8 +1707,8 @@ def test_task_table_navigation_search_filters_sort_and_pagination(
     response = client.get(url)
     assert response.status_code == 200
     assert response.context["paginator"].count == 28
-    assert len(response.context["object_list"]) == 25
-    assert "Page 1 of 2" in response.content.decode()
+    assert len(response.context["object_list"]) == 10
+    assert "Page 1 of 3" in response.content.decode()
     group = next(
         group for group in response.context["nav_groups"] if group["label"] == "Service Offerings"
     )
@@ -1727,9 +1727,9 @@ def test_task_table_navigation_search_filters_sort_and_pagination(
         client.get(url, {"organization": org_tree["parish_a"].pk}).context["paginator"].count == 28
     )
     assert client.get(url, {"sort": "title", "page": 1}).context["object_list"][0] == task
-    page_two = client.get(url, {"page": 2}, HTTP_HX_REQUEST="true")
-    assert len(page_two.context["object_list"]) == 3
-    assert "Page 2 of 2" in page_two.content.decode()
+    last_page = client.get(url, {"page": 3}, HTTP_HX_REQUEST="true")
+    assert len(last_page.context["object_list"]) == 8
+    assert "Page 3 of 3" in last_page.content.decode()
     assert client.get(url, {"created_at__from": "2099-01-01"}).context["paginator"].count == 0
     partial = client.get(url, {"q": "Alpha"}, HTTP_HX_REQUEST="true")
     assert partial.context["partial"]

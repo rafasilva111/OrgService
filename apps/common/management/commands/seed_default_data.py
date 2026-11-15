@@ -37,6 +37,7 @@ from apps.access.models import Role
 from apps.access.scoping import ensure_service_manager_role
 from apps.audit.models import AuditLog
 from apps.changes.models import Change, ChangeApproval
+from apps.common.demo_parish import seed_citizen_requests, seed_parish_offerings
 from apps.events.models import Event
 from apps.incidents.models import Impact, Incident, IncidentStatus, IncidentUpdate, Urgency
 from apps.metrics.models import KPI, SLA, AggregationType, Metric, MetricValue, ScopeType
@@ -131,6 +132,7 @@ class Command(BaseCommand):
         self._seed_offering_types()
         self._seed_skills()
         self._seed_offerings(services, people)
+        seed_parish_offerings(services, people)
         self._seed_incidents(services, people)
         self._seed_problems(services, people)
         self._seed_changes(services, people)
@@ -142,6 +144,7 @@ class Command(BaseCommand):
 
         attach_missing_requests()
         self._seed_cemetery_request_answers(services["Cemitérios"])
+        seed_citizen_requests(people)
         self._seed_events(services, people)
         self._seed_audit(services, people)
 
@@ -525,6 +528,34 @@ class Command(BaseCommand):
                 "Joana Ribeiro",
                 "+351 912 000 001",
                 "santa-maria-sao-pedro-matacaes",
+                "cidadao123",
+            ),
+            (
+                "antonio.matos@example.pt",
+                "António Matos",
+                "+351 912 000 002",
+                "santa-maria-sao-pedro-matacaes",
+                "cidadao123",
+            ),
+            (
+                "sofia.carvalho@example.pt",
+                "Sofia Carvalho",
+                "+351 912 000 003",
+                "santa-maria-sao-pedro-matacaes",
+                "cidadao123",
+            ),
+            (
+                "rui.gaspar@example.pt",
+                "Rui Gaspar",
+                "+351 912 000 004",
+                "a-dos-cunhados",
+                "cidadao123",
+            ),
+            (
+                "helena.sousa@example.pt",
+                "Helena Sousa",
+                "+351 912 000 005",
+                "ramalhal",
                 "cidadao123",
             ),
         ]

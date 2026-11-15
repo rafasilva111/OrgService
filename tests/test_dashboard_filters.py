@@ -1207,7 +1207,8 @@ def test_people_directory_uses_header_service_and_organization_as_filters(
     assert 'title="People Svc A, People Svc C"' in body
     assert "People Member" in body
     assert "Other Role" in body
-    assert 'title="People Member, Other Role"' in body
+    # Roles are listed alphabetically (see the person_roles filter).
+    assert 'title="Other Role, People Member"' in body
     assert '<th class="px-4 py-3 whitespace-nowrap">Type</th>' not in body
 
     _set_header_scope(client, org_tree["municipality"], target)
@@ -1253,7 +1254,9 @@ def test_people_directory_uses_header_service_and_organization_as_filters(
         {"service": "", "organization": "", "role": other_role.pk},
     ).content.decode()
     assert "Carol Municipality" in body
-    assert "Alice Parish A" not in body
+    # Alice holds "Other Role" through her People Svc C assignment.
+    assert "Alice Parish A" in body
+    assert "Bruno Parish B" not in body
 
 
 def test_resources_organization_filter_matches_direct_or_service_org(

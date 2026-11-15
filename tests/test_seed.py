@@ -714,3 +714,43 @@ def test_demo_citizen_lives_in_matacaes_and_can_use_the_portal(seeded, client):
     assert "Santa Maria, São Pedro e Matacães" in body
     call_command("seed_default_data", verbosity=0)  # idempotent
     assert get_user_model().objects.filter(username=user.username).count() == 1
+
+
+def test_parish_services_have_requestable_offerings_with_forms(seeded):
+    from apps.offerings.models import OfferingStatus, ServiceOffering
+
+    for service_name in (
+        "Serviços Gerais",
+        "Serviços Educativos",
+        "Serviços Sociais e Associativismo",
+    ):
+        offerings = ServiceOffering.objects.filter(
+            service__name=service_name, status=OfferingStatus.ACTIVE, on_request=True
+        )
+        assert offerings.count() >= 3, service_name
+        for offering in offerings:
+            assert offering.form_fields.exists(), offering.name
+            assert offering.steps.filter(step_type="START").count() == 1
+
+
+def test_demo_citizens_have_requests_visible_in_the_portal(seeded, client):
+    from django.urls import reverse
+
+    from apps.offerings.models import OfferingExecution
+
+    citizen_requests = Request.objects.filter(requester__person_type="CITIZEN")
+    assert citizen_requests.count() == 11
+    assert citizen_requests.filter(attachments__isnull=False).exists()
+    for request in citizen_requests:
+        assert OfferingExecution.objects.filter(subject_id=request.pk).exists()
+
+    assert client.login(username="sofia.carvalho@example.pt", password="cidadao123")
+    body = client.get(reverse("citizen:requests"), {"state": "all"}).content.decode()
+    assert "Transporte para a EB São Pedro" in body
+    assert "Licença do Bobi" not in body  # António's
+    request = citizen_requests.get(title="Transporte para a EB São Pedro")
+    detail = client.get(reverse("citizen:request_detail", args=[request.pk])).content.decode()
+    assert "Falta a declaração de matrícula atualizada." in detail
+
+    call_command("seed_default_data", verbosity=0)  # idempotent
+    assert Request.objects.filter(requester__person_type="CITIZEN").count() == 11
